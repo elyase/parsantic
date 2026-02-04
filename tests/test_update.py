@@ -10,9 +10,8 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from parsantic import update, aupdate, UpdateResult
-from parsantic.patch import JsonPatchOp, PatchPolicy
-
+from parsantic import UpdateResult, aupdate, update
+from parsantic.patch import PatchPolicy, PolicyViolationError
 
 # ---------------------------------------------------------------------------
 # Test models
@@ -66,11 +65,16 @@ class TestUpdateBasic:
     """Basic happy-path tests."""
 
     def test_simple_replace(self):
-        provider = FakeProvider(responses=[
-            '[{"op": "replace", "path": "/role", "value": "Senior Engineer"}]'
-        ])
+        provider = FakeProvider(
+            responses=['[{"op": "replace", "path": "/role", "value": "Senior Engineer"}]']
+        )
         result = update(
-            existing={"name": "Alex", "role": "Engineer", "skills": ["Python"], "years_experience": 3},
+            existing={
+                "name": "Alex",
+                "role": "Engineer",
+                "skills": ["Python"],
+                "years_experience": 3,
+            },
             instruction="Alex got promoted.",
             target=User,
             model=provider,
@@ -83,15 +87,22 @@ class TestUpdateBasic:
         assert result.patches[0].op == "replace"
 
     def test_multiple_patches(self):
-        provider = FakeProvider(responses=[
-            """[
+        provider = FakeProvider(
+            responses=[
+                """[
                 {"op": "replace", "path": "/role", "value": "Senior Engineer"},
                 {"op": "replace", "path": "/years_experience", "value": 5},
                 {"op": "add", "path": "/skills/-", "value": "Rust"}
             ]"""
-        ])
+            ]
+        )
         result = update(
-            existing={"name": "Alex", "role": "Engineer", "skills": ["Python"], "years_experience": 3},
+            existing={
+                "name": "Alex",
+                "role": "Engineer",
+                "skills": ["Python"],
+                "years_experience": 3,
+            },
             instruction="Promoted and learned Rust.",
             target=User,
             model=provider,
@@ -104,9 +115,7 @@ class TestUpdateBasic:
 
     def test_doc_before_after(self):
         original = {"name": "Alex", "role": "Engineer", "skills": ["Python"], "years_experience": 3}
-        provider = FakeProvider(responses=[
-            '[{"op": "replace", "path": "/role", "value": "Lead"}]'
-        ])
+        provider = FakeProvider(responses=['[{"op": "replace", "path": "/role", "value": "Lead"}]'])
         result = update(existing=original, instruction="Promoted.", target=User, model=provider)
         assert result.doc_before == original
         assert result.doc_after["/role"] if False else result.doc_after["role"] == "Lead"
@@ -114,21 +123,24 @@ class TestUpdateBasic:
 
     def test_accepts_basemodel_instance(self):
         user = User(name="Alex", role="Engineer", skills=["Python"], years_experience=3)
-        provider = FakeProvider(responses=[
-            '[{"op": "replace", "path": "/role", "value": "Lead"}]'
-        ])
+        provider = FakeProvider(responses=['[{"op": "replace", "path": "/role", "value": "Lead"}]'])
         result = update(existing=user, instruction="Promoted.", target=User, model=provider)
         assert result.value.role == "Lead"
-        assert result.doc_before == {"name": "Alex", "role": "Engineer", "skills": ["Python"], "years_experience": 3}
+        assert result.doc_before == {
+            "name": "Alex",
+            "role": "Engineer",
+            "skills": ["Python"],
+            "years_experience": 3,
+        }
 
 
 class TestUpdateMarkdownFences:
     """LLM output wrapped in markdown fences."""
 
     def test_fenced_output(self):
-        provider = FakeProvider(responses=[
-            '```json\n[{"op": "replace", "path": "/role", "value": "CTO"}]\n```'
-        ])
+        provider = FakeProvider(
+            responses=['```json\n[{"op": "replace", "path": "/role", "value": "CTO"}]\n```']
+        )
         result = update(
             existing={"name": "Alex", "role": "CEO", "skills": [], "years_experience": 10},
             instruction="Changed role.",
@@ -138,9 +150,9 @@ class TestUpdateMarkdownFences:
         assert result.value.role == "CTO"
 
     def test_fenced_with_trailing_comma(self):
-        provider = FakeProvider(responses=[
-            '```json\n[{"op": "replace", "path": "/role", "value": "CTO"},]\n```'
-        ])
+        provider = FakeProvider(
+            responses=['```json\n[{"op": "replace", "path": "/role", "value": "CTO"},]\n```']
+        )
         result = update(
             existing={"name": "Alex", "role": "CEO", "skills": [], "years_experience": 10},
             instruction="Changed role.",
@@ -154,9 +166,9 @@ class TestUpdateCoercion:
     """Patches with values that need coercion (e.g., string-to-int)."""
 
     def test_string_to_int_coercion(self):
-        provider = FakeProvider(responses=[
-            '[{"op": "replace", "path": "/years_experience", "value": "7"}]'
-        ])
+        provider = FakeProvider(
+            responses=['[{"op": "replace", "path": "/years_experience", "value": "7"}]']
+        )
         result = update(
             existing={"name": "Alex", "role": "Engineer", "skills": [], "years_experience": 3},
             instruction="More experience.",
@@ -171,12 +183,14 @@ class TestUpdateRetry:
 
     def test_retry_on_invalid_then_fix(self):
         """First response produces invalid output, second fixes it."""
-        provider = FakeProvider(responses=[
-            # First: sets years_experience to a bad value (missing required field scenario)
-            '[{"op": "replace", "path": "/name", "value": null}]',
-            # Second: fixes it
-            '[{"op": "replace", "path": "/name", "value": "Alex"}]',
-        ])
+        provider = FakeProvider(
+            responses=[
+                # First: sets years_experience to a bad value (missing required field scenario)
+                '[{"op": "replace", "path": "/name", "value": null}]',
+                # Second: fixes it
+                '[{"op": "replace", "path": "/name", "value": "Alex"}]',
+            ]
+        )
         # This should fail on first attempt (name becomes None which fails str validation)
         # then succeed on retry
         # Note: depending on coercion, null -> str might actually coerce. Let's use a
@@ -197,10 +211,8 @@ class TestUpdatePolicy:
     """Patch policy enforcement."""
 
     def test_remove_disabled_by_default(self):
-        provider = FakeProvider(responses=[
-            '[{"op": "remove", "path": "/bio"}]'
-        ])
-        with pytest.raises(Exception):
+        provider = FakeProvider(responses=['[{"op": "remove", "path": "/bio"}]'])
+        with pytest.raises(PolicyViolationError):
             update(
                 existing={"name": "Alex", "email": "a@b.com", "bio": "Hello"},
                 instruction="Remove bio.",
@@ -210,9 +222,7 @@ class TestUpdatePolicy:
             )
 
     def test_remove_allowed_with_policy(self):
-        provider = FakeProvider(responses=[
-            '[{"op": "remove", "path": "/bio"}]'
-        ])
+        provider = FakeProvider(responses=['[{"op": "remove", "path": "/bio"}]'])
         result = update(
             existing={"name": "Alex", "email": "a@b.com", "bio": "Hello"},
             instruction="Remove bio.",
@@ -227,9 +237,7 @@ class TestUpdateAsync:
     """Async version."""
 
     def test_aupdate_basic(self):
-        provider = FakeProvider(responses=[
-            '[{"op": "replace", "path": "/role", "value": "Lead"}]'
-        ])
+        provider = FakeProvider(responses=['[{"op": "replace", "path": "/role", "value": "Lead"}]'])
         result = asyncio.run(
             aupdate(
                 existing={"name": "Alex", "role": "Engineer", "skills": [], "years_experience": 3},
@@ -257,7 +265,7 @@ class TestUpdatePromptContent:
                 captured_prompts.extend(batch_prompts)
                 return ['[{"op": "replace", "path": "/role", "value": "Lead"}]']
 
-        result = update(
+        update(
             existing={"name": "Alex", "role": "Engineer", "skills": [], "years_experience": 3},
             instruction="Promoted to lead.",
             target=User,
