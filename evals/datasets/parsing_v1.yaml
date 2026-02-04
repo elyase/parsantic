@@ -1,0 +1,292 @@
+# Eval dataset for parsantic JSON-ish parsing edge cases.
+#
+# Dataset format inspired by pydantic-ai eval datasets.
+cases:
+  - name: Trailing comma in object
+    inputs:
+      text: '{"a": 1,}'
+      is_done: true
+    expected_output:
+      a: 1
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Trailing comma in array
+    inputs:
+      text: "[1, 2, 3,]"
+      is_done: true
+    expected_output: [1, 2, 3]
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Trailing commas in nested structures
+    inputs:
+      text: '{"outer": {"inner": 1,}, "items": [1, 2,],}'
+      is_done: true
+    expected_output:
+      outer:
+        inner: 1
+      items: [1, 2]
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Line comments stripped
+    inputs:
+      text: |-
+        {
+          // comment
+          "a": 1
+        }
+      is_done: true
+    expected_output:
+      a: 1
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Block comments stripped
+    inputs:
+      text: |-
+        {
+          /* this is a comment */
+          "a": 1
+        }
+      is_done: true
+    expected_output:
+      a: 1
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Unquoted keys
+    inputs:
+      text: "{a: 1, b: 2}"
+      is_done: true
+    expected_output:
+      a: 1
+      b: 2
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Unquoted keys with boolean and trailing comma
+    inputs:
+      text: "{ok: true, count: 2,}"
+      is_done: true
+    expected_output:
+      ok: true
+      count: 2
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Single-quoted strings
+    inputs:
+      text: "{'key': 'value'}"
+      is_done: true
+    expected_output:
+      key: value
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Missing commas between object fields
+    inputs:
+      text: '{"a": 1 "b": 2}'
+      is_done: true
+    expected_output:
+      a: 1
+      b: 2
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Fraction token preserved for later coercion
+    inputs:
+      text: "{c: 1/2, d: 3}"
+      is_done: true
+    expected_output:
+      c: 1/2
+      d: 3
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Markdown fenced JSON (```json)
+    inputs:
+      text: |-
+        ```json
+        {"a": 1}
+        ```
+      is_done: true
+    expected_output:
+      a: 1
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Markdown fenced JSON (no language)
+    inputs:
+      text: |-
+        ```
+        {"key": "value"}
+        ```
+      is_done: true
+    expected_output:
+      key: value
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Tilde fenced JSON
+    inputs:
+      text: |-
+        ~~~json
+        {"x": 42}
+        ~~~
+      is_done: true
+    expected_output:
+      x: 42
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: JSON embedded in prose (object)
+    inputs:
+      text: 'The result is {"status": "ok", "code": 200} as expected.'
+      is_done: true
+    expected_output:
+      status: ok
+      code: 200
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: JSON embedded in prose (array)
+    inputs:
+      text: "The values are [10, 20, 30] in that order."
+      is_done: true
+    expected_output: [10, 20, 30]
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Multiple JSON objects produce a grepped array candidate
+    inputs:
+      text: 'First result: {"a": 1} and then {"b": 2} end.'
+      is_done: true
+    expected_output:
+      - a: 1
+      - b: 2
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Multiple markdown blocks produce a markdown array candidate
+    inputs:
+      text: |-
+        ```json
+        {"a": 1}
+        ```
+
+        ```json
+        {"b": 2}
+        ```
+      is_done: true
+    expected_output:
+      - a: 1
+      - b: 2
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Partial array closes when not done
+    inputs:
+      text: "[12"
+      is_done: false
+    expected_output: [12]
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Partial object closes when not done
+    inputs:
+      text: '{"a": 11, "b": 22'
+      is_done: false
+    expected_output:
+      a: 11
+      b: 22
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Partial object with newlines closes when not done
+    inputs:
+      text: |-
+        {
+          "a": 11,
+          "b": 22
+      is_done: false
+    expected_output:
+      a: 11
+      b: 22
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Unclosed object auto-closed (streaming)
+    inputs:
+      text: '{"name": "Alice", "age": 30'
+      is_done: false
+    expected_output:
+      name: Alice
+      age: 30
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Unclosed nested structures auto-closed (streaming)
+    inputs:
+      text: '{"items": [1, 2, {"nested": true'
+      is_done: false
+    expected_output:
+      items:
+        - 1
+        - 2
+        - nested: true
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Escaped newline in JSON string
+    inputs:
+      text: '{"text":"Line1\nLine2"}'
+      is_done: true
+    expected_output:
+      text: "Line1\nLine2"
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Escaped quote in JSON string
+    inputs:
+      text: '{"quote":"He said \"hi\""}'
+      is_done: true
+    expected_output:
+      quote: 'He said "hi"'
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true
+
+  - name: Unicode escape in JSON string
+    inputs:
+      text: '{"snowman":"\u2603"}'
+      is_done: true
+    expected_output:
+      snowman: "☃"
+    evaluators:
+      - HasCandidates: true
+      - MatchesExpected: true

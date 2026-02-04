@@ -1,0 +1,19 @@
+site_name: parsantic
+repo_url: https://github.com/elyase/parsantic
+repo_name: elyase/parsantic
+
+theme:
+  name: material
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: false
+            show_signature_annotations: true
+
+nav:
+  - Home: index.md
+  - API: api.md

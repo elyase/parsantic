@@ -1,0 +1,165 @@
+# Eval dataset for parsantic type coercion edge cases.
+#
+# Dataset format inspired by pydantic-ai eval datasets.
+cases:
+  - name: Strict int from JSON string
+    inputs:
+      text: '"42"'
+      target: StrictInt
+      is_done: true
+    expected_output: 42
+    evaluators:
+      - MatchesExpected: true
+      - FlagsInclude: [string_to_int]
+
+  - name: Strict int from float-ish JSON string
+    inputs:
+      text: '"3.0"'
+      target: StrictInt
+      is_done: true
+    expected_output: 3
+    evaluators:
+      - MatchesExpected: true
+      - FlagsInclude: [string_to_int]
+
+  - name: Strict int from negative JSON string
+    inputs:
+      text: '"-7"'
+      target: StrictInt
+      is_done: true
+    expected_output: -7
+    evaluators:
+      - MatchesExpected: true
+      - FlagsInclude: [string_to_int]
+
+  - name: Strict float from JSON string
+    inputs:
+      text: '"2.5"'
+      target: StrictFloat
+      is_done: true
+    expected_output: 2.5
+    evaluators:
+      - MatchesExpected: true
+      - FlagsInclude: [string_to_float]
+
+  - name: Strict float from fraction string
+    inputs:
+      text: '"1/2"'
+      target: StrictFloat
+      is_done: true
+    expected_output: 0.5
+    evaluators:
+      - MatchesExpected: true
+      - FlagsInclude: [string_to_float]
+
+  - name: Strict float from comma-separated currency
+    inputs:
+      text: '"$1,234.50"'
+      target: StrictFloat
+      is_done: true
+    expected_output: 1234.5
+    evaluators:
+      - MatchesExpected: true
+      - FlagsInclude: [string_to_float]
+
+  - name: Strict bool from yes
+    inputs:
+      text: '"yes"'
+      target: StrictBool
+      is_done: true
+    expected_output: true
+    evaluators:
+      - MatchesExpected: true
+      - FlagsInclude: [string_to_bool]
+
+  - name: Strict bool from no (case-insensitive)
+    inputs:
+      text: '"No"'
+      target: StrictBool
+      is_done: true
+    expected_output: false
+    evaluators:
+      - MatchesExpected: true
+      - FlagsInclude: [string_to_bool]
+
+  - name: List wrapping from JSON number
+    inputs:
+      text: "1"
+      target: list[int]
+      is_done: true
+    expected_output: [1]
+    evaluators:
+      - MatchesExpected: true
+      - FlagsInclude: [single_to_array]
+
+  - name: List wrapping from JSON string
+    inputs:
+      text: '"1"'
+      target: list[int]
+      is_done: true
+    expected_output: [1]
+    evaluators:
+      - MatchesExpected: true
+      - FlagsInclude: [single_to_array]
+
+  - name: List of ints from JSON array of strings
+    inputs:
+      text: '["1", "2", "3"]'
+      target: list[int]
+      is_done: true
+    expected_output: [1, 2, 3]
+    evaluators:
+      - MatchesExpected: true
+
+  - name: Enum case-insensitive match
+    inputs:
+      text: '"RED"'
+      target: EvalColor
+      is_done: true
+    expected_output: red
+    evaluators:
+      - MatchesExpected: true
+      - FlagsInclude: [case_insensitive]
+
+  - name: Enum punctuation-stripped match
+    inputs:
+      text: '"ice-cream"'
+      target: EvalDessert
+      is_done: true
+    expected_output: icecream
+    evaluators:
+      - MatchesExpected: true
+      - FlagsInclude: [strip_punct]
+
+  - name: Enum accent-insensitive match
+    inputs:
+      text: '"cafe"'
+      target: EvalAccented
+      is_done: true
+    expected_output: "café"
+    evaluators:
+      - MatchesExpected: true
+      - FlagsInclude: [accent_insensitive]
+
+  - name: Enum substring match enabled
+    inputs:
+      text: '"blu"'
+      target: EvalColor
+      is_done: true
+      coerce_options:
+        allow_substring_enum_match: true
+    expected_output: blue
+    evaluators:
+      - MatchesExpected: true
+      - FlagsInclude: [substring_match]
+
+  - name: Strict bool from JSON literal (no coercion)
+    inputs:
+      text: "true"
+      target: StrictBool
+      is_done: true
+    expected_output: true
+    evaluators:
+      - MatchesExpected: true
+      - FlagsExclude: [string_to_bool]
+

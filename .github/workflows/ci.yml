@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: ${{ matrix.task }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - task: format
+            command: uv run --no-sync ruff format --check --diff src tests
+            sync_args: --no-install-project
+          - task: lint
+            command: uv run --no-sync ruff check src tests --output-format=github
+            sync_args: --no-install-project
+          - task: test
+            command: uv run --no-sync pytest
+            sync_args: ""
+          - task: build
+            command: uv build
+            sync_args: ""
+            skip_sync: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies
+        if: ${{ !matrix.skip_sync }}
+        run: uv sync --frozen ${{ matrix.sync_args }}
+
+      - name: ${{ matrix.task }}
+        run: ${{ matrix.command }}

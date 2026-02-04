@@ -1,0 +1,92 @@
+[project]
+name = "parsantic"
+version = "0.1.0"
+description = "Schema-aligned parsing (SAP) for Pydantic v2"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.0.0",
+  "regex>=2024.0.0",
+  "pyyaml>=6.0.1",
+]
+keywords = ["llm", "structured-output", "parsing", "pydantic", "json", "json-repair"]
+classifiers = [
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Development Status :: 4 - Beta",
+  "Topic :: Software Development :: Libraries",
+  "Typing :: Typed",
+]
+authors = [
+  { name = "Yaser Martinez Palenzuela" },
+]
+
+[project.optional-dependencies]
+ai = ["pydantic-ai>=0.0.36"]
+
+[project.urls]
+Repository = "https://github.com/elyase/parsantic"
+Issues = "https://github.com/elyase/parsantic/issues"
+
+[dependency-groups]
+dev = [
+  "pre-commit>=3.8.0",
+  "pytest>=8.0.0",
+  "ruff>=0.8.0",
+]
+docs = [
+  "mkdocs>=1.6.0",
+  "mkdocs-material>=9.5.0",
+  "mkdocstrings[python]>=0.29.0",
+]
+maintain = [
+  "git-changelog>=2.5.0",
+  "griffe>=1.5.0",
+]
+
+[build-system]
+requires = ["hatchling>=1.24.0"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = true
+default-groups = ["dev"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/parsantic"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+  # pycodestyle/pyflakes
+  "E",
+  "F",
+  # isort
+  "I",
+  # pyupgrade
+  "UP",
+  # bugbear
+  "B",
+]
+ignore = [
+  # Line length is enforced by formatter.
+  "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+  # asserts are fine in tests
+  "B011",
+]
