@@ -27,7 +27,7 @@ wrong-case enum values, and return partial objects mid-stream. Most tools
 deal with this by retrying the LLM call. `parsantic` fixes it locally in
 one pass:
 
-```python
+````python
 from enum import Enum
 from pydantic import BaseModel
 from parsantic import parse
@@ -63,7 +63,7 @@ Let me know if you need anything else!
 
 task = parse(llm_output, Task).value
 # Task(title='Fix the login bug', priority=<Priority.HIGH: 'high'>, days_left=3, done=False)
-```
+````
 
 One call. No retry. Markdown fences, comments, surrounding prose,
 wrong-case keys, kebab-to-snake key normalization, enum coercion,
