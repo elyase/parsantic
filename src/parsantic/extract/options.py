@@ -21,3 +21,4 @@ class ExtractOptions:
     prompt_validation: PromptValidationLevel = PromptValidationLevel.WARNING
     schema_mode: str = "compact"
     repair: Literal["none", "local"] = "none"
+    merge_strategy: Literal["first_wins", "last_wins", "prefer_non_null"] = "first_wins"

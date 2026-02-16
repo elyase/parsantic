@@ -559,6 +559,18 @@ class TestCreateMissingListDetection:
         assert isinstance(result["items"], list)
         assert result["items"][0] == {"name": "Widget"}
 
+    def test_add_nested_field_into_missing_list_index(self):
+        doc = {}
+        patches = [JsonPatchOp(op="add", path="/items/0/name", value="Widget")]
+        result = apply_patch(doc, patches)
+        assert result == {"items": [{"name": "Widget"}]}
+
+    def test_add_nested_field_into_empty_list(self):
+        doc = {"items": []}
+        patches = [JsonPatchOp(op="add", path="/items/0/name", value="Widget")]
+        result = apply_patch(doc, patches)
+        assert result == {"items": [{"name": "Widget"}]}
+
     def test_create_missing_dict_when_next_token_is_string(self):
         """When path is /metadata/key and metadata is missing, metadata should
         be auto-created as a dict (existing behaviour)."""

@@ -8,6 +8,7 @@ Supports model strings like ``openai:gpt-4o-mini``, ``anthropic:claude-sonnet``,
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -104,6 +105,7 @@ class PydanticAIProvider:
     model_id: str | None = None
     api_key: str | None = None
     base_url: str | None = None
+    max_concurrency: int = 8
     _agent: Any = field(default=None, repr=False, init=False)
 
     def __post_init__(self) -> None:
@@ -122,13 +124,17 @@ class PydanticAIProvider:
     def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
         results: list[str] = []
         for prompt in batch_prompts:
-            result = self._agent.run_sync(prompt)
+            result = self._agent.run_sync(prompt, **kwargs)
             results.append(result.output)
         return results
 
     async def ainfer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
-        results: list[str] = []
-        for prompt in batch_prompts:
-            result = await self._agent.run(prompt)
-            results.append(result.output)
-        return results
+        concurrency = kwargs.pop("max_concurrency", self.max_concurrency)
+        semaphore = asyncio.Semaphore(max(1, int(concurrency)))
+
+        async def _run_prompt(prompt: str) -> str:
+            async with semaphore:
+                result = await self._agent.run(prompt, **kwargs)
+                return result.output
+
+        return list(await asyncio.gather(*(_run_prompt(prompt) for prompt in batch_prompts)))

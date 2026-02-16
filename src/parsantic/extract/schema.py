@@ -32,8 +32,8 @@ class PydanticSchemaAdapter(SchemaAdapter[T]):
 
     def dump(self, value: T) -> Any:
         if isinstance(value, BaseModel):
-            return value.model_dump()
-        return self.adapter.dump_python(value)
+            return value.model_dump(mode="json")
+        return self.adapter.dump_python(value, mode="json")
 
     def render_schema(self, mode: str = "compact") -> str:
         schema = self.adapter.json_schema()

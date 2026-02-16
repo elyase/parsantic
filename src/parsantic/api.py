@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import TypeAdapter
 
-from .coerce import CoerceOptions, _coerce_to_type, coerce_jsonish_to_python
+from .coerce import CoerceOptions, coerce_jsonish_to_python
 from .jsonish import JsonishValue, ParseOptions, parse_jsonish
 from .streaming import StreamParser
 from .types import CandidateDebug, CompletionState, ParseDebug
@@ -42,8 +42,7 @@ def parse[T](
     coerced = coerce_jsonish_to_python(
         jsonish_value, adapter, options=coerce_options or CoerceOptions()
     )
-    validated = adapter.validate_python(coerced.value)
-    return ParseResult(value=validated, flags=tuple(coerced.flags), score=coerced.score)
+    return ParseResult(value=coerced.value, flags=tuple(coerced.flags), score=coerced.score)
 
 
 def coerce[T](
@@ -68,20 +67,12 @@ def coerce[T](
     except Exception:
         pass
 
-    # Use the jsonish coercion path for dicts (model-level coercion)
-    if isinstance(value, dict):
-        jv = JsonishValue(
-            value=value,
-            completion=CompletionState.COMPLETE,
-            raw=str(value),
-        )
-        sv = coerce_jsonish_to_python(jv, adapter, options=opts)
-        validated = adapter.validate_python(sv.value)
-        return ParseResult(value=validated, flags=tuple(sv.flags), score=sv.score)
-
-    # Use recursive coercion for everything else
-    target_type = target if isinstance(target, type) else getattr(adapter, "_type", type(value))
-    sv = _coerce_to_type(value, target_type, opts)
+    jv = JsonishValue(
+        value=value,
+        completion=CompletionState.COMPLETE,
+        raw=str(value),
+    )
+    sv = coerce_jsonish_to_python(jv, adapter, options=opts)
     return ParseResult(value=sv.value, flags=tuple(sv.flags), score=sv.score)
 
 
@@ -104,32 +95,33 @@ def parse_debug[T](
 
     candidates_debug: list[CandidateDebug] = []
 
-    # Try direct JSON parse
-    direct_error: str | None = None
-    try:
-        validated = adapter.validate_json(text)
-        chosen = CandidateDebug(
-            value_preview=validated,
-            flags=(),
-            score=0,
-        )
-        candidates_debug.append(chosen)
-        return ParseDebug(
-            raw_text=text,
-            candidates=candidates_debug,
-            chosen=chosen,
-            value=validated,
-        )
-    except Exception as e:
-        direct_error = str(e)
-        candidates_debug.append(
-            CandidateDebug(
-                value_preview=text[:200] if len(text) > 200 else text,
+    # Try direct JSON parse only when the buffer is complete.
+    if is_done:
+        direct_error: str | None = None
+        try:
+            validated = adapter.validate_json(text)
+            chosen = CandidateDebug(
+                value_preview=validated,
                 flags=(),
-                score=-1,
-                validation_error=direct_error,
+                score=0,
             )
-        )
+            candidates_debug.append(chosen)
+            return ParseDebug(
+                raw_text=text,
+                candidates=candidates_debug,
+                chosen=chosen,
+                value=validated,
+            )
+        except Exception as e:
+            direct_error = str(e)
+            candidates_debug.append(
+                CandidateDebug(
+                    value_preview=text[:200] if len(text) > 200 else text,
+                    flags=(),
+                    score=-1,
+                    validation_error=direct_error,
+                )
+            )
 
     # Parse through jsonish
     jsonish_value = parse_jsonish(text, options=parse_options or ParseOptions(), is_done=is_done)
@@ -259,6 +251,7 @@ def parse_stream[T](
     *,
     parse_options: ParseOptions | None = None,
     coerce_options: CoerceOptions | None = None,
+    max_buffer_chars: int | None = None,
 ) -> StreamParser[T]:
     """
     Create a streaming parser. Feed text chunks into the returned StreamParser.
@@ -268,4 +261,5 @@ def parse_stream[T](
         adapter=adapter,
         parse_options=parse_options or ParseOptions(),
         coerce_options=coerce_options or CoerceOptions(),
+        max_buffer_chars=max_buffer_chars,
     )

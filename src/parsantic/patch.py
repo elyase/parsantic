@@ -1,7 +1,18 @@
 """Safe JSON Patch (RFC 6902) operations for LLM-generated structured updates.
 
-This module implements a subset of RFC 6902 (``add``, ``replace``, ``remove``)
-with safety rails designed for LLM tool-calling workflows.  Key features:
+This module intentionally supports a focused subset of RFC 6902 operations:
+``add``, ``replace``, and ``remove``.  Unsupported operations (``move``,
+``copy``, ``test``) raise :class:`PatchError`.
+
+For LLM-forgiving flows, ``add`` paths auto-create missing intermediate
+containers:
+
+* missing object segments create ``dict`` containers
+* missing list segments can append a placeholder container when the traversal
+  index equals ``len(list)``
+* list traversal beyond ``len(list)`` is rejected
+
+Key features:
 
 * **Policy enforcement** -- configurable limits on allowed operations, patch
   count, and path depth.
@@ -26,6 +37,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, TypeAdapter
 
 from .api import ParseResult
+from .json_pointer import parse_json_pointer
 
 # ---------------------------------------------------------------------------
 # Exceptions
@@ -104,26 +116,16 @@ class PatchPolicy:
 # ---------------------------------------------------------------------------
 
 
-def _unescape_token(token: str) -> str:
-    """Unescape a single JSON Pointer reference token (RFC 6901).
-
-    ``~1`` -> ``/``, ``~0`` -> ``~``.  Order matters: ``~1`` first so that
-    ``~01`` correctly round-trips to ``~1`` (tilde followed by slash).
-    """
-    return token.replace("~1", "/").replace("~0", "~")
-
-
 def _parse_pointer(path: str) -> list[str]:
     """Split a JSON Pointer string into unescaped reference tokens.
 
     Returns an empty list for the root pointer ``""``.  Raises
     :class:`PatchError` if the pointer does not start with ``/``.
     """
-    if path == "":
-        return []
-    if not path.startswith("/"):
-        raise PatchError(f"JSON Pointer must start with '/' or be empty, got: {path!r}")
-    return [_unescape_token(tok) for tok in path[1:].split("/")]
+    try:
+        return parse_json_pointer(path)
+    except ValueError as exc:
+        raise PatchError(str(exc)) from exc
 
 
 def _resolve_parent(
@@ -174,8 +176,31 @@ def _resolve_parent(
                 raise PatchError(f"Key {tok!r} not found while resolving path")
             current = current[tok]
         elif isinstance(current, list):
-            idx = _list_index(tok, current, allow_dash=False)
-            current = current[idx]
+            next_tok = tokens[i + 1]
+            if tok == "-":
+                if not create_missing:
+                    raise PatchError("The '-' index is only valid for 'add' operations")
+                idx = len(current)
+            else:
+                try:
+                    idx = int(tok)
+                except ValueError:
+                    raise PatchError(f"Invalid array index: {tok!r}") from None
+                if idx < 0:
+                    raise PatchError(
+                        f"Invalid array index: negative indices are not allowed ({idx})"
+                    )
+
+            if idx < len(current):
+                current = current[idx]
+                continue
+
+            if create_missing and idx == len(current):
+                current.append([] if (next_tok.isdigit() or next_tok == "-") else {})
+                current = current[idx]
+                continue
+
+            raise PatchError(f"Array index {idx} out of bounds (length {len(current)})")
         else:
             raise PatchError(f"Cannot traverse into {type(current).__name__} with token {tok!r}")
     return current, tokens[-1]
@@ -438,7 +463,7 @@ def apply_patch_and_validate[T](
         If the patched document does not conform to *target*.
     """
     if isinstance(doc, BaseModel):
-        doc_dict: dict[str, Any] = doc.model_dump()
+        doc_dict: dict[str, Any] = doc.model_dump(mode="json")
     else:
         doc_dict = doc
 

@@ -13,12 +13,14 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
 
 from .api import ParseResult, parse
 from .coerce import CoerceOptions
+from .json_pointer import build_json_pointer, escape_json_pointer_token, parse_json_pointer
 from .jsonish import ParseOptions
 from .patch import PatchPolicy, apply_patch, normalize_patches
 
@@ -50,7 +52,7 @@ def _check_pydantic_ai() -> None:
 
 def _escape_json_pointer_token(token: str) -> str:
     """Escape a single JSON Pointer reference token (RFC 6901)."""
-    return token.replace("~", "~0").replace("/", "~1")
+    return escape_json_pointer_token(token)
 
 
 def validation_error_paths(error: ValidationError) -> list[str]:
@@ -65,8 +67,7 @@ def validation_error_paths(error: ValidationError) -> list[str]:
     paths: list[str] = []
     for err in error.errors():
         loc = err.get("loc", ())
-        tokens = [_escape_json_pointer_token(str(part)) for part in loc]
-        pointer = "/" + "/".join(tokens) if tokens else ""
+        pointer = build_json_pointer([str(part) for part in loc])
         if pointer not in seen:
             seen.add(pointer)
             paths.append(pointer)
@@ -77,10 +78,10 @@ def _pointer_to_segments(path: str) -> list[str]:
     """Split a JSON Pointer string into unescaped segments."""
     if not path:
         return []
-    if not path.startswith("/"):
+    try:
+        return parse_json_pointer(path)
+    except ValueError:
         return [path]
-    raw = path[1:].split("/")
-    return [seg.replace("~1", "/").replace("~0", "~") for seg in raw]
 
 
 def _parent_paths(path: str) -> list[str]:
@@ -92,8 +93,7 @@ def _parent_paths(path: str) -> list[str]:
     segments = _pointer_to_segments(path)
     result: list[str] = []
     for i in range(len(segments), 0, -1):
-        tokens = [_escape_json_pointer_token(s) for s in segments[:i]]
-        result.append("/" + "/".join(tokens))
+        result.append(build_json_pointer(segments[:i]))
     return result
 
 
@@ -277,6 +277,10 @@ def _insert_at_path(target: dict[str, Any], segments: list[str], value: Any) -> 
 # ---------------------------------------------------------------------------
 
 
+def _json_dumps_for_prompt(value: Any) -> str:
+    return json.dumps(value, indent=2, default=str)
+
+
 def build_patch_prompt(
     current_doc: dict[str, Any],
     validation_errors: list[dict[str, Any]],
@@ -314,8 +318,7 @@ def build_patch_prompt(
     error_paths: list[str] = []
     for err in validation_errors:
         loc = err.get("loc", ())
-        tokens = [_escape_json_pointer_token(str(part)) for part in loc]
-        pointer = "/" + "/".join(tokens) if tokens else ""
+        pointer = build_json_pointer([str(part) for part in loc])
         if pointer not in error_paths:
             error_paths.append(pointer)
 
@@ -354,7 +357,7 @@ def build_patch_prompt(
 
 ## Current Document
 ```json
-{json.dumps(doc_fragment, indent=2)}
+{_json_dumps_for_prompt(doc_fragment)}
 ```
 {schema_section}
 ## Validation Errors
@@ -374,7 +377,10 @@ Each patch operation should have:
 
 Ordering guidance:
 1. "replace" operations first
-2. "add" operations last (use "/-" to append to arrays)"""
+2. "add" operations last (use "/-" to append to arrays)
+
+Example patch item:
+{{"op": "replace", "path": "/user/age", "value": 42}}"""
 
     return prompt
 
@@ -479,7 +485,13 @@ def patch_repair_output[T](
 
     effective_policy = policy or PatchPolicy()
     adapter: TypeAdapter[T] = TypeAdapter(target)
-    attempt_count: dict[str, int] = {"n": 0}
+
+    @dataclass(slots=True)
+    class _RepairState:
+        attempts: int = 0
+        prev_doc: dict[str, Any] | None = None
+
+    state = _RepairState()
 
     # Pre-render schema text for prompts
     try:
@@ -496,17 +508,14 @@ def patch_repair_output[T](
     def processor(text: str) -> T:
         # Try to parse as patch operations first (for repair retries)
         current_doc: dict[str, Any] | None = None
-        if attempt_count["n"] > 0:
+        if state.attempts > 0 and state.prev_doc is not None:
             try:
                 patches = normalize_patches(text)
-                # We need access to the previous doc; store in closure
-                prev = attempt_count.get("prev_doc")
-                if prev is not None and isinstance(prev, dict):
-                    patched = apply_patch(prev, patches, policy=effective_policy)
-                    # Validate the patched result
-                    validated = adapter.validate_python(patched)
-                    attempt_count["n"] = 0
-                    return validated
+                patched = apply_patch(state.prev_doc, patches, policy=effective_policy)
+                validated = adapter.validate_python(patched)
+                state.attempts = 0
+                state.prev_doc = None
+                return validated
             except Exception:
                 pass
 
@@ -518,7 +527,8 @@ def patch_repair_output[T](
                 parse_options=parse_options,
                 coerce_options=coerce_options,
             )
-            attempt_count["n"] = 0
+            state.attempts = 0
+            state.prev_doc = None
             return result.value
         except ValidationError:
             # SAP parsed successfully but validation failed
@@ -541,8 +551,8 @@ def patch_repair_output[T](
                 current_doc = None
 
             if current_doc is None:
-                if attempt_count["n"] < max_attempts:
-                    attempt_count["n"] += 1
+                if state.attempts < max_attempts:
+                    state.attempts += 1
                     MR = _get_model_retry()
                     raise MR(
                         f"Failed to parse output. Please return valid JSON matching the schema.\n"
@@ -556,15 +566,17 @@ def patch_repair_output[T](
         # Try validating the raw dict
         try:
             validated = adapter.validate_python(current_doc)
-            attempt_count["n"] = 0
+            state.attempts = 0
+            state.prev_doc = None
             return validated
         except ValidationError as val_err:
-            if attempt_count["n"] >= max_attempts:
-                attempt_count["n"] = 0
+            if state.attempts >= max_attempts:
+                state.attempts = 0
+                state.prev_doc = None
                 raise
 
-            attempt_count["n"] += 1
-            attempt_count["prev_doc"] = current_doc  # type: ignore[assignment]
+            state.attempts += 1
+            state.prev_doc = current_doc
 
             prompt = build_patch_prompt(
                 current_doc,

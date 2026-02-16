@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, TypeAdapter, create_model
 
-from .coerce import CoerceOptions, coerce_jsonish_to_python
+from .coerce import CoerceOptions, _adapter_target_type, coerce_jsonish_to_python
 from .jsonish import ParseOptions, parse_jsonish
 from .types import ScoredValue
 
@@ -37,13 +37,14 @@ class StreamParser[T]:
     adapter: TypeAdapter[T]
     parse_options: ParseOptions
     coerce_options: CoerceOptions
+    max_buffer_chars: int | None = None
     _partial_adapter: TypeAdapter[Any] | None = None
     _buffer: str = ""
 
     def __post_init__(self) -> None:
         if self._partial_adapter is not None:
             return
-        model_type = getattr(self.adapter, "_type", None)
+        model_type = _adapter_target_type(self.adapter)
         if (
             model_type is None
             or not isinstance(model_type, type)
@@ -54,6 +55,8 @@ class StreamParser[T]:
 
     def feed(self, chunk: str) -> None:
         self._buffer += chunk
+        if self.max_buffer_chars is not None and self.max_buffer_chars > 0:
+            self._buffer = self._buffer[-self.max_buffer_chars :]
 
     @property
     def buffer(self) -> str:
@@ -64,7 +67,7 @@ class StreamParser[T]:
         """Type returned by :meth:`parse_partial` (if available)."""
         if self._partial_adapter is None:
             return None
-        partial_type = getattr(self._partial_adapter, "_type", None)
+        partial_type = _adapter_target_type(self._partial_adapter)
         return (
             partial_type
             if isinstance(partial_type, type) and issubclass(partial_type, BaseModel)
@@ -93,5 +96,4 @@ class StreamParser[T]:
             return ScoredValue(value=validated, flags=(), score=0)
         jsonish_value = parse_jsonish(self._buffer, options=self.parse_options, is_done=True)
         coerced = coerce_jsonish_to_python(jsonish_value, self.adapter, options=self.coerce_options)
-        validated = self.adapter.validate_python(coerced.value)
-        return ScoredValue(value=validated, flags=coerced.flags, score=coerced.score)
+        return ScoredValue(value=coerced.value, flags=coerced.flags, score=coerced.score)

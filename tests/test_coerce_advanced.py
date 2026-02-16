@@ -214,6 +214,13 @@ class TestUnionCoercion:
         sv = _coerce_to_type(None, int | None, opts)
         assert sv.value is None
 
+    def test_pep604_union_uses_recursive_branch_coercion(self):
+        opts = CoerceOptions()
+        target = dict[str, Literal["red", "blue"]] | list[int]
+        sv = _coerce_to_type({"favorite": "RED"}, target, opts)
+        assert sv.value == {"favorite": "red"}
+        assert "case_insensitive" in sv.flags
+
 
 class TestNestedModelCoercion:
     def test_nested_model_in_list(self):

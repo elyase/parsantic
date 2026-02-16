@@ -9,6 +9,7 @@ Since pydantic-ai is NOT installed, these tests focus on:
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import patch
 
@@ -436,6 +437,13 @@ class TestBuildPatchPrompt:
         doc = {"a": 1}
         prompt = build_patch_prompt(doc, [])
         assert "Current Document" in prompt
+
+    def test_prompt_renders_non_json_types_safely(self):
+        from parsantic.ai import build_patch_prompt
+
+        doc = {"when": datetime(2024, 1, 1, tzinfo=UTC)}
+        prompt = build_patch_prompt(doc, [])
+        assert "2024-01-01" in prompt
 
 
 # ---------------------------------------------------------------------------

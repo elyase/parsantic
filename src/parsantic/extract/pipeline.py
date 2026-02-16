@@ -5,8 +5,8 @@ import concurrent.futures
 import json
 import os
 from collections.abc import AsyncIterator, Iterable, Iterator, Sequence
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, replace
+from typing import Any, Literal
 
 from pydantic import TypeAdapter
 
@@ -67,6 +67,15 @@ def _normalize_prompt(prompt: Prompt | str | None) -> Prompt:
     return prompt
 
 
+def _schema_root_kind(schema: dict[str, Any]) -> Literal["object", "array"] | None:
+    schema_type = schema.get("type")
+    if schema_type == "array":
+        return "array"
+    if schema_type == "object":
+        return "object"
+    return None
+
+
 def _validate_examples(
     prompt: Prompt,
     adapter: SchemaAdapter[Any],
@@ -86,6 +95,7 @@ def _validate_examples(
         except Exception as exc:  # pragma: no cover - surfaced in tests
             errors.append(f"example#{idx} failed schema validation: {exc}")
             continue
+        tokenized_source = tok.tokenize(ex.text)
         for path, text in _iter_leaf_values(dumped):
             evidence = align_value_to_text(
                 ex.text,
@@ -93,6 +103,7 @@ def _validate_examples(
                 text,
                 tokenizer=tok,
                 options=alignment,
+                tokenized_source=tokenized_source,
             )
             if evidence.char_interval is None:
                 errors.append(f"example#{idx} path {path} value '{text}' not found in example text")
@@ -112,6 +123,7 @@ def _render_prompt(
     question: str,
     format_handler: FormatHandler,
     additional_context: str | None,
+    output_kind: Literal["object", "array"] | None = None,
 ) -> str:
     lines: list[str] = [prompt.description.strip(), ""]
     if additional_context:
@@ -121,8 +133,12 @@ def _render_prompt(
     # E5: Add explicit output format instructions
     fmt = format_handler.options.format.lower() if format_handler.options else "json"
     if fmt == "json":
+        expected_kind = output_kind or "object"
+        if format_handler.options and format_handler.options.wrapper_key:
+            expected_kind = "object"
         lines.append(
-            "Output a single JSON object. Do not include any surrounding prose or commentary."
+            f"Output a single JSON {expected_kind}. "
+            "Do not include any surrounding prose or commentary."
         )
         if format_handler.options and format_handler.options.wrapper_key:
             lines.append(
@@ -137,16 +153,7 @@ def _render_prompt(
     if examples:
         lines.append("Examples")
         for ex in examples:
-            try:
-                ex_output = ex.output
-                if not isinstance(ex_output, (dict, list)):
-                    try:
-                        ex_output = json.loads(json.dumps(ex_output))
-                    except Exception:
-                        pass
-            except Exception:
-                ex_output = ex.output
-            formatted = format_handler.format_example(ex_output)
+            formatted = format_handler.format_example(ex.output)
             lines.append(f"Q: {ex.text}")
             lines.append("A: " + formatted)
             lines.append("")
@@ -155,7 +162,12 @@ def _render_prompt(
     return "\n".join(lines)
 
 
-def _merge_values(base: Any, other: Any) -> Any:
+def _merge_values(
+    base: Any,
+    other: Any,
+    *,
+    strategy: Literal["first_wins", "last_wins", "prefer_non_null"] = "first_wins",
+) -> Any:
     if base is None:
         return other
     if other is None:
@@ -170,10 +182,17 @@ def _merge_values(base: Any, other: Any) -> Any:
         merged = dict(base)
         for key, val in other.items():
             if key in merged:
-                merged[key] = _merge_values(merged[key], val)
+                merged[key] = _merge_values(merged[key], val, strategy=strategy)
             else:
                 merged[key] = val
         return merged
+    if strategy == "last_wins":
+        return other
+    if strategy == "prefer_non_null":
+        if base in (None, ""):
+            return other
+        if other in (None, ""):
+            return base
     return base
 
 
@@ -186,6 +205,7 @@ def _align_evidence(
     offset: int,
 ) -> list[FieldEvidence]:
     tok = get_tokenizer(tokenizer)
+    tokenized_source = tok.tokenize(source_text)
     evidence: list[FieldEvidence] = []
     for path, text in _iter_leaf_values(value):
         ev = align_value_to_text(
@@ -194,6 +214,7 @@ def _align_evidence(
             text,
             tokenizer=tok,
             options=alignment,
+            tokenized_source=tokenized_source,
         )
         if ev.char_interval:
             start, end = ev.char_interval
@@ -218,6 +239,7 @@ class _ExtractionContext:
     adapter: PydanticSchemaAdapter[Any]
     format_handler: FormatHandler
     schema_text: str | None
+    output_kind: Literal["object", "array"] | None
     normalized_examples: list[Example]
     provider: Any
 
@@ -243,6 +265,7 @@ def _build_extraction_context(
     opts = options or ExtractOptions()
     adapter = PydanticSchemaAdapter.from_target(target)
     format_handler = FormatHandler(opts.format)
+    schema_obj = adapter.adapter.json_schema()
 
     _validate_examples(
         prompt_obj,
@@ -252,7 +275,13 @@ def _build_extraction_context(
         level=opts.prompt_validation,
     )
 
-    schema_text = adapter.render_schema(opts.schema_mode) if prompt_obj.include_schema else None
+    schema_text: str | None = None
+    if prompt_obj.include_schema:
+        if opts.schema_mode == "compact":
+            schema_text = json.dumps(schema_obj, ensure_ascii=False)
+        else:
+            schema_text = json.dumps(schema_obj, indent=2, ensure_ascii=False)
+    output_kind = _schema_root_kind(schema_obj)
 
     normalized_examples = [
         Example(text=ex.text, output=adapter.dump(adapter.validate(ex.output)))
@@ -275,6 +304,7 @@ def _build_extraction_context(
         adapter=adapter,
         format_handler=format_handler,
         schema_text=schema_text,
+        output_kind=output_kind,
         normalized_examples=normalized_examples,
         provider=provider,
     )
@@ -409,7 +439,7 @@ def _parse_with_repair[T](
         if repair != "local":
             raise
         # Local repair: retry with relaxed coercion (enable substring enum matching)
-        relaxed = CoerceOptions(allow_substring_enum_match=True)
+        relaxed = replace(coerce_options or CoerceOptions(), allow_substring_enum_match=True)
         return parse(
             raw,
             target,
@@ -450,36 +480,35 @@ def extract_iter[T](
         chunk_debug_entries: list[ChunkDebug] = []
         rendered_prompt_preview: str | None = None
 
+        chunks = list(
+            iter_chunks(
+                doc_text,
+                max_char_buffer=ctx.opts.max_char_buffer,
+                tokenizer=ctx.opts.tokenizer,
+                overlap_chars=ctx.opts.overlap_chars,
+            )
+        )
+
+        chunk_prompts = [
+            _render_prompt(
+                ctx.prompt_obj,
+                schema_text=ctx.schema_text,
+                examples=ctx.normalized_examples,
+                question=chunk.text,
+                format_handler=ctx.format_handler,
+                additional_context=doc.additional_context,
+                output_kind=ctx.output_kind,
+            )
+            for chunk in chunks
+        ]
+
+        if debug and chunk_prompts and rendered_prompt_preview is None:
+            rendered_prompt_preview = chunk_prompts[0][:500]
+
         for _pass in range(max(1, ctx.opts.passes)):
             chunk_values: list[Any] = []
             chunk_evidence: list[FieldEvidence] = []
             chunk_outputs: list[str] = []
-
-            chunks = list(
-                iter_chunks(
-                    doc_text,
-                    max_char_buffer=ctx.opts.max_char_buffer,
-                    tokenizer=ctx.opts.tokenizer,
-                    overlap_chars=ctx.opts.overlap_chars,
-                )
-            )
-
-            # Build prompts for all chunks up-front
-            chunk_prompts: list[str] = []
-            for chunk in chunks:
-                prompt_text = _render_prompt(
-                    ctx.prompt_obj,
-                    schema_text=ctx.schema_text,
-                    examples=ctx.normalized_examples,
-                    question=chunk.text,
-                    format_handler=ctx.format_handler,
-                    additional_context=doc.additional_context,
-                )
-                chunk_prompts.append(prompt_text)
-
-            # Capture first rendered prompt preview for debug
-            if debug and chunk_prompts and rendered_prompt_preview is None:
-                rendered_prompt_preview = chunk_prompts[0][:500]
 
             # Infer: use batching and optional parallelism
             batch_length = max(1, ctx.opts.batch_length)
@@ -490,19 +519,28 @@ def extract_iter[T](
                 inferred = _infer_batch(ctx.provider, chunk_prompts, batch_length)
             else:
                 # Parallel batched inference using ThreadPoolExecutor
-                # Split prompts into batches, run batches in parallel, reassemble in order
+                # Split prompts into batches, run batches in parallel, then reassemble
+                # in input order after collecting completed futures.
                 batches: list[Sequence[str]] = []
                 for i in range(0, len(chunk_prompts), batch_length):
                     batches.append(chunk_prompts[i : i + batch_length])
 
-                inferred = []
+                batch_results: dict[int, Sequence[str]] = {}
                 with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    futures = [executor.submit(ctx.provider.infer, batch) for batch in batches]
-                    for future in futures:
+                    future_to_idx = {
+                        executor.submit(ctx.provider.infer, batch): idx
+                        for idx, batch in enumerate(batches)
+                    }
+                    for future in concurrent.futures.as_completed(future_to_idx):
+                        idx = future_to_idx[future]
                         batch_result = future.result()
                         if not isinstance(batch_result, Sequence):
                             batch_result = list(batch_result)
-                        inferred.extend(batch_result)
+                        batch_results[idx] = batch_result
+
+                inferred = []
+                for idx in range(len(batches)):
+                    inferred.extend(batch_results[idx])
 
             # Process each chunk's output in deterministic order
             for chunk_idx, (chunk, raw) in enumerate(zip(chunks, inferred, strict=True)):
@@ -545,7 +583,11 @@ def extract_iter[T](
                     )
 
             for chunk_value in chunk_values:
-                merged_value = _merge_values(merged_value, chunk_value)
+                merged_value = _merge_values(
+                    merged_value,
+                    chunk_value,
+                    strategy=ctx.opts.merge_strategy,
+                )
 
             if merged_value is None:
                 merged_value = {}
@@ -629,36 +671,34 @@ async def extract_aiter[T](
         chunk_debug_entries: list[ChunkDebug] = []
         rendered_prompt_preview: str | None = None
 
+        chunks = list(
+            iter_chunks(
+                doc_text,
+                max_char_buffer=ctx.opts.max_char_buffer,
+                tokenizer=ctx.opts.tokenizer,
+                overlap_chars=ctx.opts.overlap_chars,
+            )
+        )
+        chunk_prompts = [
+            _render_prompt(
+                ctx.prompt_obj,
+                schema_text=ctx.schema_text,
+                examples=ctx.normalized_examples,
+                question=chunk.text,
+                format_handler=ctx.format_handler,
+                additional_context=doc.additional_context,
+                output_kind=ctx.output_kind,
+            )
+            for chunk in chunks
+        ]
+
+        if debug and chunk_prompts and rendered_prompt_preview is None:
+            rendered_prompt_preview = chunk_prompts[0][:500]
+
         for _pass in range(max(1, ctx.opts.passes)):
             chunk_values: list[Any] = []
             chunk_evidence: list[FieldEvidence] = []
             chunk_outputs: list[str] = []
-
-            chunks = list(
-                iter_chunks(
-                    doc_text,
-                    max_char_buffer=ctx.opts.max_char_buffer,
-                    tokenizer=ctx.opts.tokenizer,
-                    overlap_chars=ctx.opts.overlap_chars,
-                )
-            )
-
-            # Build prompts for all chunks up-front
-            chunk_prompts: list[str] = []
-            for chunk in chunks:
-                prompt_text = _render_prompt(
-                    ctx.prompt_obj,
-                    schema_text=ctx.schema_text,
-                    examples=ctx.normalized_examples,
-                    question=chunk.text,
-                    format_handler=ctx.format_handler,
-                    additional_context=doc.additional_context,
-                )
-                chunk_prompts.append(prompt_text)
-
-            # Capture first rendered prompt preview for debug
-            if debug and chunk_prompts and rendered_prompt_preview is None:
-                rendered_prompt_preview = chunk_prompts[0][:500]
 
             # Infer with batching
             batch_length = max(1, ctx.opts.batch_length)
@@ -705,7 +745,11 @@ async def extract_aiter[T](
                     )
 
             for chunk_value in chunk_values:
-                merged_value = _merge_values(merged_value, chunk_value)
+                merged_value = _merge_values(
+                    merged_value,
+                    chunk_value,
+                    strategy=ctx.opts.merge_strategy,
+                )
 
             if merged_value is None:
                 merged_value = {}

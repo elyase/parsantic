@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from .registry import register
 
@@ -18,7 +19,7 @@ class StaticProvider:
     outputs: Sequence[str]
     model_id: str | None = "static"
 
-    def infer(self, batch_prompts: Sequence[str]) -> Sequence[str]:
+    def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
         if not self.outputs:
             return ["" for _ in batch_prompts]
         if len(self.outputs) == 1:

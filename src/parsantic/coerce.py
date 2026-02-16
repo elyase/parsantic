@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import enum
 import re
+import types as py_types
 import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -31,6 +32,8 @@ _FLAG_WEIGHTS: dict[str, int] = {
     "closed_unclosed": 0,
     "grepped_json": 0,
     "grepped_array": 1,
+    "markdown_tail": 5,
+    "inferred_array": 5,
     "as_string": 2,
     "single_to_array": 1,
     "object_to_string": 2,
@@ -54,6 +57,11 @@ _FLAG_WEIGHTS: dict[str, int] = {
     "key_collision": 5,
     "max_depth_exceeded": 50,
 }
+
+
+def _adapter_target_type(adapter: TypeAdapter[Any]) -> Any | None:
+    # Pydantic does not expose this as a stable public API yet.
+    return getattr(adapter, "_type", None)
 
 
 def _validate(adapter: TypeAdapter[Any], value: Any) -> Any:
@@ -219,7 +227,7 @@ def coerce_jsonish_to_python(
 
 
 def _coerce_to_type(
-    value: Any, target_type: type, options: CoerceOptions, *, _depth: int = 0
+    value: Any, target_type: Any, options: CoerceOptions, *, _depth: int = 0
 ) -> ScoredValue:
     """
     Recursively coerce *value* toward *target_type*.
@@ -247,7 +255,7 @@ def _coerce_to_type(
     args = get_args(target_type)
 
     # --- Union ---
-    if origin is Union:
+    if origin in {Union, py_types.UnionType}:
         return _coerce_union(value, args, options, _depth=_depth + 1)
 
     # --- list / List[T] ---
@@ -341,7 +349,7 @@ def _coerce_to_type(
 
 
 def _coerce_union(
-    value: Any, variants: tuple[type, ...], options: CoerceOptions, *, _depth: int = 0
+    value: Any, variants: tuple[Any, ...], options: CoerceOptions, *, _depth: int = 0
 ) -> ScoredValue:
     """Try each variant of a Union, return best-scoring result."""
     scored: list[ScoredValue] = []
@@ -361,7 +369,7 @@ def _coerce_union(
 
 
 def _coerce_list(
-    value: Any, elem_type: type, options: CoerceOptions, *, _depth: int = 0
+    value: Any, elem_type: Any, options: CoerceOptions, *, _depth: int = 0
 ) -> ScoredValue:
     """Coerce each element of a list toward elem_type."""
     if not isinstance(value, list):
@@ -385,7 +393,7 @@ def _coerce_list(
 
 
 def _coerce_dict(
-    value: Any, key_type: type, val_type: type, options: CoerceOptions, *, _depth: int = 0
+    value: Any, key_type: Any, val_type: Any, options: CoerceOptions, *, _depth: int = 0
 ) -> ScoredValue:
     """Coerce dict values (and keys if K is not str)."""
     if not isinstance(value, dict):
@@ -407,7 +415,7 @@ def _coerce_dict(
 
 
 def _coerce_tuple(
-    value: Any, args: tuple[type, ...], options: CoerceOptions, *, _depth: int = 0
+    value: Any, args: tuple[Any, ...], options: CoerceOptions, *, _depth: int = 0
 ) -> ScoredValue:
     """Coerce tuple elements."""
     if not isinstance(value, (list, tuple)):
@@ -522,7 +530,7 @@ def _try_enum_literal_match(
     Try to match a string value against Enum or Literal target types in the adapter.
     Returns (validated_value, flags) or None.
     """
-    target_type = getattr(adapter, "_type", None)
+    target_type = _adapter_target_type(adapter)
     if target_type is None:
         return None
 

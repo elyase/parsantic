@@ -13,6 +13,8 @@ def _kwargs_with_environment_defaults(
     model_id: str | None, kwargs: dict[str, Any]
 ) -> dict[str, Any]:
     resolved = dict(kwargs)
+    lowered = model_id.lower() if model_id else ""
+
     if "api_key" not in resolved:
         env_sources = []
         for env_var in ("PARSANTIC_API_KEY",):
@@ -20,13 +22,21 @@ def _kwargs_with_environment_defaults(
                 env_sources.append((env_var, os.getenv(env_var)))
 
         if model_id:
-            lowered = model_id.lower()
             if "openai" in lowered or "gpt" in lowered:
                 if os.getenv("OPENAI_API_KEY"):
                     env_sources.insert(0, ("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY")))
+            if "anthropic" in lowered or "claude" in lowered:
+                if os.getenv("ANTHROPIC_API_KEY"):
+                    env_sources.insert(0, ("ANTHROPIC_API_KEY", os.getenv("ANTHROPIC_API_KEY")))
             if "gemini" in lowered:
                 if os.getenv("GEMINI_API_KEY"):
                     env_sources.insert(0, ("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY")))
+            if "mistral" in lowered:
+                if os.getenv("MISTRAL_API_KEY"):
+                    env_sources.insert(0, ("MISTRAL_API_KEY", os.getenv("MISTRAL_API_KEY")))
+            if "groq" in lowered:
+                if os.getenv("GROQ_API_KEY"):
+                    env_sources.insert(0, ("GROQ_API_KEY", os.getenv("GROQ_API_KEY")))
 
         if env_sources:
             resolved["api_key"] = env_sources[0][1]
@@ -39,6 +49,15 @@ def _kwargs_with_environment_defaults(
 
     if model_id and "ollama" in model_id.lower() and "base_url" not in resolved:
         resolved["base_url"] = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    if "base_url" not in resolved:
+        if "openai" in lowered and os.getenv("OPENAI_BASE_URL"):
+            resolved["base_url"] = os.getenv("OPENAI_BASE_URL")
+        elif "anthropic" in lowered and os.getenv("ANTHROPIC_BASE_URL"):
+            resolved["base_url"] = os.getenv("ANTHROPIC_BASE_URL")
+        elif "mistral" in lowered and os.getenv("MISTRAL_BASE_URL"):
+            resolved["base_url"] = os.getenv("MISTRAL_BASE_URL")
+        elif "groq" in lowered and os.getenv("GROQ_BASE_URL"):
+            resolved["base_url"] = os.getenv("GROQ_BASE_URL")
 
     return resolved
 

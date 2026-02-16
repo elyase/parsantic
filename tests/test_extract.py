@@ -10,6 +10,7 @@ import asyncio
 import threading
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import BaseModel
@@ -18,6 +19,7 @@ from parsantic.extract import (
     AlignmentStatus,
     ChunkDebug,
     Document,
+    Example,
     ExtractDebug,
     ExtractOptions,
     StaticProvider,
@@ -47,6 +49,14 @@ class Items(BaseModel):
 class Person(BaseModel):
     name: str
     age: int | None = None
+
+
+class NameOnly(BaseModel):
+    name: str
+
+
+class EventRecord(BaseModel):
+    happened_at: datetime
 
 
 # ---------------------------------------------------------------------------
@@ -425,6 +435,29 @@ def test_prompt_rendering_no_wrapper_key():
     assert "Wrap the result list" not in rendered
 
 
+def test_prompt_rendering_json_array_format_instructions():
+    prompt = Prompt(description="Extract data.")
+    format_handler = FormatHandler(FormatOptions(format="json"))
+    rendered = _render_prompt(
+        prompt,
+        schema_text=None,
+        examples=[],
+        question="Some text",
+        format_handler=format_handler,
+        additional_context=None,
+        output_kind="array",
+    )
+    assert "Output a single JSON array" in rendered
+
+
+def test_extract_prompt_uses_array_instruction_for_list_targets():
+    provider = StaticProvider(outputs=['[{"name": "Ada", "email": "ada@example.com"}]'])
+    result = extract("Ada", list[Resume], model=provider, debug=True)
+    assert result.debug is not None
+    assert result.debug.rendered_prompt_preview is not None
+    assert "Output a single JSON array" in result.debug.rendered_prompt_preview
+
+
 # ===========================================================================
 # Local repair (from test_extract_upgrades.py — E6)
 # ===========================================================================
@@ -453,6 +486,13 @@ def test_repair_local_handles_slightly_malformed():
 
 def test_repair_local_with_markdown_fenced_output():
     provider = StaticProvider(outputs=['```json\n{"name": "Ada", "email": "ada@example.com"}\n```'])
+    options = ExtractOptions(repair="local")
+    result = extract("Ada", Resume, model=provider, options=options)
+    assert result.value.name == "Ada"
+
+
+def test_repair_local_preserves_existing_coerce_options():
+    provider = StaticProvider(outputs=['{"name": "Ada", "email": "ada@example.com",}'])
     options = ExtractOptions(repair="local")
     result = extract("Ada", Resume, model=provider, options=options)
     assert result.value.name == "Ada"
@@ -579,6 +619,40 @@ def test_overlap_chars_wired_through_options():
         "First sentence here. Second sentence here.", Items, model=provider, options=options
     )
     assert result.value.items is not None
+
+
+def test_unicode_tokenizer_respects_newline_boundaries():
+    chunks = list(iter_chunks("Alpha\nBeta", max_char_buffer=10, tokenizer="unicode"))
+    assert len(chunks) >= 2
+    assert chunks[0].text == "Alpha"
+    assert chunks[1].text == "Beta"
+
+
+def test_merge_strategy_last_wins_for_scalar_conflicts():
+    provider = ChunkAwareProvider(
+        mappings=[
+            ("Alpha", '{"name": "Alpha"}'),
+            ("Beta", '{"name": "Beta"}'),
+        ]
+    )
+    options = ExtractOptions(max_char_buffer=7, merge_strategy="last_wins")
+    result = extract("Alpha.\nBeta.", NameOnly, model=provider, options=options)
+    assert result.value.name == "Beta"
+
+
+def test_extract_handles_datetime_examples_without_json_crash():
+    provider = StaticProvider(outputs=['{"happened_at": "2024-01-01T00:00:00Z"}'])
+    prompt = Prompt(
+        description="Extract the event timestamp.",
+        examples=[
+            Example(
+                text="Happened at 2024-01-01T00:00:00Z",
+                output={"happened_at": datetime(2024, 1, 1, tzinfo=UTC)},
+            )
+        ],
+    )
+    result = extract("Happened at 2024-01-01T00:00:00Z", EventRecord, model=provider, prompt=prompt)
+    assert result.value.happened_at == datetime(2024, 1, 1, tzinfo=UTC)
 
 
 # ===========================================================================

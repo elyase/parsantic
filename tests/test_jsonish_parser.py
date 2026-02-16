@@ -115,3 +115,10 @@ def test_multiple_json_arrays_in_text():
     lists = [c.value for c in v.candidates if isinstance(c.value, list)]
     assert any(item == [1, 2] for item in lists)
     assert any(item == [3, 4] for item in lists)
+
+
+def test_candidate_truncation_prefers_structured_candidates():
+    text = 'Prefix {"a": 1} suffix'
+    value = parse_jsonish(text, options=ParseOptions(max_candidates=1), is_done=True)
+    assert len(value.candidates) == 1
+    assert isinstance(value.candidates[0].value, dict)

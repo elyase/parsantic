@@ -1,6 +1,6 @@
 [project]
 name = "parsantic"
-version = "0.1.1"
+version = "0.2.0"
 description = "Schema-aligned parsing (SAP) for Pydantic v2"
 readme = "README.md"
 license = { file = "LICENSE" }

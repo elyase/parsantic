@@ -65,7 +65,6 @@ class UnicodeTokenizer:
             grapheme = match.group(0)
             start, end = match.span()
             if grapheme.isspace():
-                previous_end = end
                 continue
             first_after_newline = False
             if start > previous_end:

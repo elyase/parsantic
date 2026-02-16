@@ -95,10 +95,11 @@ def align_value_to_text(
     *,
     tokenizer: Tokenizer | None = None,
     options: AlignmentOptions | None = None,
+    tokenized_source: TokenizedText | None = None,
 ) -> FieldEvidence:
     tok = get_tokenizer(tokenizer)
     opts = options or AlignmentOptions()
-    tokenized = tok.tokenize(source_text)
+    tokenized = tokenized_source or tok.tokenize(source_text)
 
     if not value:
         return FieldEvidence(

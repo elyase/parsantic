@@ -143,10 +143,9 @@ def parse_jsonish(
         )
 
     # Truncate candidate list to max_candidates to prevent candidate explosion.
-    # This is done after all candidates (including the as_string fallback) are
-    # collected so the final count never exceeds max_candidates.
+    # Prefer complete structured candidates with fewer fixes before truncating.
     if len(candidates) > options.max_candidates:
-        candidates = candidates[: options.max_candidates]
+        candidates = _truncate_candidates(candidates, options.max_candidates)
 
     return JsonishValue(
         value=text, completion=_anyof_completion(candidates), raw=text, candidates=tuple(candidates)
@@ -157,6 +156,35 @@ def _anyof_completion(candidates: list[JsonishValue]) -> CompletionState:
     if any(c.completion == CompletionState.INCOMPLETE for c in candidates):
         return CompletionState.INCOMPLETE
     return CompletionState.COMPLETE
+
+
+def _candidate_priority(candidate: JsonishValue, idx: int) -> tuple[int, int, int, int, int]:
+    completion_rank = 0 if candidate.completion == CompletionState.COMPLETE else 1
+    if isinstance(candidate.value, dict):
+        type_rank = 0
+    elif isinstance(candidate.value, list):
+        type_rank = 1
+    else:
+        type_rank = 2
+    try:
+        size_rank = -len(json.dumps(candidate.value, ensure_ascii=False, default=str))
+    except Exception:
+        size_rank = 0
+    return (
+        completion_rank,
+        type_rank,
+        len(candidate.fixes),
+        size_rank,
+        idx,
+    )
+
+
+def _truncate_candidates(candidates: list[JsonishValue], max_candidates: int) -> list[JsonishValue]:
+    ranked = sorted(
+        enumerate(candidates),
+        key=lambda pair: _candidate_priority(pair[1], pair[0]),
+    )
+    return [candidate for _, candidate in ranked[:max_candidates]]
 
 
 def _parse_markdown_blocks(

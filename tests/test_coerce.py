@@ -10,6 +10,7 @@ from pydantic import BaseModel, TypeAdapter
 
 from parsantic.api import parse, parse_stream
 from parsantic.coerce import (
+    _FLAG_WEIGHTS,
     CoerceOptions,
     _float_from_comma_separated,
     coerce_jsonish_to_python,
@@ -270,3 +271,47 @@ def test_streaming_partial_then_finish():
     final = sp.finish()
     assert final.value.a == 1
     assert final.value.b == 2
+
+
+def test_stream_parser_max_buffer_chars_limits_growth():
+    sp = parse_stream(_StreamObj, max_buffer_chars=5)
+    sp.feed("0123456789")
+    assert sp.buffer == "56789"
+
+
+def test_all_emitted_flags_have_explicit_weights():
+    emitted_flags = {
+        "fixed_json",
+        "inferred_array",
+        "markdown",
+        "markdown_array",
+        "markdown_tail",
+        "closed_unclosed",
+        "grepped_json",
+        "grepped_array",
+        "fixed_array",
+        "as_string",
+        "single_to_array",
+        "object_to_string",
+        "string_to_int",
+        "string_to_float",
+        "string_to_bool",
+        "float_to_int",
+        "default_from_missing",
+        "extra_key",
+        "substring_match",
+        "strip_punct",
+        "case_insensitive",
+        "accent_insensitive",
+        "key_normalized",
+        "implied_key",
+        "partial_model",
+        "partial_unvalidated",
+        "ambiguous_key",
+        "ambiguous_key_kept",
+        "ambiguous_enum",
+        "key_collision",
+        "max_depth_exceeded",
+    }
+    missing = sorted(emitted_flags - set(_FLAG_WEIGHTS))
+    assert not missing, f"Missing flag weights: {missing}"

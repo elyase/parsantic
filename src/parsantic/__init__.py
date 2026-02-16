@@ -1,4 +1,9 @@
-__version__ = "0.1.1"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("parsantic")
+except PackageNotFoundError:  # pragma: no cover - local source tree without installed metadata
+    __version__ = "0.2.0"
 
 # The ai module is always importable (import-safe), but functions that
 # require pydantic-ai will raise ImportError at call time when the

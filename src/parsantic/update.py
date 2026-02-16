@@ -26,7 +26,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
@@ -174,83 +174,110 @@ def _existing_to_dict(existing: dict[str, Any] | BaseModel) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+@dataclass(slots=True)
+class _UpdateState:
+    current_doc: dict[str, Any]
+    all_patches: list[JsonPatchOp] = field(default_factory=list)
+    last_raw: str = ""
+    last_errors: list[dict[str, Any]] = field(default_factory=list)
+
+
+def _process_update_attempt[T](
+    *,
+    attempt: int,
+    max_retries: int,
+    state: _UpdateState,
+    doc_before: dict[str, Any],
+    raw: str,
+    target: type[T] | TypeAdapter[T],
+    policy: PatchPolicy,
+) -> UpdateResult[T] | None:
+    # Parse patches from messy LLM output
+    try:
+        parsed = parse(raw, list).value
+    except Exception:
+        parsed = raw
+
+    try:
+        patches = normalize_patches(parsed)
+    except Exception as exc:
+        state.last_errors = [{"loc": (), "msg": f"Failed to normalize patches: {exc}"}]
+        if attempt < max_retries:
+            return None
+        raise
+
+    try:
+        patched = apply_patch(state.current_doc, patches, policy=policy)
+    except Exception as exc:
+        state.last_errors = [{"loc": (), "msg": f"Patch application failed: {exc}"}]
+        if attempt < max_retries:
+            return None
+        raise
+
+    state.all_patches.extend(patches)
+
+    try:
+        result: ParseResult[T] = coerce(patched, target)
+        return UpdateResult(
+            value=result.value,
+            patches=state.all_patches,
+            doc_before=doc_before,
+            doc_after=patched,
+            raw_text=state.last_raw,
+            attempts=attempt + 1,
+        )
+    except ValidationError as exc:
+        state.current_doc = patched
+        state.last_errors = exc.errors()
+        if attempt >= max_retries:
+            raise
+        return None
+    except Exception as exc:
+        state.current_doc = patched
+        state.last_errors = [{"loc": (), "msg": str(exc)}]
+        if attempt >= max_retries:
+            raise
+        return None
+
+
 def _run_update[T](
     doc: dict[str, Any],
     instruction: str,
     target: type[T] | TypeAdapter[T],
-    adapter: TypeAdapter[T],
     schema_text: str,
     provider: Any,
     policy: PatchPolicy,
     max_retries: int,
 ) -> UpdateResult[T]:
     """Synchronous update loop."""
-    all_patches: list[JsonPatchOp] = []
-    current_doc = doc
-    last_raw = ""
+    state = _UpdateState(current_doc=doc, last_errors=[])
 
     for attempt in range(1 + max_retries):
-        # Build prompt
         if attempt == 0:
-            prompt = _build_update_prompt(current_doc, instruction, schema_text)
+            prompt = _build_update_prompt(state.current_doc, instruction, schema_text)
         else:
             prompt = _build_retry_prompt(
-                current_doc,
-                last_errors,  # noqa: F821
+                state.current_doc,
+                state.last_errors,
                 instruction,
                 schema_text,
             )
 
-        # Call LLM
         outputs = provider.infer([prompt])
         raw = outputs[0] if outputs else ""
-        last_raw = raw
+        state.last_raw = raw
 
-        # Parse patches from messy LLM output
-        try:
-            parsed = parse(raw, list).value
-        except Exception:
-            # Fallback: pass raw text to normalize_patches which handles JSON-ish
-            parsed = raw
-
-        try:
-            patches = normalize_patches(parsed)
-        except Exception as exc:
-            if attempt < max_retries:
-                last_errors = [{"loc": (), "msg": f"Failed to normalize patches: {exc}"}]
-                continue
-            raise
-
-        # Apply patches
-        try:
-            patched = apply_patch(current_doc, patches, policy=policy)
-        except Exception as exc:
-            if attempt < max_retries:
-                last_errors = [{"loc": (), "msg": f"Patch application failed: {exc}"}]
-                continue
-            raise
-
-        all_patches.extend(patches)
-
-        # Validate with coerce (handles type mismatches locally)
-        try:
-            result: ParseResult[T] = coerce(patched, target)
-            return UpdateResult(
-                value=result.value,
-                patches=all_patches,
-                doc_before=doc,
-                doc_after=patched,
-                raw_text=last_raw,
-                attempts=attempt + 1,
-            )
-        except (ValidationError, Exception) as exc:
-            current_doc = patched
-            if isinstance(exc, ValidationError):
-                last_errors = exc.errors()  # noqa: F841 – used in next iteration
-            else:
-                last_errors = [{"loc": (), "msg": str(exc)}]  # noqa: F841
-            if attempt >= max_retries:
-                raise
+        result = _process_update_attempt(
+            attempt=attempt,
+            max_retries=max_retries,
+            state=state,
+            doc_before=doc,
+            raw=raw,
+            target=target,
+            policy=policy,
+        )
+        if result is not None:
+            return result
 
     raise ValueError(f"Update failed after {max_retries + 1} attempts")
 
@@ -259,81 +286,43 @@ async def _arun_update[T](
     doc: dict[str, Any],
     instruction: str,
     target: type[T] | TypeAdapter[T],
-    adapter: TypeAdapter[T],
     schema_text: str,
     provider: Any,
     policy: PatchPolicy,
     max_retries: int,
 ) -> UpdateResult[T]:
     """Async update loop."""
-    all_patches: list[JsonPatchOp] = []
-    current_doc = doc
-    last_raw = ""
+    state = _UpdateState(current_doc=doc, last_errors=[])
 
     for attempt in range(1 + max_retries):
-        # Build prompt
         if attempt == 0:
-            prompt = _build_update_prompt(current_doc, instruction, schema_text)
+            prompt = _build_update_prompt(state.current_doc, instruction, schema_text)
         else:
             prompt = _build_retry_prompt(
-                current_doc,
-                last_errors,  # noqa: F821
+                state.current_doc,
+                state.last_errors,
                 instruction,
                 schema_text,
             )
 
-        # Call LLM (async)
         if hasattr(provider, "ainfer"):
             outputs = await provider.ainfer([prompt])
         else:
             outputs = await asyncio.to_thread(provider.infer, [prompt])
         raw = outputs[0] if outputs else ""
-        last_raw = raw
+        state.last_raw = raw
 
-        # Parse patches from messy LLM output
-        try:
-            parsed = parse(raw, list).value
-        except Exception:
-            parsed = raw
-
-        try:
-            patches = normalize_patches(parsed)
-        except Exception as exc:
-            if attempt < max_retries:
-                last_errors = [{"loc": (), "msg": f"Failed to normalize patches: {exc}"}]
-                continue
-            raise
-
-        # Apply patches
-        try:
-            patched = apply_patch(current_doc, patches, policy=policy)
-        except Exception as exc:
-            if attempt < max_retries:
-                last_errors = [{"loc": (), "msg": f"Patch application failed: {exc}"}]
-                continue
-            raise
-
-        all_patches.extend(patches)
-
-        # Validate with coerce
-        try:
-            result: ParseResult[T] = coerce(patched, target)
-            return UpdateResult(
-                value=result.value,
-                patches=all_patches,
-                doc_before=doc,
-                doc_after=patched,
-                raw_text=last_raw,
-                attempts=attempt + 1,
-            )
-        except (ValidationError, Exception) as exc:
-            current_doc = patched
-            if isinstance(exc, ValidationError):
-                last_errors = exc.errors()  # noqa: F841 – used in next iteration
-            else:
-                last_errors = [{"loc": (), "msg": str(exc)}]  # noqa: F841
-            if attempt >= max_retries:
-                raise
+        result = _process_update_attempt(
+            attempt=attempt,
+            max_retries=max_retries,
+            state=state,
+            doc_before=doc,
+            raw=raw,
+            target=target,
+            policy=policy,
+        )
+        if result is not None:
+            return result
 
     raise ValueError(f"Update failed after {max_retries + 1} attempts")
 
@@ -395,7 +384,6 @@ def update[T](
         doc=doc,
         instruction=instruction,
         target=target,
-        adapter=adapter,
         schema_text=schema_text,
         provider=provider,
         policy=effective_policy,
@@ -429,7 +417,6 @@ async def aupdate[T](
         doc=doc,
         instruction=instruction,
         target=target,
-        adapter=adapter,
         schema_text=schema_text,
         provider=provider,
         policy=effective_policy,

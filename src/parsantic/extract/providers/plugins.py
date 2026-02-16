@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import os
+import warnings
 from importlib import metadata
 
 
@@ -20,6 +21,9 @@ def load_plugins_once() -> None:
     for ep in _safe_entry_points("parsantic.providers"):
         try:
             ep.load()
-        except Exception:
+        except Exception as exc:
             # best-effort: plugin import failure shouldn't crash core
-            continue
+            warnings.warn(
+                f"Failed to load parsantic provider plugin {ep.name!r}: {exc}",
+                stacklevel=2,
+            )
