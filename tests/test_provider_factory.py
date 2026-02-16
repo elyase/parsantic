@@ -75,7 +75,9 @@ class _TrackingAgent:
         return SimpleNamespace(output=prompt.upper())
 
 
-def _provider_with_tracking_agent(max_concurrency: int = 2) -> tuple[PydanticAIProvider, _TrackingAgent]:
+def _provider_with_tracking_agent(
+    max_concurrency: int = 2,
+) -> tuple[PydanticAIProvider, _TrackingAgent]:
     provider = object.__new__(PydanticAIProvider)
     provider.model_id = "openai:gpt-4o-mini"
     provider.api_key = None
