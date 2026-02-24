@@ -299,6 +299,12 @@ class TestStringConcat:
         result = apply_patch(doc, patches)
         assert result["count"] == "Items: 42"
 
+    def test_string_concat_invalid_list_index_is_patch_error(self):
+        doc = {"items": ["a", "b"]}
+        patches = [JsonPatchOp(op="add", path="/items/not-an-index/-", value="x")]
+        with pytest.raises(PatchError):
+            apply_patch(doc, patches)
+
 
 # ===================================================================
 # normalize_patches

@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from parsantic.extract import (
     AlignmentStatus,
@@ -55,6 +55,11 @@ class NameOnly(BaseModel):
     name: str
 
 
+class NameAge(BaseModel):
+    name: str
+    age: int
+
+
 class EventRecord(BaseModel):
     happened_at: datetime
 
@@ -68,6 +73,14 @@ class EventRecord(BaseModel):
 class FakeProvider:
     def infer(self, batch_prompts):
         return ['{"name": "Ada Lovelace", "email": "ada@example.com"}' for _ in batch_prompts]
+
+
+@dataclass
+class SingleStringProvider:
+    output: str
+
+    def infer(self, batch_prompts):
+        return self.output
 
 
 @dataclass
@@ -148,11 +161,64 @@ def test_extract_smoke():
     assert by_path["/email"].alignment_status == AlignmentStatus.MATCH_EXACT
 
 
+def test_extract_accepts_single_string_provider_output():
+    provider = SingleStringProvider(output='{"name": "Ada Lovelace", "email": "ada@example.com"}')
+    result = extract("Ada Lovelace <ada@example.com>", Resume, model=provider)
+    assert result.value.name == "Ada Lovelace"
+    assert result.value.email == "ada@example.com"
+
+
 def test_chunking_and_multipass_merge():
     provider = EchoProvider()
     options = ExtractOptions(max_char_buffer=7, passes=2)
     result = extract("Alpha.\nBeta.", Items, model=provider, options=options)
     assert result.value.items == ["Alpha", "Beta"]
+
+
+def test_chunk_parsing_allows_partial_then_final_validates():
+    provider = ChunkAwareProvider(
+        mappings=[
+            ("Alpha", '{"name": "Ada"}'),
+            ("Beta", '{"age": 36}'),
+        ]
+    )
+    options = ExtractOptions(max_char_buffer=7)
+    result = extract("Alpha.\nBeta.", NameAge, model=provider, options=options)
+    assert result.value.name == "Ada"
+    assert result.value.age == 36
+
+
+def test_chunk_error_skip_continues_on_bad_chunk():
+    provider = ChunkAwareProvider(
+        mappings=[
+            ("Alpha", "not json"),
+            ("Beta", '{"name": "Beta", "age": 42}'),
+        ]
+    )
+    options = ExtractOptions(max_char_buffer=7, chunk_error="skip")
+    result = extract("Alpha.\nBeta.", NameAge, model=provider, options=options, debug=True)
+    assert result.value.name == "Beta"
+    assert result.value.age == 42
+    assert result.debug is not None
+    assert any(chunk.error for chunk in result.debug.chunks)
+
+
+def test_chunk_error_raise_fails_on_bad_chunk():
+    provider = ChunkAwareProvider(
+        mappings=[
+            ("Alpha", "not json"),
+            ("Beta", '{"name": "Beta", "age": 42}'),
+        ]
+    )
+    options = ExtractOptions(max_char_buffer=7, chunk_error="raise")
+    with pytest.raises((ValidationError, ValueError)):
+        extract("Alpha.\nBeta.", NameAge, model=provider, options=options)
+
+
+def test_empty_extraction_defaults_to_empty_array_for_list_targets():
+    provider = StaticProvider(outputs=[""])
+    result = extract("No entities here.", list[str], model=provider)
+    assert result.value == []
 
 
 def test_streaming_iter_order():
@@ -384,6 +450,23 @@ def test_max_workers_greater_than_one():
     result = extract(text, Resume, model=provider, options=options)
     assert len(provider.thread_ids) >= 1
     assert result.value.name == "Ada"
+
+
+def test_async_max_workers_greater_than_one():
+    """Async extraction should respect max_workers via _ainfer_batch_parallel."""
+    provider = FakeProvider()
+    text = "Alpha.\nBeta.\nGamma.\nDelta."
+    options = ExtractOptions(max_char_buffer=8, batch_length=1, max_workers=4)
+
+    async def _run():
+        results = []
+        async for r in extract_aiter(text, Resume, model=provider, options=options):
+            results.append(r)
+        return results
+
+    results = asyncio.run(_run())
+    assert len(results) == 1
+    assert results[0].value.name == "Ada Lovelace"
 
 
 # ===========================================================================
@@ -626,6 +709,11 @@ def test_unicode_tokenizer_respects_newline_boundaries():
     assert len(chunks) >= 2
     assert chunks[0].text == "Alpha"
     assert chunks[1].text == "Beta"
+
+
+def test_unknown_tokenizer_raises_helpful_error():
+    with pytest.raises(ValueError, match="Unknown tokenizer"):
+        list(iter_chunks("Alpha Beta", max_char_buffer=10, tokenizer="unknown"))  # type: ignore[arg-type]
 
 
 def test_merge_strategy_last_wins_for_scalar_conflicts():

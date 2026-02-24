@@ -13,14 +13,13 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass
 from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
 
 from .api import ParseResult, parse
 from .coerce import CoerceOptions
-from .json_pointer import build_json_pointer, escape_json_pointer_token, parse_json_pointer
+from .json_pointer import build_json_pointer, parse_json_pointer
 from .jsonish import ParseOptions
 from .patch import PatchPolicy, apply_patch, normalize_patches
 
@@ -30,6 +29,7 @@ from .patch import PatchPolicy, apply_patch, normalize_patches
 
 try:
     import pydantic_ai  # noqa: F401
+    from pydantic_ai import RunContext  # noqa: F401
     from pydantic_ai.exceptions import ModelRetry  # noqa: F401
 
     _HAS_PYDANTIC_AI = True
@@ -48,11 +48,6 @@ def _check_pydantic_ai() -> None:
 # ---------------------------------------------------------------------------
 # D1) Schema / doc slicing utilities (no pydantic-ai dependency)
 # ---------------------------------------------------------------------------
-
-
-def _escape_json_pointer_token(token: str) -> str:
-    """Escape a single JSON Pointer reference token (RFC 6901)."""
-    return escape_json_pointer_token(token)
 
 
 def validation_error_paths(error: ValidationError) -> list[str]:
@@ -287,6 +282,7 @@ def build_patch_prompt(
     schema_text: str | None = None,
     *,
     doc_slicing: bool = True,
+    policy: PatchPolicy | None = None,
 ) -> str:
     """Build a prompt asking the model to fix validation errors via patches.
 
@@ -308,6 +304,9 @@ def build_patch_prompt(
     doc_slicing
         If ``True`` (default), only include relevant fragments of the document
         and schema based on the error paths.
+
+    policy
+        Optional patch policy constraints to embed in the instructions.
 
     Returns
     -------
@@ -352,6 +351,15 @@ def build_patch_prompt(
         error_lines.append(line)
 
     errors_text = "\n".join(error_lines)
+    effective_policy = policy or PatchPolicy()
+    policy_text = "\n".join(
+        [
+            f"- remove operations allowed: {'yes' if effective_policy.allow_remove else 'no'}",
+            f"- max operations: {effective_policy.max_ops}",
+            f"- max path depth: {effective_policy.max_path_depth}",
+            f"- append (/-) allowed: {'yes' if effective_policy.allow_append else 'no'}",
+        ]
+    )
 
     prompt = f"""The following JSON document has validation errors that need to be fixed.
 
@@ -365,6 +373,7 @@ def build_patch_prompt(
 
 ## Instructions
 Fix the validation errors by providing RFC 6902 JSON Patch operations.
+Respect the patch policy below.
 Return a JSON object with:
 - "json_doc_id": "doc"
 - "planned_edits": a short description of what you will fix
@@ -378,6 +387,9 @@ Each patch operation should have:
 Ordering guidance:
 1. "replace" operations first
 2. "add" operations last (use "/-" to append to arrays)
+
+## Patch Policy
+{policy_text}
 
 Example patch item:
 {{"op": "replace", "path": "/user/age", "value": 42}}"""
@@ -447,6 +459,7 @@ def patch_repair_output[T](
     max_attempts: int = 3,
     parse_options: ParseOptions | None = None,
     coerce_options: CoerceOptions | None = None,
+    allow_full_doc_on_retry: bool = True,
 ) -> Callable[[str], T]:
     """Create an output processor with patch-based repair loop.
 
@@ -470,6 +483,10 @@ def patch_repair_output[T](
         Options for the JSON-ish parser.
     coerce_options
         Options for schema-aligned coercion.
+    allow_full_doc_on_retry
+        When ``True`` (default), retry outputs that are not valid patches are
+        treated as full-document attempts. When ``False``, non-patch retry
+        outputs trigger ``ModelRetry`` with explicit patch errors.
 
     Returns
     -------
@@ -486,13 +503,6 @@ def patch_repair_output[T](
     effective_policy = policy or PatchPolicy()
     adapter: TypeAdapter[T] = TypeAdapter(target)
 
-    @dataclass(slots=True)
-    class _RepairState:
-        attempts: int = 0
-        prev_doc: dict[str, Any] | None = None
-
-    state = _RepairState()
-
     # Pre-render schema text for prompts
     try:
         schema_text = json.dumps(adapter.json_schema(), indent=2)
@@ -505,88 +515,236 @@ def patch_repair_output[T](
 
         return _MR
 
-    def processor(text: str) -> T:
-        # Try to parse as patch operations first (for repair retries)
-        current_doc: dict[str, Any] | None = None
-        if state.attempts > 0 and state.prev_doc is not None:
-            try:
-                patches = normalize_patches(text)
-                patched = apply_patch(state.prev_doc, patches, policy=effective_policy)
-                validated = adapter.validate_python(patched)
-                state.attempts = 0
-                state.prev_doc = None
-                return validated
-            except Exception:
-                pass
+    class _PatchRepairProcessor:
+        # Required by pydantic-ai's function_schema (accesses function.__name__)
+        __name__ = "patch_repair_processor"
 
-        # Parse the raw text with SAP
-        try:
-            result: ParseResult[T] = parse(
-                text,
-                target,
-                parse_options=parse_options,
-                coerce_options=coerce_options,
-            )
-            state.attempts = 0
-            state.prev_doc = None
-            return result.value
-        except ValidationError:
-            # SAP parsed successfully but validation failed
-            # Try to extract the raw dict for patch repair
+        __slots__ = (
+            "_target",
+            "_adapter",
+            "_effective_policy",
+            "_schema_text",
+            "_parse_options",
+            "_coerce_options",
+            "_max_attempts",
+            "_allow_full_doc_on_retry",
+            "_attempts",
+            "_prev_doc",
+            "_run_states",
+            "_current_run_id",
+        )
+
+        def __init__(
+            self,
+            target: type[T],
+            adapter: TypeAdapter[T],
+            effective_policy: PatchPolicy,
+            schema_text: str | None,
+            parse_options: ParseOptions | None,
+            coerce_options: CoerceOptions | None,
+            max_attempts: int,
+            allow_full_doc_on_retry: bool,
+        ) -> None:
+            self._target = target
+            self._adapter = adapter
+            self._effective_policy = effective_policy
+            self._schema_text = schema_text
+            self._parse_options = parse_options
+            self._coerce_options = coerce_options
+            self._max_attempts = max_attempts
+            self._allow_full_doc_on_retry = allow_full_doc_on_retry
+            # State for direct (non-RunContext) calls
+            self._attempts = 0
+            self._prev_doc = None
+            # Per-run state for pydantic-ai RunContext calls: {run_id: [attempts, prev_doc]}
+            self._run_states: dict[str, list[Any]] = {}
+            self._current_run_id: str | None = None
+
+        def reset(self) -> None:
+            """Reset all state (direct-call state and current run state)."""
+            self._attempts = 0
+            self._prev_doc = None
+            if self._current_run_id is not None:
+                self._run_states.pop(self._current_run_id, None)
+                self._current_run_id = None
+
+        def _load_run_state(self, run_id: str) -> None:
+            """Load per-run state into the working slots."""
+            state = self._run_states.get(run_id)
+            if state is not None:
+                self._attempts, self._prev_doc = state
+            else:
+                self._attempts = 0
+                self._prev_doc = None
+            self._current_run_id = run_id
+
+        def _save_run_state(self) -> None:
+            """Persist working slots back to per-run storage."""
+            if self._current_run_id is not None:
+                self._run_states[self._current_run_id] = [
+                    self._attempts,
+                    self._prev_doc,
+                ]
+
+        def __call__(self, ctx_or_text: RunContext[Any], text: str = "") -> T:
+            """Process model output, with optional RunContext for per-run state isolation.
+
+            When used via pydantic-ai's ``TextOutput(processor)``, the first argument
+            is a :class:`~pydantic_ai.RunContext` whose ``run_id`` automatically
+            isolates retry state across ``agent.run()`` calls.  For direct calls,
+            pass the text string as the first argument.
+            """
+            # Detect call pattern: direct call processor("text") vs
+            # pydantic-ai call processor(run_context, text="text")
+            if isinstance(ctx_or_text, str):
+                actual_text = ctx_or_text
+                run_id = None
+            else:
+                actual_text = text
+                run_id = ctx_or_text.run_id
+
+            keep_state = False
             try:
-                raw_result = parse(
+                # Load per-run state if using RunContext
+                if run_id is not None:
+                    self._load_run_state(run_id)
+                result = self._process(actual_text)
+                return result
+            except BaseException as exc:
+                # ModelRetry means pydantic-ai will call us again within the
+                # same run, so state must persist for the next retry.
+                if isinstance(exc, Exception):
+                    MR = _get_model_retry()
+                    keep_state = isinstance(exc, MR)
+                raise
+            finally:
+                if keep_state:
+                    # Save state for the next retry within this run
+                    if run_id is not None:
+                        self._save_run_state()
+                        # Clear working slots to prevent state bleed into
+                        # direct calls or different RunContext calls
+                        self._attempts = 0
+                        self._prev_doc = None
+                        self._current_run_id = None
+                else:
+                    # Success or terminal failure: clean up all state
+                    if run_id is not None:
+                        self._run_states.pop(run_id, None)
+                    self._attempts = 0
+                    self._prev_doc = None
+                    self._current_run_id = None
+
+        def _process(self, text: str) -> T:
+            # Try to parse as patch operations first (for repair retries)
+            current_doc: dict[str, Any] | None = None
+            if self._attempts > 0 and self._prev_doc is not None:
+                try:
+                    patches = normalize_patches(text)
+                    patched = apply_patch(
+                        self._prev_doc,
+                        patches,
+                        policy=self._effective_policy,
+                    )
+                    validated = self._adapter.validate_python(patched)
+                    return validated
+                except Exception as patch_exc:
+                    if not self._allow_full_doc_on_retry:
+                        if self._attempts >= self._max_attempts:
+                            raise
+                        self._attempts += 1
+                        MR = _get_model_retry()
+                        raise MR(
+                            "Previous response was not valid patch operations. "
+                            "Return only RFC 6902 patches matching the expected schema.\n"
+                            f"Patch error: {patch_exc}"
+                        ) from patch_exc
+                    # Patches failed but full-doc fallback is allowed.
+                    # Clear _prev_doc so SAP parsing below starts fresh,
+                    # but preserve _attempts so the retry budget keeps counting.
+                    # This also handles stale state leaked from a prior run
+                    # whose ModelRetry was swallowed by pydantic-ai's retry budget.
+                    self._prev_doc = None
+
+            # Parse the raw text with SAP
+            try:
+                result: ParseResult[T] = parse(
                     text,
-                    dict,
-                    parse_options=parse_options,
+                    self._target,
+                    parse_options=self._parse_options,
+                    coerce_options=self._coerce_options,
                 )
-                current_doc = raw_result.value if isinstance(raw_result.value, dict) else None
-            except Exception:
-                current_doc = None
-        except Exception as exc:
-            # SAP parsing itself failed
-            try:
-                raw_result = parse(text, dict, parse_options=parse_options)
-                current_doc = raw_result.value if isinstance(raw_result.value, dict) else None
-            except Exception:
-                current_doc = None
+                return result.value
+            except ValidationError:
+                # SAP parsed successfully but validation failed
+                # Try to extract the raw dict for patch repair
+                try:
+                    raw_result = parse(
+                        text,
+                        dict,
+                        parse_options=self._parse_options,
+                    )
+                    current_doc = raw_result.value if isinstance(raw_result.value, dict) else None
+                except Exception:
+                    current_doc = None
+            except Exception as exc:
+                # SAP parsing itself failed
+                try:
+                    raw_result = parse(text, dict, parse_options=self._parse_options)
+                    current_doc = raw_result.value if isinstance(raw_result.value, dict) else None
+                except Exception:
+                    current_doc = None
+
+                if current_doc is None:
+                    if self._attempts < self._max_attempts:
+                        self._attempts += 1
+                        MR = _get_model_retry()
+                        raise MR(
+                            "Failed to parse output. Please return valid JSON matching the schema.\n"
+                            f"Parse error: {exc}"
+                        ) from exc
+                    raise
 
             if current_doc is None:
-                if state.attempts < max_attempts:
-                    state.attempts += 1
+                if self._attempts < self._max_attempts:
+                    self._attempts += 1
                     MR = _get_model_retry()
                     raise MR(
-                        f"Failed to parse output. Please return valid JSON matching the schema.\n"
-                        f"Parse error: {exc}"
-                    ) from exc
-                raise
+                        "Failed to extract a JSON object from model output. "
+                        "Please return a single JSON object matching the schema."
+                    )
+                raise ValueError("Failed to extract document from model output")
 
-        if current_doc is None:
-            raise ValueError("Failed to extract document from model output")
+            # Try validating the raw dict
+            try:
+                validated = self._adapter.validate_python(current_doc)
+                return validated
+            except ValidationError as val_err:
+                if self._attempts >= self._max_attempts:
+                    raise
 
-        # Try validating the raw dict
-        try:
-            validated = adapter.validate_python(current_doc)
-            state.attempts = 0
-            state.prev_doc = None
-            return validated
-        except ValidationError as val_err:
-            if state.attempts >= max_attempts:
-                state.attempts = 0
-                state.prev_doc = None
-                raise
+                self._attempts += 1
+                self._prev_doc = current_doc
 
-            state.attempts += 1
-            state.prev_doc = current_doc
+                prompt = build_patch_prompt(
+                    current_doc,
+                    val_err.errors(),
+                    schema_text=self._schema_text,
+                    policy=self._effective_policy,
+                )
+                MR = _get_model_retry()
+                raise MR(prompt) from val_err
 
-            prompt = build_patch_prompt(
-                current_doc,
-                val_err.errors(),
-                schema_text=schema_text,
-            )
-            MR = _get_model_retry()
-            raise MR(prompt) from val_err
-
-    return processor
+    return _PatchRepairProcessor(
+        target,
+        adapter,
+        effective_policy,
+        schema_text,
+        parse_options,
+        coerce_options,
+        max_attempts,
+        allow_full_doc_on_retry,
+    )
 
 
 # ---------------------------------------------------------------------------

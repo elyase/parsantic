@@ -10,15 +10,6 @@ class BaseProvider(Protocol):
 
     def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]: ...
 
-    async def ainfer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]: ...
-
-    @classmethod
-    def get_schema_class(cls) -> type[Any] | None:
-        return None
-
-    def apply_schema(self, schema_instance: Any | None) -> None:
-        return None
-
 
 @dataclass(slots=True)
 class ProviderConfig:

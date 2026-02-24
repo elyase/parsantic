@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
-from pydantic import BaseModel, TypeAdapter, create_model
+from pydantic import BaseModel, TypeAdapter, ValidationError, create_model
 
 from .coerce import CoerceOptions, _adapter_target_type, coerce_jsonish_to_python
 from .jsonish import ParseOptions, parse_jsonish
@@ -90,7 +90,7 @@ class StreamParser[T]:
         _missing = object()
         try:
             validated = self.adapter.validate_json(self._buffer)
-        except Exception:
+        except (ValidationError, ValueError, TypeError):
             validated = _missing
         if validated is not _missing:
             return ScoredValue(value=validated, flags=(), score=0)

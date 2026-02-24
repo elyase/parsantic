@@ -3,7 +3,7 @@
 Supports model strings like ``openai:gpt-4o-mini``, ``anthropic:claude-sonnet``,
 ``gemini:gemini-2.0-flash``, etc.  Requires ``pydantic-ai`` to be installed::
 
-    uv add pydantic-ai
+    pip install pydantic-ai
 """
 
 from __future__ import annotations
@@ -19,6 +19,8 @@ try:
     _HAS_PYDANTIC_AI = True
 except ImportError:  # pragma: no cover
     _HAS_PYDANTIC_AI = False
+
+from parsantic.config import DEFAULT_MODEL
 
 from .registry import register
 
@@ -66,25 +68,38 @@ def _build_model_with_credentials(
     if base_url:
         provider_kwargs["base_url"] = base_url
 
+    def _build_provider(provider_cls: type[Any], kwargs: dict[str, Any]) -> Any:
+        try:
+            return provider_cls(**kwargs)
+        except TypeError:
+            # Some provider classes may not accept ``base_url``.
+            if "base_url" in kwargs:
+                reduced = {k: v for k, v in kwargs.items() if k != "base_url"}
+                return provider_cls(**reduced)
+            raise
+
     try:
         if provider_name == "openai":
             from pydantic_ai.models.openai import OpenAIModel
             from pydantic_ai.providers.openai import OpenAIProvider
 
-            return OpenAIModel(model_name, provider=OpenAIProvider(**provider_kwargs))
+            provider = _build_provider(OpenAIProvider, provider_kwargs)
+            return OpenAIModel(model_name, provider=provider)
 
         if provider_name == "anthropic":
             from pydantic_ai.models.anthropic import AnthropicModel
             from pydantic_ai.providers.anthropic import AnthropicProvider
 
-            return AnthropicModel(model_name, provider=AnthropicProvider(**provider_kwargs))
+            provider = _build_provider(AnthropicProvider, provider_kwargs)
+            return AnthropicModel(model_name, provider=provider)
 
         if provider_name == "gemini":
             from pydantic_ai.models.google import GoogleModel
             from pydantic_ai.providers.google_gla import GoogleGLAProvider
 
             gla_kwargs = {k: v for k, v in provider_kwargs.items() if k == "api_key"}
-            return GoogleModel(model_name, provider=GoogleGLAProvider(**gla_kwargs))
+            provider = _build_provider(GoogleGLAProvider, gla_kwargs)
+            return GoogleModel(model_name, provider=provider)
     except (ImportError, TypeError):
         pass
 
@@ -111,9 +126,9 @@ class PydanticAIProvider:
     def __post_init__(self) -> None:
         if not _HAS_PYDANTIC_AI:
             raise ImportError(
-                "pydantic-ai is required for this model. Install with:  uv add pydantic-ai"
+                "pydantic-ai is required for this model. Install with: pip install pydantic-ai"
             )
-        model_spec = self.model_id or "openai:gpt-4o-mini"
+        model_spec = self.model_id or DEFAULT_MODEL
 
         if self.api_key or self.base_url:
             model = _build_model_with_credentials(model_spec, self.api_key, self.base_url)

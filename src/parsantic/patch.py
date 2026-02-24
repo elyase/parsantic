@@ -34,7 +34,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from .api import ParseResult
 from .json_pointer import parse_json_pointer
@@ -64,6 +64,8 @@ class JsonPatchOp(BaseModel):
     required for ``add`` and ``replace`` and ignored for ``remove``.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     op: Literal["add", "replace", "remove"]
     path: str
     value: Any | None = None
@@ -81,6 +83,8 @@ class PatchDoc(BaseModel):
     ``patches``
         Ordered list of :class:`JsonPatchOp` operations.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     json_doc_id: str = Field(description="ID of the document to patch (use 'doc' if single).")
     planned_edits: str = Field(description="Short plan of edits (for debugging; not executed).")
@@ -335,7 +339,14 @@ def _string_concat_in_parent(doc: Any, tokens: list[str], value: Any) -> None:
             )
         container[field_key] = old + str(value)
     elif isinstance(container, list):
-        idx = int(field_key)
+        try:
+            idx = int(field_key)
+        except ValueError:
+            raise PatchError(f"Invalid array index for string concat: {field_key!r}") from None
+        if idx < 0 or idx >= len(container):
+            raise PatchError(
+                f"Array index {idx} out of bounds for string concat (length {len(container)})"
+            )
         old = container[idx]
         if not isinstance(old, str):
             raise PatchError(
@@ -386,11 +397,11 @@ def _validate_policy(patches: Sequence[JsonPatchOp], policy: PatchPolicy) -> Non
 
 
 def apply_patch(
-    doc: dict[str, Any],
+    doc: Any,
     patches: Sequence[JsonPatchOp],
     *,
     policy: PatchPolicy | None = None,
-) -> dict[str, Any]:
+) -> Any:
     """Apply a sequence of JSON Patch operations to *doc* and return the result.
 
     The input *doc* is **never mutated**; a deep copy is made before applying
@@ -407,7 +418,7 @@ def apply_patch(
 
     Returns
     -------
-    dict
+    Any
         The patched document.
 
     Raises
@@ -439,7 +450,7 @@ def apply_patch(
 
 
 def apply_patch_and_validate[T](
-    doc: dict[str, Any] | BaseModel,
+    doc: Any | BaseModel,
     patches: Sequence[JsonPatchOp],
     target: type[T] | TypeAdapter[T],
     *,
@@ -463,7 +474,7 @@ def apply_patch_and_validate[T](
         If the patched document does not conform to *target*.
     """
     if isinstance(doc, BaseModel):
-        doc_dict: dict[str, Any] = doc.model_dump(mode="json")
+        doc_dict: Any = doc.model_dump(mode="json")
     else:
         doc_dict = doc
 
@@ -556,9 +567,32 @@ def _parse_json_string(text: str) -> Any:
             ),
             is_done=True,
         )
-        # Use the first candidate's value if available.
+        # Prefer candidates that validate as RFC6902 patch arrays.
         if jv.candidates:
-            return jv.candidates[0].value
+            patch_adapter = TypeAdapter(list[JsonPatchOp])
+            best_candidate: Any = None
+            best_size = -1
+            for cand in jv.candidates:
+                candidate_value: Any = cand.value
+                if isinstance(candidate_value, dict) and "patches" in candidate_value:
+                    candidate_value = candidate_value["patches"]
+                if isinstance(candidate_value, dict):
+                    candidate_value = [candidate_value]
+                if isinstance(candidate_value, list):
+                    try:
+                        patch_adapter.validate_python(candidate_value)
+                        return candidate_value
+                    except Exception:
+                        pass
+                try:
+                    size = len(json.dumps(candidate_value, ensure_ascii=False, default=str))
+                except Exception:
+                    size = 0
+                if size > best_size:
+                    best_size = size
+                    best_candidate = candidate_value
+            if best_candidate is not None:
+                return best_candidate
         return jv.value
     except Exception:
         pass

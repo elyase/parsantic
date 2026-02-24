@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import warnings
 from typing import Any
@@ -7,6 +8,8 @@ from typing import Any
 from .base import ProviderConfig
 from .plugins import load_plugins_once
 from .registry import resolve, resolve_provider
+
+logger = logging.getLogger(__name__)
 
 
 def _kwargs_with_environment_defaults(
@@ -45,6 +48,11 @@ def _kwargs_with_environment_defaults(
                 warnings.warn(
                     f"Multiple API keys detected ({keys}); using {env_sources[0][0]}",
                     stacklevel=2,
+                )
+                logger.warning(
+                    "Multiple API keys detected (%s); using %s",
+                    keys,
+                    env_sources[0][0],
                 )
 
     if model_id and "ollama" in model_id.lower() and "base_url" not in resolved:

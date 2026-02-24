@@ -3,43 +3,36 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import json
-import os
+import logging
 from collections.abc import AsyncIterator, Iterable, Iterator, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
+from pydantic_core import to_jsonable_python
 
 from parsantic.api import ParseResult, parse
 from parsantic.coerce import CoerceOptions
+from parsantic.config import resolve_model
+from parsantic.json_pointer import escape_json_pointer_token
 from parsantic.jsonish import ParseOptions
+from parsantic.provider_output import normalize_text_outputs
 
 from .alignment import AlignmentOptions, align_value_to_text, merge_evidence
-from .chunking import iter_chunks
+from .chunking import TextChunk, iter_chunks
 from .formatting import FormatHandler
 from .options import ExtractOptions
 from .prompt import Example, Prompt, PromptValidationLevel
 from .providers.base import ProviderConfig
 from .providers.factory import create_provider
-from .schema import PydanticSchemaAdapter, SchemaAdapter
-from .tokenizer import get_tokenizer
+from .schema import PydanticSchemaAdapter
+from .tokenizer import Tokenizer, TokenizerName, get_tokenizer
 from .types import ChunkDebug, Document, ExtractDebug, ExtractResult, FieldEvidence
 
-_DEFAULT_MODEL = "openai:gpt-4o-mini"
-
-
-def _resolve_model(model: str | Any | None) -> str | Any:
-    """Return an explicit model, falling back to env var or built-in default."""
-    if model is not None:
-        return model
-    return os.environ.get("PARSANTIC_MODEL", _DEFAULT_MODEL)
+logger = logging.getLogger(__name__)
 
 
 _DEFAULT_DESCRIPTION = "Extract structured data that matches the provided schema."
-
-
-def _escape_json_pointer(token: str) -> str:
-    return token.replace("~", "~0").replace("/", "~1")
 
 
 def _iter_leaf_values(value: Any, path: str = "") -> Iterator[tuple[str, str]]:
@@ -47,7 +40,7 @@ def _iter_leaf_values(value: Any, path: str = "") -> Iterator[tuple[str, str]]:
         return
     if isinstance(value, dict):
         for key, val in value.items():
-            next_path = f"{path}/{_escape_json_pointer(str(key))}"
+            next_path = f"{path}/{escape_json_pointer_token(str(key))}"
             yield from _iter_leaf_values(val, next_path)
         return
     if isinstance(value, list):
@@ -78,9 +71,9 @@ def _schema_root_kind(schema: dict[str, Any]) -> Literal["object", "array"] | No
 
 def _validate_examples(
     prompt: Prompt,
-    adapter: SchemaAdapter[Any],
+    adapter: PydanticSchemaAdapter,
     *,
-    tokenizer: str | None,
+    tokenizer: TokenizerName | Tokenizer | None,
     alignment: AlignmentOptions,
     level: PromptValidationLevel,
 ) -> None:
@@ -92,6 +85,7 @@ def _validate_examples(
         try:
             validated = adapter.validate(ex.output)
             dumped = adapter.dump(validated)
+        # Keep broad behavior to continue collecting prompt validation issues.
         except Exception as exc:  # pragma: no cover - surfaced in tests
             errors.append(f"example#{idx} failed schema validation: {exc}")
             continue
@@ -140,6 +134,13 @@ def _render_prompt(
             f"Output a single JSON {expected_kind}. "
             "Do not include any surrounding prose or commentary."
         )
+        if format_handler.options and format_handler.options.wrapper_key:
+            lines.append(
+                f'Wrap the result list under the key "{format_handler.options.wrapper_key}".'
+            )
+        lines.append("")
+    elif fmt == "yaml":
+        lines.append("Output YAML only. Do not include any surrounding prose or commentary.")
         if format_handler.options and format_handler.options.wrapper_key:
             lines.append(
                 f'Wrap the result list under the key "{format_handler.options.wrapper_key}".'
@@ -200,7 +201,7 @@ def _align_evidence(
     source_text: str,
     value: Any,
     *,
-    tokenizer: str | None,
+    tokenizer: TokenizerName | Tokenizer | None,
     alignment: AlignmentOptions,
     offset: int,
 ) -> list[FieldEvidence]:
@@ -222,6 +223,8 @@ def _align_evidence(
                 path=ev.path,
                 value_preview=ev.value_preview,
                 char_interval=(start + offset, end + offset),
+                # token_interval stays chunk-relative: offsetting would require
+                # retokenising the full document (token boundaries differ).
                 token_interval=ev.token_interval,
                 alignment_status=ev.alignment_status,
             )
@@ -288,7 +291,12 @@ def _build_extraction_context(
         for ex in prompt_obj.examples
     ]
 
-    resolved_model = _resolve_model(model)
+    resolved_model = resolve_model(model)
+    logger.debug(
+        "Building extraction context: model=%s, documents=%d",
+        resolved_model if isinstance(resolved_model, str) else type(resolved_model).__name__,
+        len(documents),
+    )
     provider = (
         resolved_model
         if not isinstance(resolved_model, str)
@@ -408,13 +416,52 @@ def _infer_batch(
     batch_length: int,
 ) -> list[str]:
     """Call provider.infer in batches of *batch_length* and concatenate results."""
+    logger.debug("Batched inference: %d prompts, batch_length=%d", len(prompts), batch_length)
     all_outputs: list[str] = []
     for i in range(0, len(prompts), batch_length):
         batch = prompts[i : i + batch_length]
-        outputs = provider.infer(batch)
-        if not isinstance(outputs, Sequence):
-            outputs = list(outputs)
+        outputs = normalize_text_outputs(
+            provider.infer(batch),
+            expected_count=len(batch),
+            context="provider.infer",
+        )
         all_outputs.extend(outputs)
+    return all_outputs
+
+
+def _infer_batch_parallel(
+    provider: Any,
+    prompts: Sequence[str],
+    batch_length: int,
+    max_workers: int,
+) -> list[str]:
+    """Call provider.infer in batches of *batch_length* with ThreadPoolExecutor."""
+    batches: list[Sequence[str]] = []
+    batch_length = max(1, batch_length)
+    for i in range(0, len(prompts), batch_length):
+        batches.append(prompts[i : i + batch_length])
+    logger.debug(
+        "Parallel batched inference: %d batches, max_workers=%d", len(batches), max_workers
+    )
+
+    batch_results: dict[int, list[str]] = {}
+    max_workers = max(1, max_workers)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_idx = {
+            executor.submit(provider.infer, batch): idx for idx, batch in enumerate(batches)
+        }
+        for future in concurrent.futures.as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            batch_result = normalize_text_outputs(
+                future.result(),
+                expected_count=len(batches[idx]),
+                context="provider.infer",
+            )
+            batch_results[idx] = batch_result
+
+    all_outputs: list[str] = []
+    for idx in range(len(batches)):
+        all_outputs.extend(batch_results[idx])
     return all_outputs
 
 
@@ -425,6 +472,7 @@ def _parse_with_repair[T](
     parse_options: ParseOptions | None,
     coerce_options: CoerceOptions | None,
     repair: str,
+    allow_partial: bool = False,
 ) -> ParseResult[T]:
     """Parse raw output, optionally applying local repair on validation failure."""
     try:
@@ -434,8 +482,9 @@ def _parse_with_repair[T](
             parse_options=parse_options,
             coerce_options=coerce_options,
             is_done=True,
+            allow_partial=allow_partial,
         )
-    except Exception:
+    except ValidationError:
         if repair != "local":
             raise
         # Local repair: retry with relaxed coercion (enable substring enum matching)
@@ -446,7 +495,244 @@ def _parse_with_repair[T](
             parse_options=parse_options,
             coerce_options=relaxed,
             is_done=True,
+            allow_partial=allow_partial,
         )
+
+
+def _default_merged_value(output_kind: Literal["object", "array"] | None) -> Any:
+    if output_kind == "array":
+        return []
+    if output_kind == "object":
+        return {}
+    return None
+
+
+def _is_unusable_partial(
+    parsed: ParseResult[Any],
+    output_kind: Literal["object", "array"] | None,
+) -> bool:
+    if output_kind not in {"object", "array"}:
+        return False
+    return "partial_unvalidated" in parsed.flags
+
+
+def _process_inferred_chunks[T](
+    *,
+    chunks: Sequence[TextChunk],
+    inferred: Sequence[str],
+    target: type[T] | TypeAdapter[T],
+    opts: ExtractOptions,
+    output_kind: Literal["object", "array"] | None,
+    parse_options: ParseOptions | None,
+    coerce_options: CoerceOptions | None,
+    debug: bool,
+) -> tuple[list[Any], list[FieldEvidence], list[str], set[str], int, list[ChunkDebug]]:
+    chunk_values: list[Any] = []
+    chunk_evidence: list[FieldEvidence] = []
+    chunk_outputs: list[str] = []
+    pass_flags: set[str] = set()
+    pass_worst_score: int = 0
+    debug_entries: list[ChunkDebug] = []
+    logger.debug("Processing %d chunks", len(chunks))
+
+    for chunk_idx, (chunk, raw) in enumerate(zip(chunks, inferred, strict=True)):
+        if not raw:
+            continue
+        chunk_outputs.append(raw)
+
+        parse_error: str | None = None
+        parsed: ParseResult[T] | None = None
+        chunk_value: Any | None = None
+        try:
+            parsed = _parse_with_repair(
+                raw,
+                target,
+                parse_options=parse_options,
+                coerce_options=coerce_options,
+                repair=opts.repair,
+                allow_partial=True,
+            )
+            if _is_unusable_partial(parsed, output_kind):
+                raise ValueError(
+                    "Chunk parse produced unvalidated partial output "
+                    "that does not match the target root kind"
+                )
+            chunk_value = to_jsonable_python(parsed.value)
+            chunk_values.append(chunk_value)
+            pass_flags.update(parsed.flags)
+            pass_worst_score = max(pass_worst_score, parsed.score)
+        except (ValidationError, ValueError, TypeError) as exc:
+            logger.debug("Chunk parse failed: %s", exc)
+            parse_error = str(exc)
+            parsed = None
+            chunk_value = None
+            if opts.chunk_error == "raise":
+                raise
+
+        if chunk_value is not None:
+            chunk_evidence.extend(
+                _align_evidence(
+                    chunk.text,
+                    chunk_value,
+                    tokenizer=opts.tokenizer,
+                    alignment=opts.alignment,
+                    offset=chunk.start,
+                )
+            )
+
+        if debug:
+            debug_entries.append(
+                ChunkDebug(
+                    chunk_index=chunk_idx,
+                    chunk_text_preview=chunk.text[:100],
+                    raw_output=raw,
+                    flags=parsed.flags if parsed is not None else (),
+                    score=parsed.score if parsed is not None else 0,
+                    error=parse_error,
+                )
+            )
+
+    return (
+        chunk_values,
+        chunk_evidence,
+        chunk_outputs,
+        pass_flags,
+        pass_worst_score,
+        debug_entries,
+    )
+
+
+def _prepare_document_chunks_and_prompts(
+    ctx: _ExtractionContext,
+    doc: Document,
+) -> tuple[list[TextChunk], list[str]]:
+    chunks = list(
+        iter_chunks(
+            doc.text,
+            max_char_buffer=ctx.opts.max_char_buffer,
+            tokenizer=ctx.opts.tokenizer,
+            overlap_chars=ctx.opts.overlap_chars,
+        )
+    )
+    chunk_prompts = [
+        _render_prompt(
+            ctx.prompt_obj,
+            schema_text=ctx.schema_text,
+            examples=ctx.normalized_examples,
+            question=chunk.text,
+            format_handler=ctx.format_handler,
+            additional_context=doc.additional_context,
+            output_kind=ctx.output_kind,
+        )
+        for chunk in chunks
+    ]
+    return chunks, chunk_prompts
+
+
+def _build_extract_result[T](
+    *,
+    ctx: _ExtractionContext,
+    doc: Document,
+    merged_value: Any,
+    raw_outputs: list[str],
+    all_flags: set[str],
+    worst_score: int,
+    doc_evidence: list[FieldEvidence],
+    chunk_debug_entries: list[ChunkDebug],
+    rendered_prompt_preview: str | None,
+    debug: bool,
+) -> ExtractResult[T]:
+    validated = ctx.adapter.validate(merged_value)
+    debug_info = (
+        ExtractDebug(
+            prompt=ctx.prompt_obj.description,
+            raw_outputs=raw_outputs,
+            chunks=chunk_debug_entries,
+            rendered_prompt_preview=rendered_prompt_preview,
+        )
+        if debug
+        else None
+    )
+    return ExtractResult(
+        value=validated,
+        document_id=doc.document_id,
+        raw_text=raw_outputs[-1] if raw_outputs else None,
+        flags=tuple(sorted(all_flags)),
+        score=worst_score,
+        evidence=doc_evidence,
+        debug=debug_info,
+    )
+
+
+@dataclass(slots=True)
+class _DocumentState:
+    """Mutable accumulator for per-document extraction across passes."""
+
+    merged_value: Any = None
+    raw_outputs: list[str] = field(default_factory=list)
+    all_flags: set[str] = field(default_factory=set)
+    worst_score: int = 0
+    chunk_debug_entries: list[ChunkDebug] = field(default_factory=list)
+    doc_evidence: list[FieldEvidence] = field(default_factory=list)
+
+
+def _accumulate_pass[T](
+    *,
+    pass_index: int,
+    state: _DocumentState,
+    chunks: Sequence[TextChunk],
+    inferred: list[str],
+    target: type[T] | TypeAdapter[T],
+    ctx: _ExtractionContext,
+    parse_options: ParseOptions | None,
+    coerce_options: CoerceOptions | None,
+    debug: bool,
+) -> None:
+    """Process one inference pass and accumulate into *state*.
+
+    May raise if ``chunk_error="raise"`` — this preserves fail-fast semantics
+    so that subsequent passes are never invoked after a failure.
+    """
+    logger.debug("Extract pass %d: processing %d chunks", pass_index, len(chunks))
+    (
+        chunk_values,
+        chunk_evidence,
+        chunk_outputs,
+        pass_flags,
+        pass_worst_score,
+        pass_debug_entries,
+    ) = _process_inferred_chunks(
+        chunks=chunks,
+        inferred=inferred,
+        target=target,
+        opts=ctx.opts,
+        output_kind=ctx.output_kind,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
+    )
+
+    state.all_flags.update(pass_flags)
+    state.worst_score = max(state.worst_score, pass_worst_score)
+    if debug:
+        state.chunk_debug_entries.extend(pass_debug_entries)
+
+    for chunk_value in chunk_values:
+        state.merged_value = _merge_values(
+            state.merged_value,
+            chunk_value,
+            strategy=ctx.opts.merge_strategy,
+        )
+
+    if state.merged_value is None:
+        state.merged_value = _default_merged_value(ctx.output_kind)
+
+    if pass_index == 0:
+        state.doc_evidence = chunk_evidence
+        state.raw_outputs = chunk_outputs
+    else:
+        state.doc_evidence = merge_evidence(state.doc_evidence, chunk_evidence)
+        state.raw_outputs.extend(chunk_outputs)
 
 
 def extract_iter[T](
@@ -471,153 +757,45 @@ def extract_iter[T](
     )
 
     for doc in ctx.documents:
-        doc_text = doc.text
-        doc_evidence: list[FieldEvidence] = []
-        merged_value: Any = None
-        raw_outputs: list[str] = []
-        all_flags: set[str] = set()
-        worst_score: int = 0
-        chunk_debug_entries: list[ChunkDebug] = []
-        rendered_prompt_preview: str | None = None
-
-        chunks = list(
-            iter_chunks(
-                doc_text,
-                max_char_buffer=ctx.opts.max_char_buffer,
-                tokenizer=ctx.opts.tokenizer,
-                overlap_chars=ctx.opts.overlap_chars,
-            )
+        chunks, chunk_prompts = _prepare_document_chunks_and_prompts(ctx, doc)
+        rendered_prompt_preview: str | None = (
+            chunk_prompts[0][:500] if (debug and chunk_prompts) else None
         )
-
-        chunk_prompts = [
-            _render_prompt(
-                ctx.prompt_obj,
-                schema_text=ctx.schema_text,
-                examples=ctx.normalized_examples,
-                question=chunk.text,
-                format_handler=ctx.format_handler,
-                additional_context=doc.additional_context,
-                output_kind=ctx.output_kind,
-            )
-            for chunk in chunks
-        ]
-
-        if debug and chunk_prompts and rendered_prompt_preview is None:
-            rendered_prompt_preview = chunk_prompts[0][:500]
+        state = _DocumentState()
+        batch_length = max(1, ctx.opts.batch_length)
+        max_workers = max(1, ctx.opts.max_workers)
 
         for _pass in range(max(1, ctx.opts.passes)):
-            chunk_values: list[Any] = []
-            chunk_evidence: list[FieldEvidence] = []
-            chunk_outputs: list[str] = []
-
-            # Infer: use batching and optional parallelism
-            batch_length = max(1, ctx.opts.batch_length)
-            max_workers = max(1, ctx.opts.max_workers)
-
             if max_workers <= 1:
-                # Sequential batched inference
                 inferred = _infer_batch(ctx.provider, chunk_prompts, batch_length)
             else:
-                # Parallel batched inference using ThreadPoolExecutor
-                # Split prompts into batches, run batches in parallel, then reassemble
-                # in input order after collecting completed futures.
-                batches: list[Sequence[str]] = []
-                for i in range(0, len(chunk_prompts), batch_length):
-                    batches.append(chunk_prompts[i : i + batch_length])
-
-                batch_results: dict[int, Sequence[str]] = {}
-                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    future_to_idx = {
-                        executor.submit(ctx.provider.infer, batch): idx
-                        for idx, batch in enumerate(batches)
-                    }
-                    for future in concurrent.futures.as_completed(future_to_idx):
-                        idx = future_to_idx[future]
-                        batch_result = future.result()
-                        if not isinstance(batch_result, Sequence):
-                            batch_result = list(batch_result)
-                        batch_results[idx] = batch_result
-
-                inferred = []
-                for idx in range(len(batches)):
-                    inferred.extend(batch_results[idx])
-
-            # Process each chunk's output in deterministic order
-            for chunk_idx, (chunk, raw) in enumerate(zip(chunks, inferred, strict=True)):
-                if not raw:
-                    continue
-                chunk_outputs.append(raw)
-
-                parsed: ParseResult[T] = _parse_with_repair(
-                    raw,
-                    target,
-                    parse_options=parse_options,
-                    coerce_options=coerce_options,
-                    repair=ctx.opts.repair,
+                inferred = _infer_batch_parallel(
+                    ctx.provider, chunk_prompts, batch_length, max_workers
                 )
-                chunk_value = ctx.adapter.dump(parsed.value)
-                chunk_values.append(chunk_value)
-
-                chunk_evidence.extend(
-                    _align_evidence(
-                        chunk.text,
-                        chunk_value,
-                        tokenizer=ctx.opts.tokenizer,
-                        alignment=ctx.opts.alignment,
-                        offset=chunk.start,
-                    )
-                )
-                all_flags.update(parsed.flags)
-                worst_score = max(worst_score, parsed.score)
-
-                # Collect per-chunk debug info
-                if debug:
-                    chunk_debug_entries.append(
-                        ChunkDebug(
-                            chunk_index=chunk_idx,
-                            chunk_text_preview=chunk.text[:100],
-                            raw_output=raw,
-                            flags=parsed.flags,
-                            score=parsed.score,
-                        )
-                    )
-
-            for chunk_value in chunk_values:
-                merged_value = _merge_values(
-                    merged_value,
-                    chunk_value,
-                    strategy=ctx.opts.merge_strategy,
-                )
-
-            if merged_value is None:
-                merged_value = {}
-
-            if _pass == 0:
-                doc_evidence = chunk_evidence
-                raw_outputs = chunk_outputs
-            else:
-                doc_evidence = merge_evidence(doc_evidence, chunk_evidence)
-                raw_outputs.extend(chunk_outputs)
-
-        validated = ctx.adapter.validate(merged_value)
-        debug_info = (
-            ExtractDebug(
-                prompt=ctx.prompt_obj.description,
-                raw_outputs=raw_outputs,
-                chunks=chunk_debug_entries,
-                rendered_prompt_preview=rendered_prompt_preview,
+            # Process immediately to preserve fail-fast on chunk_error="raise"
+            _accumulate_pass(
+                pass_index=_pass,
+                state=state,
+                chunks=chunks,
+                inferred=inferred,
+                target=target,
+                ctx=ctx,
+                parse_options=parse_options,
+                coerce_options=coerce_options,
+                debug=debug,
             )
-            if debug
-            else None
-        )
-        yield ExtractResult(
-            value=validated,
-            document_id=doc.document_id,
-            raw_text=raw_outputs[-1] if raw_outputs else None,
-            flags=tuple(sorted(all_flags)),
-            score=worst_score,
-            evidence=doc_evidence,
-            debug=debug_info,
+
+        yield _build_extract_result(
+            ctx=ctx,
+            doc=doc,
+            merged_value=state.merged_value,
+            raw_outputs=state.raw_outputs,
+            all_flags=state.all_flags,
+            worst_score=state.worst_score,
+            doc_evidence=state.doc_evidence,
+            chunk_debug_entries=state.chunk_debug_entries,
+            rendered_prompt_preview=rendered_prompt_preview,
+            debug=debug,
         )
 
 
@@ -626,7 +804,7 @@ async def _ainfer_batch(
     prompts: Sequence[str],
     batch_length: int,
 ) -> list[str]:
-    """Async version of batched inference."""
+    """Async version of batched inference (sequential)."""
     all_outputs: list[str] = []
     for i in range(0, len(prompts), batch_length):
         batch = prompts[i : i + batch_length]
@@ -634,9 +812,50 @@ async def _ainfer_batch(
             outputs = await provider.ainfer(batch)
         else:
             outputs = await asyncio.to_thread(provider.infer, batch)
-        if not isinstance(outputs, Sequence):
-            outputs = list(outputs)
+        outputs = normalize_text_outputs(
+            outputs,
+            expected_count=len(batch),
+            context="provider.ainfer" if hasattr(provider, "ainfer") else "provider.infer",
+        )
         all_outputs.extend(outputs)
+    return all_outputs
+
+
+async def _ainfer_batch_parallel(
+    provider: Any,
+    prompts: Sequence[str],
+    batch_length: int,
+    max_workers: int,
+) -> list[str]:
+    """Async version of batched inference with concurrency via asyncio.gather."""
+    batch_length = max(1, batch_length)
+    batches: list[Sequence[str]] = []
+    for i in range(0, len(prompts), batch_length):
+        batches.append(prompts[i : i + batch_length])
+    max_workers = max(1, max_workers)
+    logger.debug(
+        "Async parallel batched inference: %d batches, max_workers=%d", len(batches), max_workers
+    )
+
+    sem = asyncio.Semaphore(max_workers)
+
+    async def _run_batch(batch: Sequence[str]) -> list[str]:
+        async with sem:
+            if hasattr(provider, "ainfer"):
+                raw = await provider.ainfer(batch)
+            else:
+                raw = await asyncio.to_thread(provider.infer, batch)
+            return normalize_text_outputs(
+                raw,
+                expected_count=len(batch),
+                context="provider.ainfer" if hasattr(provider, "ainfer") else "provider.infer",
+            )
+
+    results = await asyncio.gather(*[_run_batch(b) for b in batches])
+
+    all_outputs: list[str] = []
+    for batch_result in results:
+        all_outputs.extend(batch_result)
     return all_outputs
 
 
@@ -662,124 +881,45 @@ async def extract_aiter[T](
     )
 
     for doc in ctx.documents:
-        doc_text = doc.text
-        doc_evidence: list[FieldEvidence] = []
-        merged_value: Any = None
-        raw_outputs: list[str] = []
-        all_flags: set[str] = set()
-        worst_score: int = 0
-        chunk_debug_entries: list[ChunkDebug] = []
-        rendered_prompt_preview: str | None = None
-
-        chunks = list(
-            iter_chunks(
-                doc_text,
-                max_char_buffer=ctx.opts.max_char_buffer,
-                tokenizer=ctx.opts.tokenizer,
-                overlap_chars=ctx.opts.overlap_chars,
-            )
+        chunks, chunk_prompts = _prepare_document_chunks_and_prompts(ctx, doc)
+        rendered_prompt_preview: str | None = (
+            chunk_prompts[0][:500] if (debug and chunk_prompts) else None
         )
-        chunk_prompts = [
-            _render_prompt(
-                ctx.prompt_obj,
-                schema_text=ctx.schema_text,
-                examples=ctx.normalized_examples,
-                question=chunk.text,
-                format_handler=ctx.format_handler,
-                additional_context=doc.additional_context,
-                output_kind=ctx.output_kind,
-            )
-            for chunk in chunks
-        ]
-
-        if debug and chunk_prompts and rendered_prompt_preview is None:
-            rendered_prompt_preview = chunk_prompts[0][:500]
+        state = _DocumentState()
+        batch_length = max(1, ctx.opts.batch_length)
+        max_workers = max(1, ctx.opts.max_workers)
 
         for _pass in range(max(1, ctx.opts.passes)):
-            chunk_values: list[Any] = []
-            chunk_evidence: list[FieldEvidence] = []
-            chunk_outputs: list[str] = []
-
-            # Infer with batching
-            batch_length = max(1, ctx.opts.batch_length)
-            inferred = await _ainfer_batch(ctx.provider, chunk_prompts, batch_length)
-
-            # Process each chunk's output in deterministic order
-            for chunk_idx, (chunk, raw) in enumerate(zip(chunks, inferred, strict=True)):
-                if not raw:
-                    continue
-                chunk_outputs.append(raw)
-
-                parsed: ParseResult[T] = _parse_with_repair(
-                    raw,
-                    target,
-                    parse_options=parse_options,
-                    coerce_options=coerce_options,
-                    repair=ctx.opts.repair,
-                )
-                chunk_value = ctx.adapter.dump(parsed.value)
-                chunk_values.append(chunk_value)
-
-                chunk_evidence.extend(
-                    _align_evidence(
-                        chunk.text,
-                        chunk_value,
-                        tokenizer=ctx.opts.tokenizer,
-                        alignment=ctx.opts.alignment,
-                        offset=chunk.start,
-                    )
-                )
-                all_flags.update(parsed.flags)
-                worst_score = max(worst_score, parsed.score)
-
-                # Collect per-chunk debug info
-                if debug:
-                    chunk_debug_entries.append(
-                        ChunkDebug(
-                            chunk_index=chunk_idx,
-                            chunk_text_preview=chunk.text[:100],
-                            raw_output=raw,
-                            flags=parsed.flags,
-                            score=parsed.score,
-                        )
-                    )
-
-            for chunk_value in chunk_values:
-                merged_value = _merge_values(
-                    merged_value,
-                    chunk_value,
-                    strategy=ctx.opts.merge_strategy,
-                )
-
-            if merged_value is None:
-                merged_value = {}
-
-            if _pass == 0:
-                doc_evidence = chunk_evidence
-                raw_outputs = chunk_outputs
+            if max_workers <= 1:
+                inferred = await _ainfer_batch(ctx.provider, chunk_prompts, batch_length)
             else:
-                doc_evidence = merge_evidence(doc_evidence, chunk_evidence)
-                raw_outputs.extend(chunk_outputs)
-
-        validated = ctx.adapter.validate(merged_value)
-        debug_info = (
-            ExtractDebug(
-                prompt=ctx.prompt_obj.description,
-                raw_outputs=raw_outputs,
-                chunks=chunk_debug_entries,
-                rendered_prompt_preview=rendered_prompt_preview,
+                inferred = await _ainfer_batch_parallel(
+                    ctx.provider, chunk_prompts, batch_length, max_workers
+                )
+            # Process immediately to preserve fail-fast on chunk_error="raise"
+            _accumulate_pass(
+                pass_index=_pass,
+                state=state,
+                chunks=chunks,
+                inferred=inferred,
+                target=target,
+                ctx=ctx,
+                parse_options=parse_options,
+                coerce_options=coerce_options,
+                debug=debug,
             )
-            if debug
-            else None
-        )
-        yield ExtractResult(
-            value=validated,
-            document_id=doc.document_id,
-            raw_text=raw_outputs[-1] if raw_outputs else None,
-            flags=tuple(sorted(all_flags)),
-            score=worst_score,
-            evidence=doc_evidence,
-            debug=debug_info,
+
+        yield _build_extract_result(
+            ctx=ctx,
+            doc=doc,
+            merged_value=state.merged_value,
+            raw_outputs=state.raw_outputs,
+            all_flags=state.all_flags,
+            worst_score=state.worst_score,
+            doc_evidence=state.doc_evidence,
+            chunk_debug_entries=state.chunk_debug_entries,
+            rendered_prompt_preview=rendered_prompt_preview,
+            debug=debug,
         )
 
 

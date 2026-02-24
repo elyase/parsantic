@@ -25,20 +25,24 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-from .api import ParseResult, coerce, parse
+from .api import ParseResult, coerce
+from .config import resolve_model
 from .patch import JsonPatchOp, PatchPolicy, apply_patch, normalize_patches
+from .prompts import build_retry_prompt, build_update_prompt
+from .provider_output import normalize_text_outputs
+from .retry import RetryPolicy
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Result type
 # ---------------------------------------------------------------------------
-
-_DEFAULT_MODEL = "openai:gpt-4o-mini"
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +57,7 @@ class UpdateResult[T]:
         All patches applied (accumulated across retries).
     doc_before
         The original document as a dict (before any patches).
-    doc_after
+    doc_after_patches
         The final patched document as a dict (after all patches).
     raw_text
         Raw LLM output from the last successful call.
@@ -64,81 +68,14 @@ class UpdateResult[T]:
     value: T
     patches: list[JsonPatchOp]
     doc_before: dict[str, Any]
-    doc_after: dict[str, Any]
+    doc_after_patches: dict[str, Any]
     raw_text: str
     attempts: int
 
-
-# ---------------------------------------------------------------------------
-# Prompt builders
-# ---------------------------------------------------------------------------
-
-
-def _build_update_prompt(
-    doc: dict[str, Any],
-    instruction: str,
-    schema_text: str,
-) -> str:
-    """Build the initial prompt asking the LLM to produce patches."""
-    return f"""You are updating a JSON document based on new information.
-
-## Current Document
-```json
-{json.dumps(doc, indent=2, default=str)}
-```
-
-## Target Schema
-```json
-{schema_text}
-```
-
-## Instruction
-{instruction}
-
-## Rules
-- Return ONLY a JSON array of RFC 6902 JSON Patch operations.
-- Use "replace" for existing fields, "add" for new fields or array appends (use "/-" to append).
-- Do NOT change fields unless the instruction implies it.
-- Keep values JSON-serializable and conformant to the schema above.
-- Order: "replace" operations first, then "add" operations.
-
-Return the JSON array now:"""
-
-
-def _build_retry_prompt(
-    patched_doc: dict[str, Any],
-    validation_errors: list[dict[str, Any]],
-    instruction: str,
-    schema_text: str,
-) -> str:
-    """Build a retry prompt when patches produced invalid output."""
-    error_lines: list[str] = []
-    for err in validation_errors:
-        loc = err.get("loc", ())
-        msg = err.get("msg", "unknown error")
-        path_str = " -> ".join(str(p) for p in loc) if loc else "(root)"
-        error_lines.append(f"- {path_str}: {msg}")
-    errors_text = "\n".join(error_lines)
-
-    return f"""The patches you produced resulted in validation errors.
-
-## Current Document (after patches)
-```json
-{json.dumps(patched_doc, indent=2, default=str)}
-```
-
-## Validation Errors
-{errors_text}
-
-## Target Schema
-```json
-{schema_text}
-```
-
-## Original Instruction (for context)
-{instruction}
-
-Return ONLY a JSON array of additional RFC 6902 JSON Patch operations to fix these errors:"""
+    @property
+    def doc_after(self) -> dict[str, Any]:
+        """Backward-compatible alias for ``doc_after_patches``."""
+        return self.doc_after_patches
 
 
 # ---------------------------------------------------------------------------
@@ -146,15 +83,9 @@ Return ONLY a JSON array of additional RFC 6902 JSON Patch operations to fix the
 # ---------------------------------------------------------------------------
 
 
-def _resolve_model(model: str | Any | None) -> str | Any:
-    if model is not None:
-        return model
-    return os.environ.get("PARSANTIC_MODEL", _DEFAULT_MODEL)
-
-
 def _create_provider(model: str | Any | None, provider_kwargs: dict[str, Any] | None):
     """Create or pass through a provider."""
-    resolved = _resolve_model(model)
+    resolved = resolve_model(model)
     if not isinstance(resolved, str):
         return resolved
     from .extract.providers.base import ProviderConfig
@@ -182,6 +113,33 @@ class _UpdateState:
     last_errors: list[dict[str, Any]] = field(default_factory=list)
 
 
+def _build_attempt_prompt(
+    *,
+    attempt: int,
+    state: _UpdateState,
+    instruction: str,
+    schema_text: str,
+    policy: PatchPolicy,
+) -> str:
+    if attempt == 0:
+        return build_update_prompt(state.current_doc, instruction, schema_text, policy)
+    return build_retry_prompt(
+        state.current_doc,
+        state.last_errors,
+        instruction,
+        schema_text,
+        policy,
+    )
+
+
+def _schema_text_for_target[T](target: type[T] | TypeAdapter[T]) -> str:
+    adapter: TypeAdapter[T] = target if isinstance(target, TypeAdapter) else TypeAdapter(target)
+    try:
+        return json.dumps(adapter.json_schema(), indent=2)
+    except Exception:
+        return "{}"
+
+
 def _process_update_attempt[T](
     *,
     attempt: int,
@@ -194,12 +152,7 @@ def _process_update_attempt[T](
 ) -> UpdateResult[T] | None:
     # Parse patches from messy LLM output
     try:
-        parsed = parse(raw, list).value
-    except Exception:
-        parsed = raw
-
-    try:
-        patches = normalize_patches(parsed)
+        patches = normalize_patches(raw)
     except Exception as exc:
         state.last_errors = [{"loc": (), "msg": f"Failed to normalize patches: {exc}"}]
         if attempt < max_retries:
@@ -208,6 +161,7 @@ def _process_update_attempt[T](
 
     try:
         patched = apply_patch(state.current_doc, patches, policy=policy)
+        logger.debug("Applied %d patches", len(patches))
     except Exception as exc:
         state.last_errors = [{"loc": (), "msg": f"Patch application failed: {exc}"}]
         if attempt < max_retries:
@@ -217,12 +171,13 @@ def _process_update_attempt[T](
     state.all_patches.extend(patches)
 
     try:
+        logger.debug("Validating patched document")
         result: ParseResult[T] = coerce(patched, target)
         return UpdateResult(
             value=result.value,
             patches=state.all_patches,
             doc_before=doc_before,
-            doc_after=patched,
+            doc_after_patches=patched,
             raw_text=state.last_raw,
             attempts=attempt + 1,
         )
@@ -240,6 +195,25 @@ def _process_update_attempt[T](
         return None
 
 
+def _infer_one(provider: Any, prompt: str) -> str:
+    outputs = normalize_text_outputs(
+        provider.infer([prompt]),
+        expected_count=1,
+        context="provider.infer",
+    )
+    return outputs[0]
+
+
+async def _ainfer_one(provider: Any, prompt: str) -> str:
+    if hasattr(provider, "ainfer"):
+        raw_outputs = await provider.ainfer([prompt])
+        outputs = normalize_text_outputs(raw_outputs, expected_count=1, context="provider.ainfer")
+    else:
+        raw_outputs = await asyncio.to_thread(provider.infer, [prompt])
+        outputs = normalize_text_outputs(raw_outputs, expected_count=1, context="provider.infer")
+    return outputs[0]
+
+
 def _run_update[T](
     doc: dict[str, Any],
     instruction: str,
@@ -247,29 +221,29 @@ def _run_update[T](
     schema_text: str,
     provider: Any,
     policy: PatchPolicy,
-    max_retries: int,
+    policy_retry: RetryPolicy,
 ) -> UpdateResult[T]:
     """Synchronous update loop."""
     state = _UpdateState(current_doc=doc, last_errors=[])
 
-    for attempt in range(1 + max_retries):
-        if attempt == 0:
-            prompt = _build_update_prompt(state.current_doc, instruction, schema_text)
-        else:
-            prompt = _build_retry_prompt(
-                state.current_doc,
-                state.last_errors,
-                instruction,
-                schema_text,
-            )
+    for attempt in range(1 + policy_retry.max_retries):
+        logger.debug("Update attempt %d/%d", attempt + 1, policy_retry.max_retries + 1)
+        if attempt > 0:
+            policy_retry.wait(attempt - 1)
+        prompt = _build_attempt_prompt(
+            attempt=attempt,
+            state=state,
+            instruction=instruction,
+            schema_text=schema_text,
+            policy=policy,
+        )
 
-        outputs = provider.infer([prompt])
-        raw = outputs[0] if outputs else ""
+        raw = _infer_one(provider, prompt)
         state.last_raw = raw
 
         result = _process_update_attempt(
             attempt=attempt,
-            max_retries=max_retries,
+            max_retries=policy_retry.max_retries,
             state=state,
             doc_before=doc,
             raw=raw,
@@ -279,7 +253,11 @@ def _run_update[T](
         if result is not None:
             return result
 
-    raise ValueError(f"Update failed after {max_retries + 1} attempts")
+    # Defensive: _process_update_attempt always raises on the final attempt,
+    # so this line is normally unreachable.
+    raise ValueError(
+        f"Update failed after {policy_retry.max_retries + 1} attempts"
+    )  # pragma: no cover
 
 
 async def _arun_update[T](
@@ -289,32 +267,28 @@ async def _arun_update[T](
     schema_text: str,
     provider: Any,
     policy: PatchPolicy,
-    max_retries: int,
+    policy_retry: RetryPolicy,
 ) -> UpdateResult[T]:
     """Async update loop."""
     state = _UpdateState(current_doc=doc, last_errors=[])
 
-    for attempt in range(1 + max_retries):
-        if attempt == 0:
-            prompt = _build_update_prompt(state.current_doc, instruction, schema_text)
-        else:
-            prompt = _build_retry_prompt(
-                state.current_doc,
-                state.last_errors,
-                instruction,
-                schema_text,
-            )
+    for attempt in range(1 + policy_retry.max_retries):
+        if attempt > 0:
+            await policy_retry.await_delay(attempt - 1)
+        prompt = _build_attempt_prompt(
+            attempt=attempt,
+            state=state,
+            instruction=instruction,
+            schema_text=schema_text,
+            policy=policy,
+        )
 
-        if hasattr(provider, "ainfer"):
-            outputs = await provider.ainfer([prompt])
-        else:
-            outputs = await asyncio.to_thread(provider.infer, [prompt])
-        raw = outputs[0] if outputs else ""
+        raw = await _ainfer_one(provider, prompt)
         state.last_raw = raw
 
         result = _process_update_attempt(
             attempt=attempt,
-            max_retries=max_retries,
+            max_retries=policy_retry.max_retries,
             state=state,
             doc_before=doc,
             raw=raw,
@@ -324,7 +298,11 @@ async def _arun_update[T](
         if result is not None:
             return result
 
-    raise ValueError(f"Update failed after {max_retries + 1} attempts")
+    # Defensive: _process_update_attempt always raises on the final attempt,
+    # so this line is normally unreachable.
+    raise ValueError(
+        f"Update failed after {policy_retry.max_retries + 1} attempts"
+    )  # pragma: no cover
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +318,7 @@ def update[T](
     model: str | Any | None = None,
     policy: PatchPolicy | None = None,
     max_retries: int = 2,
+    retry: RetryPolicy | None = None,
     provider_kwargs: dict[str, Any] | None = None,
 ) -> UpdateResult[T]:
     """Update an existing object with new information using an LLM.
@@ -371,12 +350,8 @@ def update[T](
     """
     doc = _existing_to_dict(existing)
     effective_policy = policy or PatchPolicy()
-    adapter: TypeAdapter[T] = target if isinstance(target, TypeAdapter) else TypeAdapter(target)
-
-    try:
-        schema_text = json.dumps(adapter.json_schema(), indent=2)
-    except Exception:
-        schema_text = "{}"
+    effective_retry = retry or RetryPolicy(max_retries=max_retries)
+    schema_text = _schema_text_for_target(target)
 
     provider = _create_provider(model, provider_kwargs)
 
@@ -387,7 +362,7 @@ def update[T](
         schema_text=schema_text,
         provider=provider,
         policy=effective_policy,
-        max_retries=max_retries,
+        policy_retry=effective_retry,
     )
 
 
@@ -399,17 +374,14 @@ async def aupdate[T](
     model: str | Any | None = None,
     policy: PatchPolicy | None = None,
     max_retries: int = 2,
+    retry: RetryPolicy | None = None,
     provider_kwargs: dict[str, Any] | None = None,
 ) -> UpdateResult[T]:
     """Async version of :func:`update`."""
     doc = _existing_to_dict(existing)
     effective_policy = policy or PatchPolicy()
-    adapter: TypeAdapter[T] = target if isinstance(target, TypeAdapter) else TypeAdapter(target)
-
-    try:
-        schema_text = json.dumps(adapter.json_schema(), indent=2)
-    except Exception:
-        schema_text = "{}"
+    effective_retry = retry or RetryPolicy(max_retries=max_retries)
+    schema_text = _schema_text_for_target(target)
 
     provider = _create_provider(model, provider_kwargs)
 
@@ -420,7 +392,7 @@ async def aupdate[T](
         schema_text=schema_text,
         provider=provider,
         policy=effective_policy,
-        max_retries=max_retries,
+        policy_retry=effective_retry,
     )
 
 

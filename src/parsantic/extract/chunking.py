@@ -4,7 +4,7 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-from .tokenizer import TokenizedText, Tokenizer, get_tokenizer
+from .tokenizer import TokenizedText, Tokenizer, TokenizerName, get_tokenizer
 
 _SENTENCE_END = re.compile(r"[.!?。！？]$")
 
@@ -24,7 +24,7 @@ def iter_chunks(
     text: str,
     *,
     max_char_buffer: int | None,
-    tokenizer: Tokenizer | None = None,
+    tokenizer: TokenizerName | Tokenizer | None = None,
     overlap_chars: int = 0,
 ) -> Iterator[TextChunk]:
     """Iterate over text chunks respecting sentence/newline boundaries.

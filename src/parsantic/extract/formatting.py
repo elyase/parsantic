@@ -2,16 +2,22 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal, cast
+
+from pydantic_core import to_jsonable_python
 
 
 @dataclass(slots=True)
 class FormatOptions:
-    format: str = "json"
+    format: Literal["json", "yaml"] = "json"
     use_fences: bool = True
     wrapper_key: str | None = None
-    attribute_suffix: str = "_attributes"
-    index_suffix: str | None = None
+
+    def __post_init__(self) -> None:
+        normalized = self.format.lower()
+        if normalized not in {"json", "yaml"}:
+            raise ValueError("format must be either 'json' or 'yaml'")
+        self.format = cast(Literal["json", "yaml"], normalized)
 
 
 class FormatHandler:
@@ -26,7 +32,7 @@ class FormatHandler:
         if self.options.format == "yaml":
             try:
                 import yaml  # type: ignore
-            except Exception as exc:  # pragma: no cover
+            except ImportError as exc:  # pragma: no cover
                 raise ImportError(
                     "YAML output requested but PyYAML is not installed. Install with: pip install pyyaml"
                 ) from exc
@@ -41,6 +47,6 @@ class FormatHandler:
 
 def _to_json_safe(value: Any) -> Any:
     try:
-        return json.loads(json.dumps(value, ensure_ascii=False, default=str))
-    except Exception:
+        return to_jsonable_python(value)
+    except (ValueError, TypeError):
         return value

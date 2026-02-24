@@ -56,6 +56,18 @@ class FakeProvider:
         return self.infer(batch_prompts, **kwargs)
 
 
+@dataclass
+class SingleStringProvider:
+    response: str
+    model_id: str | None = "single-string"
+
+    def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> str:
+        return self.response
+
+    async def ainfer(self, batch_prompts: Sequence[str], **kwargs: Any) -> str:
+        return self.response
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -132,6 +144,23 @@ class TestUpdateBasic:
             "skills": ["Python"],
             "years_experience": 3,
         }
+
+    def test_accepts_single_string_provider_output(self):
+        provider = SingleStringProvider(
+            response='[{"op": "replace", "path": "/role", "value": "Lead"}]'
+        )
+        result = update(
+            existing={
+                "name": "Alex",
+                "role": "Engineer",
+                "skills": ["Python"],
+                "years_experience": 3,
+            },
+            instruction="Promoted.",
+            target=User,
+            model=provider,
+        )
+        assert result.value.role == "Lead"
 
 
 class TestUpdateMarkdownFences:
@@ -249,6 +278,20 @@ class TestUpdateAsync:
         assert result.value.role == "Lead"
         assert result.attempts == 1
 
+    def test_aupdate_accepts_single_string_provider_output(self):
+        provider = SingleStringProvider(
+            response='[{"op": "replace", "path": "/role", "value": "Lead"}]'
+        )
+        result = asyncio.run(
+            aupdate(
+                existing={"name": "Alex", "role": "Engineer", "skills": [], "years_experience": 3},
+                instruction="Promoted.",
+                target=User,
+                model=provider,
+            )
+        )
+        assert result.value.role == "Lead"
+
 
 class TestUpdatePromptContent:
     """Verify that the prompt contains the right information."""
@@ -305,3 +348,32 @@ class TestUpdateEdgeCases:
             model=provider,
         )
         assert result.raw_text == raw
+
+
+class TestRetryPolicyValidation:
+    """RetryPolicy rejects invalid values."""
+
+    def test_negative_max_retries(self):
+        from parsantic.retry import RetryPolicy
+
+        with pytest.raises(ValueError, match="max_retries must be >= 0"):
+            RetryPolicy(max_retries=-1)
+
+    def test_negative_base_delay(self):
+        from parsantic.retry import RetryPolicy
+
+        with pytest.raises(ValueError, match="base_delay must be >= 0"):
+            RetryPolicy(base_delay=-1.0)
+
+    def test_negative_max_delay(self):
+        from parsantic.retry import RetryPolicy
+
+        with pytest.raises(ValueError, match="max_delay must be >= 0"):
+            RetryPolicy(max_delay=-1.0)
+
+    def test_valid_policy(self):
+        from parsantic.retry import RetryPolicy
+
+        policy = RetryPolicy(max_retries=3, base_delay=1.0, jitter=True)
+        assert policy.max_retries == 3
+        assert policy.delay_for_attempt(0) <= policy.max_delay

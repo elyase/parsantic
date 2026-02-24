@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 
 @dataclass(slots=True)
@@ -24,6 +24,15 @@ class Tokenizer(Protocol):
 
 
 _WORD_OR_PUNCT = re.compile(r"[\w']+|[^\w\s]+", re.UNICODE)
+TokenizerName = Literal["regex", "unicode"]
+
+try:
+    import regex as _regex  # type: ignore
+
+    _GRAPHEME_RE = _regex.compile(r"\X")
+except ImportError:  # pragma: no cover - exercised when missing
+    _regex = None
+    _GRAPHEME_RE = None
 
 
 class RegexTokenizer:
@@ -52,16 +61,14 @@ class RegexTokenizer:
 
 class UnicodeTokenizer:
     def tokenize(self, text: str) -> TokenizedText:
-        try:
-            import regex as uni_regex  # type: ignore
-        except Exception as exc:  # pragma: no cover - exercised when missing
+        if _regex is None or _GRAPHEME_RE is None:
             raise ImportError(
                 "UnicodeTokenizer requires the 'regex' package. Install with: pip install regex"
-            ) from exc
+            )
 
         tokens: list[Token] = []
         previous_end = 0
-        for match in uni_regex.finditer(r"\X", text):
+        for match in _GRAPHEME_RE.finditer(text):
             grapheme = match.group(0)
             start, end = match.span()
             if grapheme.isspace():
@@ -83,11 +90,13 @@ class UnicodeTokenizer:
         return TokenizedText(text=text, tokens=tokens)
 
 
-def get_tokenizer(tokenizer: str | Tokenizer | None) -> Tokenizer:
+def get_tokenizer(tokenizer: TokenizerName | Tokenizer | None) -> Tokenizer:
     if tokenizer is None or tokenizer == "regex":
         return RegexTokenizer()
     if tokenizer == "unicode":
         return UnicodeTokenizer()
+    if isinstance(tokenizer, str):
+        raise ValueError(f"Unknown tokenizer {tokenizer!r}. Expected one of: 'regex', 'unicode'.")
     return tokenizer
 
 

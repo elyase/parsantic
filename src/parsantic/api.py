@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 from .coerce import CoerceOptions, coerce_jsonish_to_python
 from .jsonish import JsonishValue, ParseOptions, parse_jsonish
 from .streaming import StreamParser
 from .types import CandidateDebug, CompletionState, ParseDebug
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +26,7 @@ def parse[T](
     target: type[T] | TypeAdapter[T],
     *,
     is_done: bool = True,
+    allow_partial: bool = False,
     parse_options: ParseOptions | None = None,
     coerce_options: CoerceOptions | None = None,
 ) -> ParseResult[T]:
@@ -34,13 +38,17 @@ def parse[T](
         _missing = object()
         try:
             validated = adapter.validate_json(text)
-        except Exception:
+        except (ValidationError, ValueError):
+            logger.debug("Direct JSON validation failed, falling back to jsonish pipeline")
             validated = _missing
         if validated is not _missing:
             return ParseResult(value=validated, flags=(), score=0)
     jsonish_value = parse_jsonish(text, options=parse_options or ParseOptions(), is_done=is_done)
     coerced = coerce_jsonish_to_python(
-        jsonish_value, adapter, options=coerce_options or CoerceOptions()
+        jsonish_value,
+        adapter,
+        options=coerce_options or CoerceOptions(),
+        allow_partial=allow_partial,
     )
     return ParseResult(value=coerced.value, flags=tuple(coerced.flags), score=coerced.score)
 
@@ -50,6 +58,7 @@ def coerce[T](
     target: type[T] | TypeAdapter[T],
     *,
     options: CoerceOptions | None = None,
+    allow_partial: bool = False,
 ) -> ParseResult[T]:
     """
     Coerce a Python object to match the target schema.
@@ -64,7 +73,7 @@ def coerce[T](
     try:
         validated = adapter.validate_python(value)
         return ParseResult(value=validated, flags=(), score=0)
-    except Exception:
+    except ValidationError:
         pass
 
     jv = JsonishValue(
@@ -72,7 +81,7 @@ def coerce[T](
         completion=CompletionState.COMPLETE,
         raw=str(value),
     )
-    sv = coerce_jsonish_to_python(jv, adapter, options=opts)
+    sv = coerce_jsonish_to_python(jv, adapter, options=opts, allow_partial=allow_partial)
     return ParseResult(value=sv.value, flags=tuple(sv.flags), score=sv.score)
 
 
@@ -81,6 +90,7 @@ def parse_debug[T](
     target: type[T] | TypeAdapter[T],
     *,
     is_done: bool = True,
+    allow_partial: bool = False,
     parse_options: ParseOptions | None = None,
     coerce_options: CoerceOptions | None = None,
 ) -> ParseDebug[T]:
@@ -112,7 +122,8 @@ def parse_debug[T](
                 chosen=chosen,
                 value=validated,
             )
-        except Exception as e:
+        # Keep direct JSON parse failures as a debug candidate before falling back to jsonish.
+        except (ValidationError, ValueError) as e:
             direct_error = str(e)
             candidates_debug.append(
                 CandidateDebug(
@@ -130,7 +141,12 @@ def parse_debug[T](
     if jsonish_value.candidates:
         for cand in jsonish_value.candidates:
             try:
-                sv = coerce_jsonish_to_python(cand, adapter, options=opts)
+                sv = coerce_jsonish_to_python(
+                    cand,
+                    adapter,
+                    options=opts,
+                    allow_partial=allow_partial,
+                )
                 candidates_debug.append(
                     CandidateDebug(
                         value_preview=sv.value,
@@ -138,6 +154,7 @@ def parse_debug[T](
                         score=sv.score,
                     )
                 )
+            # If a candidate fails to coerce, keep the raw representation for debugging.
             except Exception as e:
                 candidates_debug.append(
                     CandidateDebug(
@@ -148,12 +165,18 @@ def parse_debug[T](
                     )
                 )
 
+    logger.debug("parse_debug: collected %d candidates", len(candidates_debug))
+
     # Get the actual result
     try:
-        coerced = coerce_jsonish_to_python(jsonish_value, adapter, options=opts)
-        validated = adapter.validate_python(coerced.value)
+        coerced = coerce_jsonish_to_python(
+            jsonish_value,
+            adapter,
+            options=opts,
+            allow_partial=allow_partial,
+        )
         chosen = CandidateDebug(
-            value_preview=validated,
+            value_preview=coerced.value,
             flags=tuple(coerced.flags),
             score=coerced.score,
         )
@@ -163,9 +186,9 @@ def parse_debug[T](
             raw_text=text,
             candidates=candidates_debug,
             chosen=chosen,
-            value=validated,
+            value=coerced.value,
         )
-    except Exception:
+    except (ValidationError, ValueError, TypeError):
         return ParseDebug(
             raw_text=text,
             candidates=candidates_debug,
@@ -204,6 +227,7 @@ def coerce_debug[T](
             chosen=chosen,
             value=validated,
         )
+    # Keep broad behavior for direct validation failures while preserving debug detail.
     except Exception as e:
         candidates_debug.append(
             CandidateDebug(
@@ -229,6 +253,7 @@ def coerce_debug[T](
             chosen=chosen,
             value=result.value,
         )
+    # Keep broad behavior for adapter-specific failures during fallback coercion.
     except Exception as e:
         candidates_debug.append(
             CandidateDebug(

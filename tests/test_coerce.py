@@ -10,13 +10,13 @@ from pydantic import BaseModel, TypeAdapter
 
 from parsantic.api import parse, parse_stream
 from parsantic.coerce import (
-    _FLAG_WEIGHTS,
     CoerceOptions,
     _float_from_comma_separated,
     coerce_jsonish_to_python,
     normalize_key,
 )
 from parsantic.jsonish import JsonishValue
+from parsantic.scoring import FLAG_WEIGHTS
 from parsantic.types import CompletionState
 
 # ===========================================================================
@@ -297,7 +297,6 @@ def test_all_emitted_flags_have_explicit_weights():
         "string_to_float",
         "string_to_bool",
         "float_to_int",
-        "default_from_missing",
         "extra_key",
         "substring_match",
         "strip_punct",
@@ -313,5 +312,5 @@ def test_all_emitted_flags_have_explicit_weights():
         "key_collision",
         "max_depth_exceeded",
     }
-    missing = sorted(emitted_flags - set(_FLAG_WEIGHTS))
+    missing = sorted(emitted_flags - set(FLAG_WEIGHTS))
     assert not missing, f"Missing flag weights: {missing}"

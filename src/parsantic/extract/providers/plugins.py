@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import functools
+import logging
 import os
-import warnings
 from importlib import metadata
+
+logger = logging.getLogger(__name__)
 
 
 def _safe_entry_points(group: str) -> list:
@@ -23,7 +25,14 @@ def load_plugins_once() -> None:
             ep.load()
         except Exception as exc:
             # best-effort: plugin import failure shouldn't crash core
+            import warnings
+
             warnings.warn(
                 f"Failed to load parsantic provider plugin {ep.name!r}: {exc}",
                 stacklevel=2,
+            )
+            logger.warning(
+                "Failed to load parsantic provider plugin %r: %s",
+                ep.name,
+                exc,
             )

@@ -36,6 +36,7 @@ class ChunkDebug:
     raw_output: str
     flags: tuple[str, ...]
     score: int
+    error: str | None = None
 
 
 @dataclass(slots=True)

@@ -4,7 +4,7 @@ import difflib
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from .tokenizer import TokenizedText, Tokenizer, get_tokenizer, tokens_lower
+from .tokenizer import TokenizedText, Tokenizer, TokenizerName, get_tokenizer, tokens_lower
 from .types import AlignmentStatus, FieldEvidence
 
 
@@ -93,7 +93,7 @@ def align_value_to_text(
     path: str,
     value: str,
     *,
-    tokenizer: Tokenizer | None = None,
+    tokenizer: TokenizerName | Tokenizer | None = None,
     options: AlignmentOptions | None = None,
     tokenized_source: TokenizedText | None = None,
 ) -> FieldEvidence:

@@ -28,6 +28,7 @@ from .patch import (
     apply_patch_and_validate,
     normalize_patches,
 )
+from .retry import RetryPolicy
 from .types import CandidateDebug, ParseDebug
 from .update import UpdateResult, aupdate, update
 
@@ -41,6 +42,7 @@ __all__ = [
     "PatchError",
     "PatchPolicy",
     "PolicyViolationError",
+    "RetryPolicy",
     "apply_patch",
     "apply_patch_and_validate",
     "build_patch_prompt",

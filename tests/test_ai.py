@@ -194,11 +194,11 @@ class TestValidationErrorPaths:
 
     def test_rfc6901_escaping(self):
         """Segments with ~ or / should be properly escaped."""
-        from parsantic.ai import _escape_json_pointer_token
+        from parsantic.json_pointer import escape_json_pointer_token
 
-        assert _escape_json_pointer_token("a/b") == "a~1b"
-        assert _escape_json_pointer_token("a~b") == "a~0b"
-        assert _escape_json_pointer_token("a~/b") == "a~0~1b"
+        assert escape_json_pointer_token("a/b") == "a~1b"
+        assert escape_json_pointer_token("a~b") == "a~0b"
+        assert escape_json_pointer_token("a~/b") == "a~0~1b"
 
 
 # ---------------------------------------------------------------------------
@@ -548,6 +548,90 @@ class TestPatchRepairOutput:
             result = processor('{"name": "Rex", "age": 3}')
             assert isinstance(result, Pet)
 
+    def test_processor_reentrant_after_failure(self):
+        """After a non-ModelRetry exception, processor state resets for next run."""
+        from parsantic.ai import patch_repair_output
+
+        with patch("parsantic.ai._HAS_PYDANTIC_AI", True):
+            # max_attempts=0 so it never tries to raise ModelRetry (which
+            # would fail since pydantic-ai is not actually installed).
+            processor = patch_repair_output(Pet, max_attempts=0)
+            # First call: valid — should succeed
+            result = processor('{"name": "Rex", "age": 3}')
+            assert result.name == "Rex"
+            # Second call: invalid — should raise ValueError (no retries)
+            with pytest.raises(ValueError):
+                processor("totally invalid garbage not json at all")
+            # Third call: valid again — should succeed (state was reset)
+            result2 = processor('{"name": "Luna", "age": 2}')
+            assert result2.name == "Luna"
+            assert result2.age == 2
+
+    def test_processor_run_id_isolation(self):
+        """RunContext.run_id isolates state between different agent.run() calls."""
+        import uuid
+        from dataclasses import dataclass
+
+        from parsantic.ai import patch_repair_output
+
+        @dataclass
+        class FakeRunContext:
+            """Mimics pydantic_ai.RunContext with just the run_id field."""
+
+            run_id: uuid.UUID
+
+        with patch("parsantic.ai._HAS_PYDANTIC_AI", True):
+            processor = patch_repair_output(Pet, max_attempts=0)
+
+            # Simulate first agent.run() — valid input
+            ctx1 = FakeRunContext(run_id=uuid.uuid4())
+            result = processor(ctx1, text='{"name": "Rex", "age": 3}')
+            assert result.name == "Rex"
+
+            # Simulate second agent.run() with a NEW run_id — should work clean
+            ctx2 = FakeRunContext(run_id=uuid.uuid4())
+            result2 = processor(ctx2, text='{"name": "Luna", "age": 2}')
+            assert result2.name == "Luna"
+            assert result2.age == 2
+            # Successful runs clean up their state
+            assert processor._attempts == 0
+            assert processor._prev_doc is None
+
+    def test_processor_concurrent_run_isolation(self):
+        """Per-run-id dict isolates state for interleaved concurrent runs."""
+        from dataclasses import dataclass
+
+        from parsantic.ai import patch_repair_output
+
+        @dataclass
+        class FakeRunContext:
+            run_id: str
+
+        with patch("parsantic.ai._HAS_PYDANTIC_AI", True):
+            processor = patch_repair_output(Pet, max_attempts=0)
+
+            # Run A: inject mid-retry state via the per-run dict
+            processor._run_states["run-A"] = [1, {"name": "Rex", "age": "bad"}]
+
+            # Run B: succeeds independently without disturbing A
+            ctx_b = FakeRunContext(run_id="run-B")
+            result_b = processor(ctx_b, text='{"name": "Luna", "age": 2}')
+            assert result_b.name == "Luna"
+
+            # Run A's state should still be preserved in the dict
+            assert "run-A" in processor._run_states
+            assert processor._run_states["run-A"][0] == 1  # attempts
+            assert processor._run_states["run-A"][1] == {"name": "Rex", "age": "bad"}
+
+    def test_processor_has_name_attribute(self):
+        """Processor has __name__ for pydantic-ai's function_schema compatibility."""
+        from parsantic.ai import patch_repair_output
+
+        with patch("parsantic.ai._HAS_PYDANTIC_AI", True):
+            processor = patch_repair_output(Pet, max_attempts=0)
+            assert hasattr(processor, "__name__")
+            assert processor.__name__ == "patch_repair_processor"
+
 
 # ---------------------------------------------------------------------------
 # 8) Internal helper tests
@@ -605,9 +689,9 @@ class TestInternalHelpers:
         assert target == {"a": {"b": {"c": 42}}}
 
     def test_escape_json_pointer_token(self):
-        from parsantic.ai import _escape_json_pointer_token
+        from parsantic.json_pointer import escape_json_pointer_token
 
-        assert _escape_json_pointer_token("simple") == "simple"
-        assert _escape_json_pointer_token("a/b") == "a~1b"
-        assert _escape_json_pointer_token("a~b") == "a~0b"
-        assert _escape_json_pointer_token("~1") == "~01"
+        assert escape_json_pointer_token("simple") == "simple"
+        assert escape_json_pointer_token("a/b") == "a~1b"
+        assert escape_json_pointer_token("a~b") == "a~0b"
+        assert escape_json_pointer_token("~1") == "~01"

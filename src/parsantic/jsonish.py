@@ -72,7 +72,7 @@ def parse_jsonish(
     # 1) strict JSON
     try:
         val = json.loads(text)
-    except Exception:
+    except (json.JSONDecodeError, ValueError):
         val = None
     else:
         # match Rust: top-level numbers are treated as incomplete (streaming-friendly)
@@ -100,6 +100,7 @@ def parse_jsonish(
     if options.allow_fixes:
         try:
             candidates.extend(_fixing_parse(text, is_done=is_done))
+        # Keep broad behavior when the fixing parser fails and continue with fallback strategies.
         except Exception:
             pass
 
@@ -117,7 +118,7 @@ def parse_jsonish(
                         fixes=("closed_unclosed",),
                     )
                 )
-            except Exception:
+            except (json.JSONDecodeError, ValueError):
                 pass
 
     # 5) fallback string
@@ -168,7 +169,7 @@ def _candidate_priority(candidate: JsonishValue, idx: int) -> tuple[int, int, in
         type_rank = 2
     try:
         size_rank = -len(json.dumps(candidate.value, ensure_ascii=False, default=str))
-    except Exception:
+    except (ValueError, TypeError):
         size_rank = 0
     return (
         completion_rank,
@@ -221,6 +222,7 @@ def _parse_markdown_blocks(
                         is_done=is_done,
                         _depth=_depth + 1,
                     )
+                # Keep broad behavior when parsing a markdown candidate fails.
                 except Exception:
                     continue
                 md_content = candidate
@@ -241,6 +243,7 @@ def _parse_markdown_blocks(
                 is_done=is_done,
                 _depth=_depth + 1,
             )
+        # Keep broad behavior when parsing markdown wrapper fails.
         except Exception:
             continue
         # Flatten nested AnyOf: markdown is a wrapper, not a candidate set by itself.
@@ -299,7 +302,7 @@ def _parse_all_json_objects(
     for substring, completion in _balanced_json_substrings(text):
         try:
             parsed = json.loads(substring)
-        except Exception:
+        except (json.JSONDecodeError, ValueError):
             continue
         cmpl = CompletionState.COMPLETE if completion else CompletionState.INCOMPLETE
         results.append(
@@ -368,6 +371,7 @@ def _fixing_parse(text: str, *, is_done: bool) -> list[JsonishValue]:
     raw = text
     try:
         candidates = parse_fixing(text)
+    # Keep broad behavior for fixer failures; return empty candidate list.
     except Exception:
         return []
 

@@ -349,7 +349,7 @@ class TestKeyCollision:
 class TestDeterministicSelection:
     def test_pick_best_by_index(self):
         """Ensure _pick_best uses index not repr for tie-breaking."""
-        from parsantic.coerce import _pick_best
+        from parsantic.scoring import pick_best
         from parsantic.types import ScoredValue
 
         # Two candidates with identical score and flag count
@@ -357,7 +357,7 @@ class TestDeterministicSelection:
         sv2 = ScoredValue(value="aaa", flags=(), score=0)
         # With repr, "aaa" < "zzz" so sv2 would win.
         # With index, sv1 should win (comes first).
-        result = _pick_best([sv1, sv2])
+        result = pick_best([sv1, sv2])
         assert result.value == "zzz"  # index 0 wins
 
 

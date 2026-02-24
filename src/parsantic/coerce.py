@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 import enum
+import logging
 import re
 import types as py_types
 import unicodedata
-from collections.abc import Iterable
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any, Literal, Union, get_args, get_origin
 
 from pydantic import BaseModel, TypeAdapter
 
 from .jsonish import JsonishValue
+from .scoring import pick_best, score_flags
 from .types import CompletionState, ScoredValue, is_scalar
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -23,45 +27,22 @@ class CoerceOptions:
     allow_substring_enum_match: bool = False
 
 
-# Flag weights (lower is better), inspired by `engine/baml-lib/jsonish/src/deserializer/score.rs`.
-_FLAG_WEIGHTS: dict[str, int] = {
-    "fixed_json": 0,
-    "fixed_array": 1,
-    "markdown": 0,
-    "markdown_array": 1,
-    "closed_unclosed": 0,
-    "grepped_json": 0,
-    "grepped_array": 1,
-    "markdown_tail": 5,
-    "inferred_array": 5,
-    "as_string": 2,
-    "single_to_array": 1,
-    "object_to_string": 2,
-    "string_to_int": 1,
-    "string_to_float": 1,
-    "string_to_bool": 1,
-    "float_to_int": 1,
-    "default_from_missing": 100,
-    "extra_key": 1,
-    "substring_match": 2,
-    "strip_punct": 3,
-    "case_insensitive": 3,
-    "accent_insensitive": 2,
-    "key_normalized": 3,
-    "implied_key": 2,
-    "partial_model": 0,
-    "partial_unvalidated": 50,
-    "ambiguous_key": 10,
-    "ambiguous_key_kept": 8,
-    "ambiguous_enum": 20,
-    "key_collision": 5,
-    "max_depth_exceeded": 50,
-}
-
-
 def _adapter_target_type(adapter: TypeAdapter[Any]) -> Any | None:
     # Pydantic does not expose this as a stable public API yet.
     return getattr(adapter, "_type", None)
+
+
+@lru_cache(maxsize=1024)
+def _cached_type_adapter(annotation: Any) -> TypeAdapter[Any]:
+    return TypeAdapter(annotation)
+
+
+def _type_adapter_for(annotation: Any) -> TypeAdapter[Any]:
+    try:
+        return _cached_type_adapter(annotation)
+    except TypeError:
+        # Fallback for unhashable annotations.
+        return TypeAdapter(annotation)
 
 
 def _validate(adapter: TypeAdapter[Any], value: Any) -> Any:
@@ -91,10 +72,12 @@ def coerce_jsonish_to_python(
                 sv = coerce_jsonish_to_python(
                     cand, adapter, options=options, allow_partial=allow_partial
                 )
+            # Keep broad fallback behavior for nested candidate coercion failures.
             except Exception:
                 continue
             # Early exit: score 0 means perfect match with no coercion flags.
             if sv.score == 0:
+                logger.debug("Found perfect match candidate with score 0")
                 return sv
             scored.append(sv)
         if not scored:
@@ -102,24 +85,28 @@ def coerce_jsonish_to_python(
             raw_val = value.value if is_scalar(value.value) else value.raw
             try:
                 validated = _validate(adapter, raw_val)
+            # Keep broad behavior for raw-string fallback validation.
             except Exception:
                 if allow_partial:
                     flags = ("object_to_string", "partial_unvalidated")
-                    return ScoredValue(value=raw_val, flags=flags, score=_score_flags(flags))
+                    return ScoredValue(value=raw_val, flags=flags, score=score_flags(flags))
                 raise
             return ScoredValue(
                 value=validated,
                 flags=("object_to_string",),
-                score=_score_flags(("object_to_string",)),
+                score=score_flags(("object_to_string",)),
             )
-        return _pick_best(scored)
+        best = pick_best(scored)
+        logger.debug("Picked best candidate: score=%d, flags=%s", best.score, best.flags)
+        return best
 
     base_flags = tuple(value.fixes)
 
     # Fast path: already valid
     try:
         validated = _validate(adapter, value.value)
-        return ScoredValue(value=validated, flags=base_flags, score=_score_flags(base_flags))
+        return ScoredValue(value=validated, flags=base_flags, score=score_flags(base_flags))
+    # Keep broad behavior for adapter validation failures before additional coercions.
     except Exception:
         pass
 
@@ -129,7 +116,7 @@ def coerce_jsonish_to_python(
         if enum_result is not None:
             validated, enum_flags = enum_result
             flags = base_flags + tuple(enum_flags)
-            return ScoredValue(value=validated, flags=flags, score=_score_flags(flags))
+            return ScoredValue(value=validated, flags=flags, score=score_flags(flags))
 
     # Single-field model "implied key" coercion (ported from BAML class coercer):
     # if a model has exactly one field, treat the entire value as that field when needed.
@@ -137,7 +124,7 @@ def coerce_jsonish_to_python(
     if implied is not None:
         validated, implied_flags = implied
         flags = base_flags + tuple(implied_flags)
-        return ScoredValue(value=validated, flags=flags, score=_score_flags(flags))
+        return ScoredValue(value=validated, flags=flags, score=score_flags(flags))
 
     # Schema-aligned dict coercion for Pydantic models: normalize/match keys before validating.
     if isinstance(value.value, dict):
@@ -146,7 +133,8 @@ def coerce_jsonish_to_python(
             try:
                 validated = _validate(adapter, mapped)
                 flags = base_flags + tuple(key_flags)
-                return ScoredValue(value=validated, flags=flags, score=_score_flags(flags))
+                return ScoredValue(value=validated, flags=flags, score=score_flags(flags))
+            # Keep broad behavior for mapped-key validation failures.
             except Exception:
                 pass
 
@@ -159,7 +147,8 @@ def coerce_jsonish_to_python(
             try:
                 validated = _validate(adapter, coerced_mapped)
                 flags = base_flags + tuple(key_flags) + tuple(value_flags)
-                return ScoredValue(value=validated, flags=flags, score=_score_flags(flags))
+                return ScoredValue(value=validated, flags=flags, score=score_flags(flags))
+            # Keep broad behavior for mapped-value validation failures.
             except Exception:
                 pass
 
@@ -167,7 +156,7 @@ def coerce_jsonish_to_python(
     if allow_partial and isinstance(value.value, dict):
         partial, partial_flags = _partial_model_dict(adapter, value.value, options=options)
         flags = base_flags + tuple(partial_flags) + ("partial_model",)
-        return ScoredValue(value=partial, flags=flags, score=_score_flags(flags) + 1)
+        return ScoredValue(value=partial, flags=flags, score=score_flags(flags) + 1)
 
     # If the input is a string but schema expects number/bool/null, try casting.
     if isinstance(value.value, str):
@@ -178,7 +167,8 @@ def coerce_jsonish_to_python(
             try:
                 validated = _validate(adapter, i)
                 flags = base_flags + ("string_to_int",)
-                return ScoredValue(value=validated, flags=flags, score=_score_flags(flags))
+                return ScoredValue(value=validated, flags=flags, score=score_flags(flags))
+            # Keep broad behavior for string-to-int adapter failures.
             except Exception:
                 pass
         f = _try_float(s)
@@ -186,7 +176,8 @@ def coerce_jsonish_to_python(
             try:
                 validated = _validate(adapter, f)
                 flags = base_flags + ("string_to_float",)
-                return ScoredValue(value=validated, flags=flags, score=_score_flags(flags))
+                return ScoredValue(value=validated, flags=flags, score=score_flags(flags))
+            # Keep broad behavior for string-to-float adapter failures.
             except Exception:
                 pass
         b = _try_bool(s)
@@ -194,7 +185,8 @@ def coerce_jsonish_to_python(
             try:
                 validated = _validate(adapter, b)
                 flags = base_flags + ("string_to_bool",)
-                return ScoredValue(value=validated, flags=flags, score=_score_flags(flags))
+                return ScoredValue(value=validated, flags=flags, score=score_flags(flags))
+            # Keep broad behavior for string-to-bool adapter failures.
             except Exception:
                 pass
 
@@ -202,23 +194,25 @@ def coerce_jsonish_to_python(
     if not isinstance(value.value, list):
         try:
             validated = _validate(adapter, [value.value])
+        # Keep broad behavior for single-item array wrapping fallback.
         except Exception:
             validated = None
         if validated is not None:
             flags = base_flags + ("single_to_array",)
-            return ScoredValue(value=validated, flags=flags, score=_score_flags(flags))
+            return ScoredValue(value=validated, flags=flags, score=score_flags(flags))
 
     # Fallback: try validating raw string representation (object->string)
     raw_val = value.value if is_scalar(value.value) else value.raw
     try:
         validated = _validate(adapter, raw_val)
+    # Keep broad behavior for final raw-string fallback validation failures.
     except Exception:
         if allow_partial:
             flags = base_flags + ("object_to_string", "partial_unvalidated")
-            return ScoredValue(value=raw_val, flags=flags, score=_score_flags(flags))
+            return ScoredValue(value=raw_val, flags=flags, score=score_flags(flags))
         raise
     flags = base_flags + ("object_to_string",)
-    return ScoredValue(value=validated, flags=flags, score=_score_flags(flags))
+    return ScoredValue(value=validated, flags=flags, score=score_flags(flags))
 
 
 # ---------------------------------------------------------------------------
@@ -239,15 +233,16 @@ def _coerce_to_type(
         return ScoredValue(
             value=value,
             flags=("max_depth_exceeded",),
-            score=_score_flags(("max_depth_exceeded",)),
+            score=score_flags(("max_depth_exceeded",)),
         )
 
-    adapter = TypeAdapter(target_type)
+    adapter = _type_adapter_for(target_type)
 
     # Fast path: already valid
     try:
         validated = _validate(adapter, value)
         return ScoredValue(value=validated, flags=(), score=0)
+    # Keep broad behavior for fast-path validation failures before recursive coercion.
     except Exception:
         pass
 
@@ -280,7 +275,7 @@ def _coerce_to_type(
                 for m in target_type:
                     mval = m.value if isinstance(m.value, str) else m.name
                     if mval == matched:
-                        return ScoredValue(value=m, flags=flags, score=_score_flags(flags))
+                        return ScoredValue(value=m, flags=flags, score=score_flags(flags))
 
     # --- Literal ---
     if origin is Literal:
@@ -289,7 +284,7 @@ def _coerce_to_type(
             if str_args:
                 matched, flags = _match_enum_value(value, str_args, options)
                 if matched is not None:
-                    return ScoredValue(value=matched, flags=flags, score=_score_flags(flags))
+                    return ScoredValue(value=matched, flags=flags, score=score_flags(flags))
 
     # --- BaseModel ---
     if isinstance(target_type, type) and issubclass(target_type, BaseModel):
@@ -307,8 +302,9 @@ def _coerce_to_type(
                 return ScoredValue(
                     value=validated,
                     flags=("string_to_int",),
-                    score=_score_flags(("string_to_int",)),
+                    score=score_flags(("string_to_int",)),
                 )
+            # Keep broad behavior for recursive int conversion attempts.
             except Exception:
                 pass
         f = _try_float(s)
@@ -318,8 +314,9 @@ def _coerce_to_type(
                 return ScoredValue(
                     value=validated,
                     flags=("string_to_float",),
-                    score=_score_flags(("string_to_float",)),
+                    score=score_flags(("string_to_float",)),
                 )
+            # Keep broad behavior for recursive float conversion attempts.
             except Exception:
                 pass
         b = _try_bool(s)
@@ -329,8 +326,9 @@ def _coerce_to_type(
                 return ScoredValue(
                     value=validated,
                     flags=("string_to_bool",),
-                    score=_score_flags(("string_to_bool",)),
+                    score=score_flags(("string_to_bool",)),
                 )
+            # Keep broad behavior for recursive bool conversion attempts.
             except Exception:
                 pass
 
@@ -340,7 +338,7 @@ def _coerce_to_type(
             return ScoredValue(
                 value=int(round(value)),
                 flags=("float_to_int",),
-                score=_score_flags(("float_to_int",)),
+                score=score_flags(("float_to_int",)),
             )
 
     # Last resort: try adapter directly (may raise)
@@ -361,11 +359,12 @@ def _coerce_union(
         try:
             sv = _coerce_to_type(value, vtype, options, _depth=_depth)
             scored.append(sv)
+        # Keep broad behavior for union branch failures and keep trying other variants.
         except Exception:
             continue
     if not scored:
         raise ValueError(f"Cannot coerce {value!r} to Union{variants!r}")
-    return _pick_best(scored)
+    return pick_best(scored)
 
 
 def _coerce_list(
@@ -379,7 +378,7 @@ def _coerce_list(
         return ScoredValue(
             value=[sv.value],
             flags=combined,
-            score=_score_flags(combined),
+            score=score_flags(combined),
         )
     out: list[Any] = []
     all_flags: list[str] = []
@@ -562,18 +561,6 @@ def _try_enum_literal_match(
 # ---------------------------------------------------------------------------
 
 
-def _score_flags(flags: Iterable[str]) -> int:
-    return sum(_FLAG_WEIGHTS.get(f, 5) for f in flags)
-
-
-def _pick_best(scored: list[ScoredValue]) -> ScoredValue:
-    # B5: Deterministic: sort by (score, len(flags), index) - use enumeration index
-    # instead of repr(value) for deterministic tie-breaking by candidate generation order.
-    return sorted(enumerate(scored), key=lambda pair: (pair[1].score, len(pair[1].flags), pair[0]))[
-        0
-    ][1]
-
-
 # ---------------------------------------------------------------------------
 # Scalar coercion helpers
 # ---------------------------------------------------------------------------
@@ -589,7 +576,7 @@ def _try_int(s: str) -> int | None:
     s = s.rstrip(",")
     try:
         return int(s)
-    except Exception:
+    except (ValueError, TypeError):
         pass
     # float-ish: only allow when the float is within epsilon of an integer
     try:
@@ -598,7 +585,7 @@ def _try_int(s: str) -> int | None:
             return int(round(fval))
         # NOT safe to round -- return None
         return None
-    except Exception:
+    except (ValueError, TypeError):
         return None
 
 
@@ -609,7 +596,7 @@ def _try_float(s: str) -> float | None:
     s = s.rstrip(",")
     try:
         return float(s)
-    except Exception:
+    except (ValueError, TypeError):
         pass
     m = _FRACTION.match(s)
     if m:
@@ -679,7 +666,7 @@ def _float_from_comma_separated(text: str) -> float | None:
     without_currency = _strip_currency_symbols(without_commas)
     try:
         return float(without_currency)
-    except Exception:
+    except (ValueError, TypeError):
         return None
 
 
@@ -716,11 +703,12 @@ def _partial_model_dict(
         try:
             coerced = coerce_jsonish_to_python(
                 JsonishValue(value=raw_val, completion=CompletionState.COMPLETE, raw=str(raw_val)),
-                TypeAdapter(field.annotation),
+                _type_adapter_for(field.annotation),
                 options=options,
             )
             out[field_name] = coerced.value
             flags.extend(coerced.flags)
+        # Keep broad behavior for field-level partial coercion failures.
         except Exception:
             continue
     return out, flags
@@ -751,10 +739,11 @@ def _coerce_model_values(
         try:
             coerced = coerce_jsonish_to_python(
                 JsonishValue(value=raw_val, completion=CompletionState.COMPLETE, raw=str(raw_val)),
-                TypeAdapter(field.annotation),
+                _type_adapter_for(field.annotation),
                 options=options,
                 allow_partial=allow_partial,
             )
+        # Keep broad behavior for field-level coercion failures when coercing model dictionaries.
         except Exception:
             continue
         out[field_name] = coerced.value
@@ -886,7 +875,8 @@ def _try_implied_single_field_model(
             return None
 
     try:
-        validated = TypeAdapter(model_type).validate_python({field_name: value})
+        validated = _type_adapter_for(model_type).validate_python({field_name: value})
+    # Keep broad behavior for implied-key validation failures.
     except Exception:
         return None
     return validated, ["implied_key"]

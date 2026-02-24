@@ -2,23 +2,15 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Protocol, TypeVar
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, TypeAdapter
 
 T = TypeVar("T")
 
 
-class SchemaAdapter(Protocol[T]):
-    def validate(self, value: Any) -> T: ...
-
-    def dump(self, value: T) -> Any: ...
-
-    def render_schema(self, mode: str = "compact") -> str: ...
-
-
 @dataclass(slots=True)
-class PydanticSchemaAdapter(SchemaAdapter[T]):
+class PydanticSchemaAdapter:
     adapter: TypeAdapter[T]
 
     @classmethod
