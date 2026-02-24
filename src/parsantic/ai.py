@@ -614,8 +614,11 @@ def patch_repair_output[T](
                 # ModelRetry means pydantic-ai will call us again within the
                 # same run, so state must persist for the next retry.
                 if isinstance(exc, Exception):
-                    MR = _get_model_retry()
-                    keep_state = isinstance(exc, MR)
+                    try:
+                        MR = _get_model_retry()
+                        keep_state = isinstance(exc, MR)
+                    except ImportError:
+                        pass
                 raise
             finally:
                 if keep_state:
