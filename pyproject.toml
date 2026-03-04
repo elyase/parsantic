@@ -32,6 +32,7 @@ ai = ["pydantic-ai>=0.0.36"]
 vision = ["pymupdf>=1.24.0", "pillow>=10.0.0"]
 
 [project.urls]
+Documentation = "https://elyase.github.io/parsantic"
 Repository = "https://github.com/elyase/parsantic"
 Issues = "https://github.com/elyase/parsantic/issues"
 

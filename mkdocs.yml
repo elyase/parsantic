@@ -1,9 +1,19 @@
 site_name: parsantic
+site_url: https://elyase.github.io/parsantic
 repo_url: https://github.com/elyase/parsantic
 repo_name: elyase/parsantic
 
 theme:
   name: material
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
 
 plugins:
   - search
