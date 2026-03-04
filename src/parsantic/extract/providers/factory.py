@@ -55,6 +55,14 @@ def _kwargs_with_environment_defaults(
                     env_sources[0][0],
                 )
 
+    if "vertex" in lowered:
+        if "project_id" not in resolved and os.getenv("VERTEX_PROJECT_ID"):
+            resolved["project_id"] = os.getenv("VERTEX_PROJECT_ID")
+        if "region" not in resolved and os.getenv("VERTEX_REGION"):
+            resolved["region"] = os.getenv("VERTEX_REGION")
+        if "service_account_file" not in resolved and os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+            resolved["service_account_file"] = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+
     if model_id and "ollama" in model_id.lower() and "base_url" not in resolved:
         resolved["base_url"] = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     if "base_url" not in resolved:
