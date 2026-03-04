@@ -1,7 +1,7 @@
 from .alignment import AlignmentOptions
 from .chunking import TextChunk
 from .formatting import FormatOptions
-from .options import ExtractOptions
+from .options import ExtractOptions, MediaOptions
 from .pipeline import Extractor, aextract, extract, extract_aiter, extract_iter
 from .prompt import Example, Prompt, PromptValidationLevel
 from .providers.static import StaticProvider
@@ -19,6 +19,7 @@ __all__ = [
     "Extractor",
     "FieldEvidence",
     "FormatOptions",
+    "MediaOptions",
     "Prompt",
     "PromptValidationLevel",
     "StaticProvider",
