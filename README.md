@@ -185,6 +185,105 @@ applies the patches with safety rails (`remove` disabled by default), and
 validates the result with schema-aware coercion. If validation fails, it
 automatically retries with the error context.
 
+## Extract from PDFs and images (requires `[ai]` extra)
+
+Pass a `Document` instead of a string to extract structured data from visual
+content — scanned invoices, screenshots, research papers:
+
+```python
+from pathlib import Path
+from pydantic import BaseModel
+from parsantic import extract
+from parsantic.extract import Document
+
+class Invoice(BaseModel):
+    invoice_number: str
+    vendor: str
+    total: float
+
+result = extract(
+    Document.from_pdf(Path("invoice.pdf")),
+    Invoice,
+    model="gemini:gemini-2.5-flash",
+)
+result.value
+# Invoice(invoice_number='INV-2024-001', vendor='Acme Corp', total=1250.00)
+```
+
+Images work the same way:
+
+```python
+result = extract(
+    Document.from_image(Path("receipt.jpg")),
+    Invoice,
+    model="openai:gpt-4o-mini",
+)
+```
+
+By default, PDFs with a text layer are extracted as text (no vision cost);
+otherwise pages are rasterized to images. Control this with `MediaOptions`:
+
+```python
+from parsantic.extract.options import ExtractOptions, MediaOptions
+
+result = extract(
+    Document.from_pdf(pdf_bytes),
+    Invoice,
+    model="openai:gpt-4o-mini",
+    options=ExtractOptions(
+        media=MediaOptions(pdf_mode="raster", page_strategy="map_reduce"),
+    ),
+)
+```
+
+| `pdf_mode` | Behavior |
+| :--- | :--- |
+| `"auto"` | Text layer → text extraction; otherwise rasterize (default) |
+| `"native"` | Send raw PDF binary to the model |
+| `"raster"` | Convert every page to JPEG/PNG |
+
+## Vertex AI support
+
+Use `vertex:` prefix with any Gemini model to route through Vertex AI:
+
+```python
+result = extract(
+    "Dr. Sarah Chen is a principal ML engineer at Anthropic.",
+    Person,
+    model="vertex:gemini-2.5-flash",
+    provider_kwargs={"project_id": "my-project", "region": "us-central1"},
+)
+```
+
+Credentials are resolved automatically from environment variables
+(`VERTEX_PROJECT_ID`, `VERTEX_REGION`, `GOOGLE_APPLICATION_CREDENTIALS`)
+or from `gcloud auth application-default login`.
+
+## Native structured output
+
+When the model supports it (Gemini, OpenAI, etc.), parsantic can use the
+provider's native JSON schema constraints instead of prompt-based extraction.
+This is enabled by default (`"auto"`) and falls back to prompt mode
+transparently:
+
+```python
+result = extract(
+    text,
+    MySchema,
+    model="gemini:gemini-2.5-flash",
+    options=ExtractOptions(structured_output="native"),  # or "auto" (default)
+)
+```
+
+| `structured_output` | Behavior |
+| :--- | :--- |
+| `"auto"` | Use native mode if the model supports it, otherwise prompt (default) |
+| `"native"` | Force native JSON schema constraints |
+| `"prompt"` | Always use prompt-based extraction |
+
+If native mode fails validation, parsantic automatically recovers the raw
+JSON from the response and runs it through the local repair pipeline.
+
 ## Candidate scoring
 
 When the input is ambiguous, `parsantic` generates multiple candidate
@@ -337,7 +436,7 @@ source text with interactive HTML visualization.
 
 ```bash
 uv sync
-make test        # 345 tests
+make test        # 514 tests
 make check       # lint + format
 make fmt         # auto-fix
 ```
