@@ -10,6 +10,17 @@ from .tokenizer import Tokenizer, TokenizerName
 
 
 @dataclass(slots=True)
+class MediaOptions:
+    pdf_mode: Literal["auto", "native", "raster"] = "auto"
+    raster_dpi: int = 200
+    max_image_dim: int = 2048
+    page_strategy: Literal["auto", "single", "map_reduce"] = "auto"
+    grounding: Literal["off", "auto", "force"] = "auto"
+    raster_format: Literal["jpeg", "png"] = "jpeg"
+    jpeg_quality: int = 85
+
+
+@dataclass(slots=True)
 class ExtractOptions:
     passes: int = 1
     max_char_buffer: int | None = None
@@ -18,6 +29,7 @@ class ExtractOptions:
     overlap_chars: int = 0
     tokenizer: TokenizerName | Tokenizer | None = None
     alignment: AlignmentOptions = field(default_factory=AlignmentOptions)
+    media: MediaOptions = field(default_factory=MediaOptions)
     format: FormatOptions = field(default_factory=FormatOptions)
     prompt_validation: PromptValidationLevel = PromptValidationLevel.WARNING
     schema_mode: Literal["compact", "pretty"] = "compact"
