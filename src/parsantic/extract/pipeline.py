@@ -132,48 +132,63 @@ def _render_prompt(
     format_handler: FormatHandler,
     additional_context: str | None,
     output_kind: Literal["object", "array"] | None = None,
+    native_mode: bool = False,
 ) -> str:
     lines: list[str] = [prompt.description.strip(), ""]
     if additional_context:
         lines.append(additional_context)
         lines.append("")
 
-    # E5: Add explicit output format instructions
-    fmt = format_handler.options.format.lower() if format_handler.options else "json"
-    if fmt == "json":
-        expected_kind = output_kind or "object"
-        if format_handler.options and format_handler.options.wrapper_key:
-            expected_kind = "object"
-        lines.append(
-            f"Output a single JSON {expected_kind}. "
-            "Do not include any surrounding prose or commentary."
-        )
-        if format_handler.options and format_handler.options.wrapper_key:
+    if not native_mode:
+        # E5: Add explicit output format instructions
+        fmt = format_handler.options.format.lower() if format_handler.options else "json"
+        if fmt == "json":
+            expected_kind = output_kind or "object"
+            if format_handler.options and format_handler.options.wrapper_key:
+                expected_kind = "object"
             lines.append(
-                f'Wrap the result list under the key "{format_handler.options.wrapper_key}".'
+                f"Output a single JSON {expected_kind}. "
+                "Do not include any surrounding prose or commentary."
             )
-        lines.append("")
-    elif fmt == "yaml":
-        lines.append("Output YAML only. Do not include any surrounding prose or commentary.")
-        if format_handler.options and format_handler.options.wrapper_key:
-            lines.append(
-                f'Wrap the result list under the key "{format_handler.options.wrapper_key}".'
-            )
-        lines.append("")
-
-    if schema_text:
-        lines.append("Schema:")
-        lines.append(schema_text)
-        lines.append("")
-    if examples:
-        lines.append("Examples")
-        for ex in examples:
-            formatted = format_handler.format_example(ex.output)
-            lines.append(f"Q: {ex.text}")
-            lines.append("A: " + formatted)
+            if format_handler.options and format_handler.options.wrapper_key:
+                lines.append(
+                    f'Wrap the result list under the key "{format_handler.options.wrapper_key}".'
+                )
             lines.append("")
-    lines.append(f"Q: {question}")
-    lines.append("A:")
+        elif fmt == "yaml":
+            lines.append("Output YAML only. Do not include any surrounding prose or commentary.")
+            if format_handler.options and format_handler.options.wrapper_key:
+                lines.append(
+                    f'Wrap the result list under the key "{format_handler.options.wrapper_key}".'
+                )
+            lines.append("")
+
+        if schema_text:
+            lines.append("Schema:")
+            lines.append(schema_text)
+            lines.append("")
+
+    if examples:
+        if native_mode:
+            for ex in examples:
+                formatted = format_handler.format_example(ex.output)
+                lines.append("Example:")
+                lines.append(f"{ex.text} \u2192 {formatted}")
+                lines.append("")
+        else:
+            lines.append("Examples")
+            for ex in examples:
+                formatted = format_handler.format_example(ex.output)
+                lines.append(f"Q: {ex.text}")
+                lines.append("A: " + formatted)
+                lines.append("")
+
+    if native_mode:
+        lines.append("---")
+        lines.append(question)
+    else:
+        lines.append(f"Q: {question}")
+        lines.append("A:")
     return "\n".join(lines)
 
 
@@ -372,6 +387,7 @@ def _build_extraction_context(
 
     if use_native:
         logger.debug("Native structured output enabled for %s", type(provider).__name__)
+        schema_text = None  # redundant when provider constrains output via its own schema
 
     return _ExtractionContext(
         documents=documents,
@@ -594,6 +610,7 @@ def _build_media_inference_requests(
             format_handler=ctx.format_handler,
             additional_context=doc.additional_context,
             output_kind=ctx.output_kind,
+            native_mode=ctx.use_native_schema,
         )
         requests.append(
             InferenceRequest(
@@ -745,6 +762,7 @@ def _build_single_inference_request(
         format_handler=ctx.format_handler,
         additional_context=doc.additional_context,
         output_kind=ctx.output_kind,
+        native_mode=ctx.use_native_schema,
     )
     return InferenceRequest(
         prompt=prompt_text,
@@ -972,6 +990,7 @@ def _prepare_document_chunks_and_prompts(
             format_handler=ctx.format_handler,
             additional_context=doc.additional_context,
             output_kind=ctx.output_kind,
+            native_mode=ctx.use_native_schema,
         )
         for chunk in chunks
     ]
