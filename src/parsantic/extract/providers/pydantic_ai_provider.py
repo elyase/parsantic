@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 try:
     from pydantic_ai import Agent
@@ -22,6 +22,7 @@ except ImportError:  # pragma: no cover
 
 from parsantic.config import DEFAULT_MODEL
 
+from .base import InferenceRequest
 from .registry import register
 
 # Match any "provider:model" string for common providers, plus bare model names.
@@ -95,10 +96,14 @@ def _build_model_with_credentials(
 
         if provider_name == "gemini":
             from pydantic_ai.models.google import GoogleModel
-            from pydantic_ai.providers.google_gla import GoogleGLAProvider
+
+            try:
+                from pydantic_ai.providers.google import GoogleProvider
+            except ImportError:
+                from pydantic_ai.providers.google_gla import GoogleGLAProvider as GoogleProvider
 
             gla_kwargs = {k: v for k, v in provider_kwargs.items() if k == "api_key"}
-            provider = _build_provider(GoogleGLAProvider, gla_kwargs)
+            provider = _build_provider(GoogleProvider, gla_kwargs)
             return GoogleModel(model_name, provider=provider)
     except (ImportError, TypeError):
         pass
@@ -121,6 +126,7 @@ class PydanticAIProvider:
     api_key: str | None = None
     base_url: str | None = None
     max_concurrency: int = 8
+    supported_attachment_kinds: ClassVar[frozenset[str]] = frozenset({"image", "pdf"})
     _agent: Any = field(default=None, repr=False, init=False)
 
     def __post_init__(self) -> None:
@@ -143,6 +149,41 @@ class PydanticAIProvider:
             results.append(result.output)
         return results
 
+    def _build_message_parts(self, request: InferenceRequest) -> list[Any]:
+        """Convert InferenceRequest to pydantic-ai message parts (text + BinaryContent)."""
+        from pydantic_ai.messages import BinaryContent
+
+        from parsantic.extract.media.attachments import AttachmentKind
+
+        parts: list[Any] = []
+        for attachment in request.attachments:
+            if isinstance(attachment.source, bytes):
+                data = attachment.source
+            else:
+                data = attachment.source.read_bytes()
+
+            media_type = attachment.mime_type
+            if media_type is None:
+                if attachment.kind is AttachmentKind.PDF:
+                    media_type = "application/pdf"
+                elif attachment.kind is AttachmentKind.IMAGE:
+                    media_type = "image/png"
+                else:
+                    media_type = "application/octet-stream"
+
+            parts.append(BinaryContent(data=data, media_type=media_type))
+
+        parts.append(request.prompt)
+        return parts
+
+    def infer_media(self, batch: Sequence[InferenceRequest], **kwargs: Any) -> Sequence[str]:
+        results: list[str] = []
+        for request in batch:
+            parts = self._build_message_parts(request)
+            result = self._agent.run_sync(parts, **kwargs)
+            results.append(result.output)
+        return results
+
     async def ainfer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
         concurrency = kwargs.pop("max_concurrency", self.max_concurrency)
         semaphore = asyncio.Semaphore(max(1, int(concurrency)))
@@ -153,3 +194,15 @@ class PydanticAIProvider:
                 return result.output
 
         return list(await asyncio.gather(*(_run_prompt(prompt) for prompt in batch_prompts)))
+
+    async def ainfer_media(self, batch: Sequence[InferenceRequest], **kwargs: Any) -> Sequence[str]:
+        concurrency = kwargs.pop("max_concurrency", self.max_concurrency)
+        semaphore = asyncio.Semaphore(max(1, int(concurrency)))
+
+        async def _run_request(request: InferenceRequest) -> str:
+            async with semaphore:
+                parts = self._build_message_parts(request)
+                result = await self._agent.run(parts, **kwargs)
+                return result.output
+
+        return list(await asyncio.gather(*(_run_request(request) for request in batch)))

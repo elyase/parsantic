@@ -1,7 +1,7 @@
 [project]
 name = "parsantic"
-version = "0.3.0"
-description = "Schema-aligned parsing (SAP) for Pydantic v2"
+version = "0.4.0"
+description = "Schema-aligned parsing"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
@@ -29,6 +29,7 @@ authors = [
 
 [project.optional-dependencies]
 ai = ["pydantic-ai>=0.0.36"]
+vision = ["pymupdf>=1.24.0", "pillow>=10.0.0"]
 
 [project.urls]
 Repository = "https://github.com/elyase/parsantic"

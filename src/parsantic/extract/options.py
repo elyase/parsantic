@@ -15,6 +15,9 @@ class MediaOptions:
     raster_dpi: int = 200
     max_image_dim: int = 2048
     page_strategy: Literal["auto", "single", "map_reduce"] = "auto"
+    grounding: Literal["off", "auto", "force"] = "auto"
+    raster_format: Literal["jpeg", "png"] = "jpeg"
+    jpeg_quality: int = 85
 
 
 @dataclass(slots=True)
