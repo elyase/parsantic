@@ -6,8 +6,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from parsantic.extract.providers.factory import _kwargs_with_environment_defaults
-from parsantic.extract.providers.pydantic_ai_provider import (
+pydantic_ai = pytest.importorskip("pydantic_ai")
+
+from parsantic.extract.providers.factory import _kwargs_with_environment_defaults  # noqa: E402
+from parsantic.extract.providers.pydantic_ai_provider import (  # noqa: E402
     _build_model_with_credentials,
     _parse_model_spec,
 )
@@ -108,6 +110,7 @@ class TestBuildModelVertex:
 
     def test_vertex_service_account_file_modern_path(self):
         """service_account_file loads credentials via google.auth for GoogleProvider."""
+        pytest.importorskip("google.auth")
         mock_google_model_cls = MagicMock()
         mock_google_provider_cls = MagicMock()
         mock_creds = MagicMock()
@@ -138,6 +141,7 @@ class TestBuildModelVertex:
 
     def test_vertex_bad_service_account_file_propagates_error(self):
         """Invalid service_account_file raises, not silently swallowed."""
+        pytest.importorskip("google.auth")
         mock_google_model_cls = MagicMock()
         mock_google_provider_cls = MagicMock()
 

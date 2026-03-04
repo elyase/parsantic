@@ -8,8 +8,10 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import BaseModel
 
-from parsantic.extract.options import ExtractOptions
-from parsantic.extract.providers.pydantic_ai_provider import (
+pydantic_ai = pytest.importorskip("pydantic_ai")
+
+from parsantic.extract.options import ExtractOptions  # noqa: E402
+from parsantic.extract.providers.pydantic_ai_provider import (  # noqa: E402
     PydanticAIProvider,
     _extract_raw_json_from_messages,
     _parse_model_spec,
