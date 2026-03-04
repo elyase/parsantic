@@ -26,6 +26,9 @@ jobs:
           - task: test
             command: uv run --no-sync pytest
             sync_args: ""
+          - task: docs
+            command: uv run --no-sync mkdocs build --strict
+            sync_args: --group docs
           - task: build
             command: uv build
             sync_args: ""

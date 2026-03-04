@@ -3,6 +3,7 @@
 [![CI](https://github.com/elyase/parsantic/actions/workflows/ci.yml/badge.svg)](https://github.com/elyase/parsantic/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/parsantic)](https://pypi.org/project/parsantic/)
 [![Python](https://img.shields.io/pypi/pyversions/parsantic)](https://pypi.org/project/parsantic/)
+[![Docs](https://img.shields.io/badge/docs-elyase.github.io%2Fparsantic-blue)](https://elyase.github.io/parsantic/)
 [![License](https://img.shields.io/pypi/l/parsantic)](https://github.com/elyase/parsantic/blob/main/LICENSE)
 
 The structured extraction toolkit: parse, stream, extract, update, patch,
