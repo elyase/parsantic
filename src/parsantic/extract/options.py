@@ -33,6 +33,7 @@ class ExtractOptions:
     format: FormatOptions = field(default_factory=FormatOptions)
     prompt_validation: PromptValidationLevel = PromptValidationLevel.WARNING
     schema_mode: Literal["compact", "pretty"] = "compact"
+    structured_output: Literal["auto", "native", "prompt"] = "auto"
     repair: Literal["none", "local"] = "none"
     chunk_error: Literal["raise", "skip"] = "skip"
     merge_strategy: Literal["first_wins", "last_wins", "prefer_non_null"] = "first_wins"

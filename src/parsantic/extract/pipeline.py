@@ -280,6 +280,8 @@ class _ExtractionContext:
     output_kind: Literal["object", "array"] | None
     normalized_examples: list[Example]
     provider: Any
+    target_type: type[Any] | None = None
+    use_native_schema: bool = False
 
 
 def _build_extraction_context(
@@ -340,6 +342,37 @@ def _build_extraction_context(
         )
     )
 
+    # Determine if we should use native structured output
+    structured_mode = opts.structured_output
+    supports = getattr(provider, "supports_native_structured_output", None)
+    provider_supports = callable(supports) and supports()
+
+    use_native = False
+    if structured_mode == "native":
+        if provider_supports:
+            use_native = True
+        else:
+            logger.warning(
+                "structured_output='native' requested but provider %s does not "
+                "support native structured output; falling back to prompt mode",
+                type(provider).__name__,
+            )
+    elif structured_mode == "auto":
+        use_native = provider_supports
+
+    # Resolve target_type for native structured output
+    target_type: type[Any] | None = None
+    if use_native:
+        if isinstance(target, type):
+            target_type = target
+        elif isinstance(target, TypeAdapter):
+            target_type = None  # Can't resolve type from TypeAdapter reliably
+        if target_type is None:
+            use_native = False
+
+    if use_native:
+        logger.debug("Native structured output enabled for %s", type(provider).__name__)
+
     return _ExtractionContext(
         documents=documents,
         prompt_obj=prompt_obj,
@@ -350,6 +383,8 @@ def _build_extraction_context(
         output_kind=output_kind,
         normalized_examples=normalized_examples,
         provider=provider,
+        target_type=target_type,
+        use_native_schema=use_native,
     )
 
 
@@ -449,6 +484,7 @@ def _infer_batch(
     provider: Any,
     prompts: Sequence[str],
     batch_length: int,
+    **infer_kwargs: Any,
 ) -> list[str]:
     """Call provider.infer in batches of *batch_length* and concatenate results."""
     logger.debug("Batched inference: %d prompts, batch_length=%d", len(prompts), batch_length)
@@ -456,7 +492,7 @@ def _infer_batch(
     for i in range(0, len(prompts), batch_length):
         batch = prompts[i : i + batch_length]
         outputs = normalize_text_outputs(
-            provider.infer(batch),
+            provider.infer(batch, **infer_kwargs),
             expected_count=len(batch),
             context="provider.infer",
         )
@@ -469,6 +505,7 @@ def _infer_batch_parallel(
     prompts: Sequence[str],
     batch_length: int,
     max_workers: int,
+    **infer_kwargs: Any,
 ) -> list[str]:
     """Call provider.infer in batches of *batch_length* with ThreadPoolExecutor."""
     batches: list[Sequence[str]] = []
@@ -483,7 +520,8 @@ def _infer_batch_parallel(
     max_workers = max(1, max_workers)
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_idx = {
-            executor.submit(provider.infer, batch): idx for idx, batch in enumerate(batches)
+            executor.submit(provider.infer, batch, **infer_kwargs): idx
+            for idx, batch in enumerate(batches)
         }
         for future in concurrent.futures.as_completed(future_to_idx):
             idx = future_to_idx[future]
@@ -573,6 +611,7 @@ def _infer_media_batch(
     provider: Any,
     requests: Sequence[InferenceRequest],
     batch_length: int,
+    **infer_kwargs: Any,
 ) -> list[str]:
     """Call provider.infer_media in batches."""
     logger.debug(
@@ -582,7 +621,7 @@ def _infer_media_batch(
     for i in range(0, len(requests), batch_length):
         batch = requests[i : i + batch_length]
         outputs = normalize_text_outputs(
-            provider.infer_media(batch),
+            provider.infer_media(batch, **infer_kwargs),
             expected_count=len(batch),
             context="provider.infer_media",
         )
@@ -594,15 +633,16 @@ async def _ainfer_media_batch(
     provider: Any,
     requests: Sequence[InferenceRequest],
     batch_length: int,
+    **infer_kwargs: Any,
 ) -> list[str]:
     """Async version of media batched inference."""
     all_outputs: list[str] = []
     for i in range(0, len(requests), batch_length):
         batch = requests[i : i + batch_length]
         if isinstance(provider, SupportsAsyncMediaInfer):
-            outputs = await provider.ainfer_media(batch)
+            outputs = await provider.ainfer_media(batch, **infer_kwargs)
         else:
-            outputs = await asyncio.to_thread(provider.infer_media, batch)
+            outputs = await asyncio.to_thread(provider.infer_media, batch, **infer_kwargs)
         outputs = normalize_text_outputs(
             outputs,
             expected_count=len(batch),
@@ -619,6 +659,7 @@ def _infer_media_batch_parallel(
     requests: Sequence[InferenceRequest],
     batch_length: int,
     max_workers: int,
+    **infer_kwargs: Any,
 ) -> list[str]:
     """Call provider.infer_media in batches with ThreadPoolExecutor."""
     batch_length = max(1, batch_length)
@@ -630,7 +671,8 @@ def _infer_media_batch_parallel(
     batch_results: dict[int, list[str]] = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_idx = {
-            executor.submit(provider.infer_media, batch): idx for idx, batch in enumerate(batches)
+            executor.submit(provider.infer_media, batch, **infer_kwargs): idx
+            for idx, batch in enumerate(batches)
         }
         for future in concurrent.futures.as_completed(future_to_idx):
             idx = future_to_idx[future]
@@ -650,6 +692,7 @@ async def _ainfer_media_batch_parallel(
     requests: Sequence[InferenceRequest],
     batch_length: int,
     max_workers: int,
+    **infer_kwargs: Any,
 ) -> list[str]:
     """Async parallel media inference with semaphore."""
     batch_length = max(1, batch_length)
@@ -662,9 +705,9 @@ async def _ainfer_media_batch_parallel(
     async def _run_batch(batch: Sequence[InferenceRequest]) -> list[str]:
         async with sem:
             if isinstance(provider, SupportsAsyncMediaInfer):
-                raw = await provider.ainfer_media(batch)
+                raw = await provider.ainfer_media(batch, **infer_kwargs)
             else:
-                raw = await asyncio.to_thread(provider.infer_media, batch)
+                raw = await asyncio.to_thread(provider.infer_media, batch, **infer_kwargs)
             return normalize_text_outputs(
                 raw,
                 expected_count=len(batch),
@@ -1177,6 +1220,12 @@ def extract_iter[T](
                 doc = text_doc
                 has_media = False
 
+        # Build kwargs for native structured output (ignored by non-PydanticAI providers)
+        _native_kwargs: dict[str, Any] = {}
+        if ctx.use_native_schema and ctx.target_type is not None:
+            _native_kwargs["target_type"] = ctx.target_type
+            _native_kwargs["structured_output"] = ctx.opts.structured_output
+
         if has_media:
             _check_media_capability(ctx.provider, is_async=False)
             native_pdf = _provider_supports_native_pdf(ctx.provider)
@@ -1196,7 +1245,9 @@ def extract_iter[T](
                 single_req = _build_single_inference_request(ctx, doc, media_chunks)
                 rendered_prompt_preview: str | None = single_req.prompt[:500] if debug else None
                 for _pass in range(max(1, ctx.opts.passes)):
-                    inferred = _infer_media_batch(ctx.provider, [single_req], batch_length)
+                    inferred = _infer_media_batch(
+                        ctx.provider, [single_req], batch_length, **_native_kwargs
+                    )
                     state = _accumulate_media_pass(
                         pass_index=_pass,
                         state=state,
@@ -1216,10 +1267,16 @@ def extract_iter[T](
                 )
                 for _pass in range(max(1, ctx.opts.passes)):
                     if max_workers <= 1:
-                        inferred = _infer_media_batch(ctx.provider, media_requests, batch_length)
+                        inferred = _infer_media_batch(
+                            ctx.provider, media_requests, batch_length, **_native_kwargs
+                        )
                     else:
                         inferred = _infer_media_batch_parallel(
-                            ctx.provider, media_requests, batch_length, max_workers
+                            ctx.provider,
+                            media_requests,
+                            batch_length,
+                            max_workers,
+                            **_native_kwargs,
                         )
                     state = _accumulate_media_pass(
                         pass_index=_pass,
@@ -1242,10 +1299,12 @@ def extract_iter[T](
 
             for _pass in range(max(1, ctx.opts.passes)):
                 if max_workers <= 1:
-                    inferred = _infer_batch(ctx.provider, chunk_prompts, batch_length)
+                    inferred = _infer_batch(
+                        ctx.provider, chunk_prompts, batch_length, **_native_kwargs
+                    )
                 else:
                     inferred = _infer_batch_parallel(
-                        ctx.provider, chunk_prompts, batch_length, max_workers
+                        ctx.provider, chunk_prompts, batch_length, max_workers, **_native_kwargs
                     )
                 _accumulate_pass(
                     pass_index=_pass,
@@ -1278,15 +1337,16 @@ async def _ainfer_batch(
     provider: Any,
     prompts: Sequence[str],
     batch_length: int,
+    **infer_kwargs: Any,
 ) -> list[str]:
     """Async version of batched inference (sequential)."""
     all_outputs: list[str] = []
     for i in range(0, len(prompts), batch_length):
         batch = prompts[i : i + batch_length]
         if hasattr(provider, "ainfer"):
-            outputs = await provider.ainfer(batch)
+            outputs = await provider.ainfer(batch, **infer_kwargs)
         else:
-            outputs = await asyncio.to_thread(provider.infer, batch)
+            outputs = await asyncio.to_thread(provider.infer, batch, **infer_kwargs)
         outputs = normalize_text_outputs(
             outputs,
             expected_count=len(batch),
@@ -1301,6 +1361,7 @@ async def _ainfer_batch_parallel(
     prompts: Sequence[str],
     batch_length: int,
     max_workers: int,
+    **infer_kwargs: Any,
 ) -> list[str]:
     """Async version of batched inference with concurrency via asyncio.gather."""
     batch_length = max(1, batch_length)
@@ -1317,9 +1378,9 @@ async def _ainfer_batch_parallel(
     async def _run_batch(batch: Sequence[str]) -> list[str]:
         async with sem:
             if hasattr(provider, "ainfer"):
-                raw = await provider.ainfer(batch)
+                raw = await provider.ainfer(batch, **infer_kwargs)
             else:
-                raw = await asyncio.to_thread(provider.infer, batch)
+                raw = await asyncio.to_thread(provider.infer, batch, **infer_kwargs)
             return normalize_text_outputs(
                 raw,
                 expected_count=len(batch),
@@ -1364,6 +1425,12 @@ async def extract_aiter[T](
                 doc = text_doc
                 has_media = False
 
+        # Build kwargs for native structured output (ignored by non-PydanticAI providers)
+        _native_kwargs: dict[str, Any] = {}
+        if ctx.use_native_schema and ctx.target_type is not None:
+            _native_kwargs["target_type"] = ctx.target_type
+            _native_kwargs["structured_output"] = ctx.opts.structured_output
+
         if has_media:
             _check_media_capability(ctx.provider, is_async=True)
             native_pdf = _provider_supports_native_pdf(ctx.provider)
@@ -1383,7 +1450,9 @@ async def extract_aiter[T](
                 single_req = _build_single_inference_request(ctx, doc, media_chunks)
                 rendered_prompt_preview: str | None = single_req.prompt[:500] if debug else None
                 for _pass in range(max(1, ctx.opts.passes)):
-                    inferred = await _ainfer_media_batch(ctx.provider, [single_req], batch_length)
+                    inferred = await _ainfer_media_batch(
+                        ctx.provider, [single_req], batch_length, **_native_kwargs
+                    )
                     state = _accumulate_media_pass(
                         pass_index=_pass,
                         state=state,
@@ -1404,11 +1473,15 @@ async def extract_aiter[T](
                 for _pass in range(max(1, ctx.opts.passes)):
                     if max_workers <= 1:
                         inferred = await _ainfer_media_batch(
-                            ctx.provider, media_requests, batch_length
+                            ctx.provider, media_requests, batch_length, **_native_kwargs
                         )
                     else:
                         inferred = await _ainfer_media_batch_parallel(
-                            ctx.provider, media_requests, batch_length, max_workers
+                            ctx.provider,
+                            media_requests,
+                            batch_length,
+                            max_workers,
+                            **_native_kwargs,
                         )
                     state = _accumulate_media_pass(
                         pass_index=_pass,
@@ -1431,10 +1504,12 @@ async def extract_aiter[T](
 
             for _pass in range(max(1, ctx.opts.passes)):
                 if max_workers <= 1:
-                    inferred = await _ainfer_batch(ctx.provider, chunk_prompts, batch_length)
+                    inferred = await _ainfer_batch(
+                        ctx.provider, chunk_prompts, batch_length, **_native_kwargs
+                    )
                 else:
                     inferred = await _ainfer_batch_parallel(
-                        ctx.provider, chunk_prompts, batch_length, max_workers
+                        ctx.provider, chunk_prompts, batch_length, max_workers, **_native_kwargs
                     )
                 _accumulate_pass(
                     pass_index=_pass,

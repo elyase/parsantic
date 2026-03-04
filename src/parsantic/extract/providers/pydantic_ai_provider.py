@@ -9,12 +9,16 @@ Supports model strings like ``openai:gpt-4o-mini``, ``anthropic:claude-sonnet``,
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
+
+from pydantic_core import to_jsonable_python
 
 try:
-    from pydantic_ai import Agent
+    from pydantic_ai import Agent, NativeOutput, capture_run_messages
 
     _HAS_PYDANTIC_AI = True
 except ImportError:  # pragma: no cover
@@ -24,6 +28,8 @@ from parsantic.config import DEFAULT_MODEL
 
 from .base import InferenceRequest
 from .registry import register
+
+logger = logging.getLogger(__name__)
 
 # Match any "provider:model" string for common providers, plus bare model names.
 _PATTERNS = (
@@ -53,8 +59,9 @@ def _parse_model_spec(model_spec: str) -> tuple[str, str]:
 
 def _build_model_with_credentials(
     model_spec: str,
-    api_key: str | None,
-    base_url: str | None,
+    api_key: str | None = None,
+    base_url: str | None = None,
+    **extra_kwargs: Any,
 ) -> Any:
     """Create a pydantic-ai Model object with explicit credentials.
 
@@ -105,6 +112,39 @@ def _build_model_with_credentials(
             gla_kwargs = {k: v for k, v in provider_kwargs.items() if k == "api_key"}
             provider = _build_provider(GoogleProvider, gla_kwargs)
             return GoogleModel(model_name, provider=provider)
+
+        if provider_name == "vertex":
+            from pydantic_ai.models.google import GoogleModel
+
+            try:
+                from pydantic_ai.providers.google import GoogleProvider as _GProvider
+
+                vertex_kwargs: dict[str, Any] = {"vertexai": True}
+                if extra_kwargs.get("project_id"):
+                    vertex_kwargs["project"] = extra_kwargs["project_id"]
+                if extra_kwargs.get("region"):
+                    vertex_kwargs["location"] = extra_kwargs["region"]
+                if extra_kwargs.get("service_account_file"):
+                    import google.auth
+
+                    creds, _ = google.auth.load_credentials_from_file(
+                        extra_kwargs["service_account_file"]
+                    )
+                    vertex_kwargs["credentials"] = creds
+                provider = _GProvider(**vertex_kwargs)
+            except (ImportError, TypeError):
+                from pydantic_ai.providers.google_vertex import GoogleVertexProvider
+
+                vertex_kwargs = {}
+                if extra_kwargs.get("project_id"):
+                    vertex_kwargs["project_id"] = extra_kwargs["project_id"]
+                if extra_kwargs.get("region"):
+                    vertex_kwargs["region"] = extra_kwargs["region"]
+                if extra_kwargs.get("service_account_file"):
+                    vertex_kwargs["service_account_file"] = extra_kwargs["service_account_file"]
+                provider = GoogleVertexProvider(**vertex_kwargs)
+
+            return GoogleModel(model_name, provider=provider)
     except (ImportError, TypeError):
         pass
 
@@ -112,22 +152,63 @@ def _build_model_with_credentials(
     return model_spec
 
 
+def _result_to_json_string(output: Any) -> str:
+    """Serialize a pydantic-ai result back to a JSON string."""
+    if isinstance(output, str):
+        return output
+    return json.dumps(to_jsonable_python(output), ensure_ascii=False)
+
+
+def _extract_raw_json_from_messages(messages: list[Any]) -> str | None:
+    """Extract raw JSON string from pydantic-ai message history.
+
+    On validation failure, we can recover the raw LLM output from messages
+    so parsantic's repair pipeline can attempt to fix it.
+
+    Prioritizes ToolCallPart (structured JSON) over TextPart to avoid
+    returning reasoning text when the actual payload is in a tool call.
+    """
+    try:
+        from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
+    except ImportError:
+        return None
+
+    for msg in reversed(messages):
+        if not isinstance(msg, ModelResponse):
+            continue
+        # First pass: look for tool calls (these contain structured JSON)
+        for part in msg.parts:
+            if isinstance(part, ToolCallPart):
+                return part.args_as_json_str()
+        # Second pass: fall back to text content
+        for part in msg.parts:
+            if isinstance(part, TextPart) and part.content.strip():
+                return part.content
+    return None
+
+
 @register(*_PATTERNS, priority=10)
 @dataclass(slots=True)
 class PydanticAIProvider:
     """Provider that delegates to pydantic-ai for model execution.
 
-    The provider asks for raw text (``output_type=str``) so that
-    parsantic's own parsing/coercion/alignment pipeline handles
-    the structured output extraction downstream.
+    By default uses ``output_type=str`` so parsantic's own pipeline handles
+    parsing/coercion/alignment. When ``structured_output='native'`` or
+    ``'auto'`` with a capable provider, uses pydantic-ai's ``NativeOutput``
+    to leverage provider-native JSON schema constraints (Gemini response_schema,
+    OpenAI response_format, etc.), then serializes back to JSON string.
     """
 
     model_id: str | None = None
     api_key: str | None = None
     base_url: str | None = None
+    project_id: str | None = None
+    region: str | None = None
+    service_account_file: str | None = None
     max_concurrency: int = 8
     supported_attachment_kinds: ClassVar[frozenset[str]] = frozenset({"image", "pdf"})
     _agent: Any = field(default=None, repr=False, init=False)
+    _supports_native: bool = field(default=False, repr=False, init=False)
 
     def __post_init__(self) -> None:
         if not _HAS_PYDANTIC_AI:
@@ -136,17 +217,155 @@ class PydanticAIProvider:
             )
         model_spec = self.model_id or DEFAULT_MODEL
 
-        if self.api_key or self.base_url:
-            model = _build_model_with_credentials(model_spec, self.api_key, self.base_url)
+        has_credentials = (
+            self.api_key
+            or self.base_url
+            or self.project_id
+            or self.region
+            or self.service_account_file
+        )
+        if has_credentials:
+            model = _build_model_with_credentials(
+                model_spec,
+                api_key=self.api_key,
+                base_url=self.base_url,
+                project_id=self.project_id,
+                region=self.region,
+                service_account_file=self.service_account_file,
+            )
             self._agent = Agent(model, output_type=str)
         else:
             self._agent = Agent(model_spec, output_type=str)
 
-    def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
+        # Detect native structured output capability from model profile
+        try:
+            profile = self._agent.model.profile
+            self._supports_native = getattr(profile, "supports_json_schema_output", False)
+        except Exception:
+            self._supports_native = False
+
+    def supports_native_structured_output(self) -> bool:
+        """Whether the underlying model supports native JSON schema output."""
+        return self._supports_native
+
+    def _resolve_output_type(
+        self,
+        target_type: type[Any] | None,
+        structured_output: Literal["auto", "native", "prompt"],
+    ) -> Any | None:
+        """Resolve the pydantic-ai output_type override for this call.
+
+        Returns NativeOutput(target_type) when native mode is active,
+        or None to use the default str output.
+        """
+        if not _HAS_PYDANTIC_AI or target_type is None:
+            return None
+
+        use_native = structured_output == "native" or (
+            structured_output == "auto" and self._supports_native
+        )
+        if not use_native:
+            return None
+
+        try:
+            return NativeOutput(target_type)
+        except Exception:
+            logger.debug("Failed to build NativeOutput for %s, falling back to str", target_type)
+            return None
+
+    def _run_with_native_fallback(
+        self,
+        user_prompt: Any,
+        *,
+        target_type: type[Any] | None,
+        structured_output: Literal["auto", "native", "prompt"],
+        **kwargs: Any,
+    ) -> str:
+        """Run a single prompt, trying native structured output with fallback.
+
+        If native output fails, attempts to extract raw JSON from the captured
+        message history for parsantic's repair pipeline. If no raw JSON is
+        recovered, re-raises the exception (the prompt still contains schema
+        text, so the pipeline can retry at a higher level if needed).
+        """
+        output_type_override = self._resolve_output_type(target_type, structured_output)
+
+        if output_type_override is not None:
+            with capture_run_messages() as captured:
+                try:
+                    result = self._agent.run_sync(
+                        user_prompt, output_type=output_type_override, **kwargs
+                    )
+                    return _result_to_json_string(result.output)
+                except Exception as exc:
+                    raw = _extract_raw_json_from_messages(captured)
+
+                    if raw is not None:
+                        logger.debug(
+                            "Native structured output validation failed, "
+                            "returning raw JSON for repair: %s",
+                            exc,
+                        )
+                        return raw
+
+                    # No raw JSON recovered — re-raise
+                    raise
+
+        # prompt mode: plain str output (current behavior)
+        result = self._agent.run_sync(user_prompt, **kwargs)
+        return result.output
+
+    async def _arun_with_native_fallback(
+        self,
+        user_prompt: Any,
+        *,
+        target_type: type[Any] | None,
+        structured_output: Literal["auto", "native", "prompt"],
+        **kwargs: Any,
+    ) -> str:
+        """Async version of _run_with_native_fallback."""
+        output_type_override = self._resolve_output_type(target_type, structured_output)
+
+        if output_type_override is not None:
+            with capture_run_messages() as captured:
+                try:
+                    result = await self._agent.run(
+                        user_prompt, output_type=output_type_override, **kwargs
+                    )
+                    return _result_to_json_string(result.output)
+                except Exception as exc:
+                    raw = _extract_raw_json_from_messages(captured)
+
+                    if raw is not None:
+                        logger.debug(
+                            "Native structured output validation failed, "
+                            "returning raw JSON for repair: %s",
+                            exc,
+                        )
+                        return raw
+
+                    raise
+
+        result = await self._agent.run(user_prompt, **kwargs)
+        return result.output
+
+    def infer(
+        self,
+        batch_prompts: Sequence[str],
+        *,
+        target_type: type[Any] | None = None,
+        structured_output: Literal["auto", "native", "prompt"] = "prompt",
+        **kwargs: Any,
+    ) -> Sequence[str]:
         results: list[str] = []
         for prompt in batch_prompts:
-            result = self._agent.run_sync(prompt, **kwargs)
-            results.append(result.output)
+            output = self._run_with_native_fallback(
+                prompt,
+                target_type=target_type,
+                structured_output=structured_output,
+                **kwargs,
+            )
+            results.append(output)
         return results
 
     def _build_message_parts(self, request: InferenceRequest) -> list[Any]:
@@ -176,33 +395,67 @@ class PydanticAIProvider:
         parts.append(request.prompt)
         return parts
 
-    def infer_media(self, batch: Sequence[InferenceRequest], **kwargs: Any) -> Sequence[str]:
+    def infer_media(
+        self,
+        batch: Sequence[InferenceRequest],
+        *,
+        target_type: type[Any] | None = None,
+        structured_output: Literal["auto", "native", "prompt"] = "prompt",
+        **kwargs: Any,
+    ) -> Sequence[str]:
         results: list[str] = []
         for request in batch:
             parts = self._build_message_parts(request)
-            result = self._agent.run_sync(parts, **kwargs)
-            results.append(result.output)
+            output = self._run_with_native_fallback(
+                parts,
+                target_type=target_type,
+                structured_output=structured_output,
+                **kwargs,
+            )
+            results.append(output)
         return results
 
-    async def ainfer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
+    async def ainfer(
+        self,
+        batch_prompts: Sequence[str],
+        *,
+        target_type: type[Any] | None = None,
+        structured_output: Literal["auto", "native", "prompt"] = "prompt",
+        **kwargs: Any,
+    ) -> Sequence[str]:
         concurrency = kwargs.pop("max_concurrency", self.max_concurrency)
         semaphore = asyncio.Semaphore(max(1, int(concurrency)))
 
         async def _run_prompt(prompt: str) -> str:
             async with semaphore:
-                result = await self._agent.run(prompt, **kwargs)
-                return result.output
+                return await self._arun_with_native_fallback(
+                    prompt,
+                    target_type=target_type,
+                    structured_output=structured_output,
+                    **kwargs,
+                )
 
         return list(await asyncio.gather(*(_run_prompt(prompt) for prompt in batch_prompts)))
 
-    async def ainfer_media(self, batch: Sequence[InferenceRequest], **kwargs: Any) -> Sequence[str]:
+    async def ainfer_media(
+        self,
+        batch: Sequence[InferenceRequest],
+        *,
+        target_type: type[Any] | None = None,
+        structured_output: Literal["auto", "native", "prompt"] = "prompt",
+        **kwargs: Any,
+    ) -> Sequence[str]:
         concurrency = kwargs.pop("max_concurrency", self.max_concurrency)
         semaphore = asyncio.Semaphore(max(1, int(concurrency)))
 
         async def _run_request(request: InferenceRequest) -> str:
             async with semaphore:
                 parts = self._build_message_parts(request)
-                result = await self._agent.run(parts, **kwargs)
-                return result.output
+                return await self._arun_with_native_fallback(
+                    parts,
+                    target_type=target_type,
+                    structured_output=structured_output,
+                    **kwargs,
+                )
 
         return list(await asyncio.gather(*(_run_request(request) for request in batch)))
