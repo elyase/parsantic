@@ -34,7 +34,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 from .api import ParseResult
 from .json_pointer import parse_json_pointer
@@ -69,6 +69,15 @@ class JsonPatchOp(BaseModel):
     op: Literal["add", "replace", "remove"]
     path: str
     value: Any | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _require_value_for_add_replace(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            op = data.get("op")
+            if op in ("add", "replace") and "value" not in data:
+                raise ValueError(f"'{op}' operation requires a 'value' field")
+        return data
 
 
 class PatchDoc(BaseModel):
@@ -237,7 +246,9 @@ def _list_index(token: str, lst: list[Any], *, allow_dash: bool, allow_append: b
 # ---------------------------------------------------------------------------
 
 
-def _apply_add(doc: Any, tokens: list[str], value: Any, *, max_depth: int) -> None:
+def _apply_add(
+    doc: Any, tokens: list[str], value: Any, *, max_depth: int, allow_append: bool = True
+) -> None:
     """Apply an ``add`` operation (mutates *doc* in-place)."""
     parent, last = _resolve_parent(doc, tokens, max_depth=max_depth, create_missing=True)
     if isinstance(parent, dict):
@@ -246,7 +257,7 @@ def _apply_add(doc: Any, tokens: list[str], value: Any, *, max_depth: int) -> No
         if last == "-":
             parent.append(value)
         else:
-            idx = _list_index(last, parent, allow_dash=True, allow_append=True)
+            idx = _list_index(last, parent, allow_dash=True, allow_append=allow_append)
             if idx == len(parent):
                 parent.append(value)
             else:
@@ -378,12 +389,14 @@ def _validate_policy(patches: Sequence[JsonPatchOp], policy: PatchPolicy) -> Non
         if patch.op == "remove" and not policy.allow_remove:
             raise PolicyViolationError("Remove operations are not allowed by the current policy")
         # Disallow ``/-`` append unless policy permits it.
-        if patch.path.endswith("/-") and not policy.allow_append:
+        # Check for "-" in any token position, not just the final segment,
+        # to prevent bypass via intermediate "/-/" paths.
+        tokens = _parse_pointer(patch.path)
+        if not policy.allow_append and any(t == "-" for t in tokens):
             raise PolicyViolationError(
                 "Append (/-) operations are not allowed by the current policy"
             )
-        # Check path depth.
-        tokens = _parse_pointer(patch.path)
+        # Check path depth (tokens already parsed above).
         if len(tokens) > policy.max_path_depth:
             raise PolicyViolationError(
                 f"Path {patch.path!r} has depth {len(tokens)}, "
@@ -434,7 +447,13 @@ def apply_patch(
     for patch in patches:
         tokens = _parse_pointer(patch.path)
         if patch.op == "add":
-            _apply_add(result, tokens, patch.value, max_depth=policy.max_path_depth)
+            _apply_add(
+                result,
+                tokens,
+                patch.value,
+                max_depth=policy.max_path_depth,
+                allow_append=policy.allow_append,
+            )
         elif patch.op == "replace":
             _apply_replace(result, tokens, patch.value, max_depth=policy.max_path_depth)
         elif patch.op == "remove":
@@ -515,6 +534,9 @@ def normalize_patches(patches: Any) -> list[JsonPatchOp]:
     if isinstance(patches, dict):
         if "patches" in patches:
             patches = patches["patches"]
+            # Handle string-wrapped patches: {"patches": "[{...}, {...}]"}
+            if isinstance(patches, str):
+                patches = _parse_json_string(patches)
         else:
             # Treat a single dict as a one-element list.
             patches = [patches]

@@ -43,38 +43,41 @@ class User(BaseModel):
 
 
 class TestBasicAddReplace:
-    def test_add_top_level_key(self):
-        doc = {"name": "Alice"}
-        patches = [JsonPatchOp(op="add", path="/age", value=30)]
-        result = apply_patch(doc, patches)
-        assert result == {"name": "Alice", "age": 30}
-
-    def test_replace_top_level_key(self):
-        doc = {"name": "Alice", "age": 28}
-        patches = [JsonPatchOp(op="replace", path="/age", value=29)]
-        result = apply_patch(doc, patches)
-        assert result == {"name": "Alice", "age": 29}
-
-    def test_add_overwrites_existing(self):
-        doc = {"name": "Alice", "age": 28}
-        patches = [JsonPatchOp(op="add", path="/age", value=99)]
-        result = apply_patch(doc, patches)
-        assert result == {"name": "Alice", "age": 99}
+    @pytest.mark.parametrize(
+        "doc,patches,expected",
+        [
+            (
+                {"name": "Alice"},
+                [JsonPatchOp(op="add", path="/age", value=30)],
+                {"name": "Alice", "age": 30},
+            ),
+            (
+                {"name": "Alice", "age": 28},
+                [JsonPatchOp(op="replace", path="/age", value=29)],
+                {"name": "Alice", "age": 29},
+            ),
+            (
+                {"name": "Alice", "age": 28},
+                [JsonPatchOp(op="add", path="/age", value=99)],
+                {"name": "Alice", "age": 99},
+            ),
+            (
+                {"name": "Alice", "age": 28},
+                [
+                    JsonPatchOp(op="replace", path="/name", value="Bob"),
+                    JsonPatchOp(op="replace", path="/age", value=35),
+                ],
+                {"name": "Bob", "age": 35},
+            ),
+        ],
+        ids=["add-top", "replace-top", "add-overwrites", "multiple-ops"],
+    )
+    def test_happy_paths(self, doc, patches, expected):
+        assert apply_patch(doc, patches) == expected
 
     def test_replace_missing_key_raises(self):
-        doc = {"name": "Alice"}
-        patches = [JsonPatchOp(op="replace", path="/age", value=30)]
         with pytest.raises(PatchError, match="does not exist.*cannot replace"):
-            apply_patch(doc, patches)
-
-    def test_multiple_ops(self):
-        doc = {"name": "Alice", "age": 28}
-        patches = [
-            JsonPatchOp(op="replace", path="/name", value="Bob"),
-            JsonPatchOp(op="replace", path="/age", value=35),
-        ]
-        result = apply_patch(doc, patches)
-        assert result == {"name": "Bob", "age": 35}
+            apply_patch({"name": "Alice"}, [JsonPatchOp(op="replace", path="/age", value=30)])
 
 
 # ===================================================================
@@ -83,35 +86,49 @@ class TestBasicAddReplace:
 
 
 class TestNestedPaths:
-    def test_nested_replace(self):
-        doc = {"user": {"address": {"city": "NYC"}}}
-        patches = [JsonPatchOp(op="replace", path="/user/address/city", value="LA")]
+    @pytest.mark.parametrize(
+        "doc,patches,path_keys,expected_val",
+        [
+            (
+                {"user": {"address": {"city": "NYC"}}},
+                [JsonPatchOp(op="replace", path="/user/address/city", value="LA")],
+                ["user", "address", "city"],
+                "LA",
+            ),
+            (
+                {"user": {"name": "Alice"}},
+                [JsonPatchOp(op="add", path="/user/email", value="a@b.com")],
+                ["user", "email"],
+                "a@b.com",
+            ),
+            (
+                {"user": {}},
+                [JsonPatchOp(op="add", path="/user/address/city", value="NYC")],
+                ["user", "address", "city"],
+                "NYC",
+            ),
+            (
+                {"a": {"b": {"c": {"d": "old"}}}},
+                [JsonPatchOp(op="replace", path="/a/b/c/d", value="new")],
+                ["a", "b", "c", "d"],
+                "new",
+            ),
+        ],
+        ids=["nested-replace", "nested-add", "creates-intermediate", "deeply-nested"],
+    )
+    def test_nested_operations(self, doc, patches, path_keys, expected_val):
         result = apply_patch(doc, patches)
-        assert result["user"]["address"]["city"] == "LA"
-
-    def test_nested_add(self):
-        doc = {"user": {"name": "Alice"}}
-        patches = [JsonPatchOp(op="add", path="/user/email", value="a@b.com")]
-        result = apply_patch(doc, patches)
-        assert result["user"]["email"] == "a@b.com"
-
-    def test_add_creates_intermediate_dicts(self):
-        doc = {"user": {}}
-        patches = [JsonPatchOp(op="add", path="/user/address/city", value="NYC")]
-        result = apply_patch(doc, patches)
-        assert result["user"]["address"]["city"] == "NYC"
+        node = result
+        for key in path_keys:
+            node = node[key]
+        assert node == expected_val
 
     def test_replace_missing_nested_raises(self):
-        doc = {"user": {"name": "Alice"}}
-        patches = [JsonPatchOp(op="replace", path="/user/email", value="a@b.com")]
         with pytest.raises(PatchError, match="does not exist"):
-            apply_patch(doc, patches)
-
-    def test_deeply_nested(self):
-        doc = {"a": {"b": {"c": {"d": "old"}}}}
-        patches = [JsonPatchOp(op="replace", path="/a/b/c/d", value="new")]
-        result = apply_patch(doc, patches)
-        assert result["a"]["b"]["c"]["d"] == "new"
+            apply_patch(
+                {"user": {"name": "Alice"}},
+                [JsonPatchOp(op="replace", path="/user/email", value="a@b.com")],
+            )
 
 
 # ===================================================================
@@ -120,53 +137,63 @@ class TestNestedPaths:
 
 
 class TestArrayOps:
-    def test_append_with_dash(self):
-        doc = {"items": [1, 2, 3]}
-        patches = [JsonPatchOp(op="add", path="/items/-", value=4)]
-        result = apply_patch(doc, patches)
-        assert result["items"] == [1, 2, 3, 4]
+    @pytest.mark.parametrize(
+        "doc,patches,expected_items,policy",
+        [
+            (
+                {"items": [1, 2, 3]},
+                [JsonPatchOp(op="add", path="/items/-", value=4)],
+                [1, 2, 3, 4],
+                None,
+            ),
+            (
+                {"items": ["a", "c"]},
+                [JsonPatchOp(op="add", path="/items/1", value="b")],
+                ["a", "b", "c"],
+                None,
+            ),
+            (
+                {"items": ["b", "c"]},
+                [JsonPatchOp(op="add", path="/items/0", value="a")],
+                ["a", "b", "c"],
+                None,
+            ),
+            (
+                {"items": ["a", "b", "c"]},
+                [JsonPatchOp(op="replace", path="/items/1", value="X")],
+                ["a", "X", "c"],
+                None,
+            ),
+            (
+                {"items": ["a", "b", "c"]},
+                [JsonPatchOp(op="remove", path="/items/1")],
+                ["a", "c"],
+                PatchPolicy(allow_remove=True),
+            ),
+        ],
+        ids=["append-dash", "add-at-1", "add-at-0", "replace-at-1", "remove-at-1"],
+    )
+    def test_array_happy_paths(self, doc, patches, expected_items, policy):
+        result = apply_patch(doc, patches, policy=policy) if policy else apply_patch(doc, patches)
+        assert result["items"] == expected_items
 
-    def test_add_at_index(self):
-        doc = {"items": ["a", "c"]}
-        patches = [JsonPatchOp(op="add", path="/items/1", value="b")]
-        result = apply_patch(doc, patches)
-        assert result["items"] == ["a", "b", "c"]
-
-    def test_add_at_index_zero(self):
-        doc = {"items": ["b", "c"]}
-        patches = [JsonPatchOp(op="add", path="/items/0", value="a")]
-        result = apply_patch(doc, patches)
-        assert result["items"] == ["a", "b", "c"]
-
-    def test_replace_at_index(self):
-        doc = {"items": ["a", "b", "c"]}
-        patches = [JsonPatchOp(op="replace", path="/items/1", value="X")]
-        result = apply_patch(doc, patches)
-        assert result["items"] == ["a", "X", "c"]
-
-    def test_remove_at_index(self):
-        doc = {"items": ["a", "b", "c"]}
-        policy = PatchPolicy(allow_remove=True)
-        patches = [JsonPatchOp(op="remove", path="/items/1")]
-        result = apply_patch(doc, patches, policy=policy)
-        assert result["items"] == ["a", "c"]
-
-    def test_out_of_bounds_raises(self):
-        doc = {"items": [1, 2]}
-        patches = [JsonPatchOp(op="replace", path="/items/5", value=99)]
-        with pytest.raises(PatchError, match="out of bounds"):
-            apply_patch(doc, patches)
-
-    def test_negative_index_raises(self):
-        doc = {"items": [1, 2]}
-        patches = [JsonPatchOp(op="replace", path="/items/-1", value=99)]
-        with pytest.raises(PatchError, match="Invalid array index.*negative"):
-            apply_patch(doc, patches)
+    @pytest.mark.parametrize(
+        "doc,path,match",
+        [
+            ({"items": [1, 2]}, "/items/5", "out of bounds"),
+            ({"items": [1, 2]}, "/items/-1", "Invalid array index.*negative"),
+        ],
+        ids=["out-of-bounds", "negative-index"],
+    )
+    def test_array_errors(self, doc, path, match):
+        with pytest.raises(PatchError, match=match):
+            apply_patch(doc, [JsonPatchOp(op="replace", path=path, value=99)])
 
     def test_nested_array_operations(self):
-        doc = {"users": [{"name": "Alice"}, {"name": "Bob"}]}
-        patches = [JsonPatchOp(op="replace", path="/users/0/name", value="Alicia")]
-        result = apply_patch(doc, patches)
+        result = apply_patch(
+            {"users": [{"name": "Alice"}, {"name": "Bob"}]},
+            [JsonPatchOp(op="replace", path="/users/0/name", value="Alicia")],
+        )
         assert result["users"][0]["name"] == "Alicia"
         assert result["users"][1]["name"] == "Bob"
 
@@ -177,32 +204,20 @@ class TestArrayOps:
 
 
 class TestRFC6901Escaping:
-    def test_tilde_zero_escaping(self):
-        """``~0`` should decode to ``~``."""
-        doc = {"a~b": "old"}
-        patches = [JsonPatchOp(op="replace", path="/a~0b", value="new")]
+    @pytest.mark.parametrize(
+        "doc,path,op,value,expected_key,expected_val",
+        [
+            ({"a~b": "old"}, "/a~0b", "replace", "new", "a~b", "new"),
+            ({"a/b": "old"}, "/a~1b", "replace", "new", "a/b", "new"),
+            ({"~1": "old"}, "/~01", "replace", "new", "~1", "new"),
+            ({}, "/config~1setting", "add", True, "config/setting", True),
+        ],
+        ids=["tilde-zero", "tilde-one", "combined", "slash-in-key-add"],
+    )
+    def test_rfc6901_escaping(self, doc, path, op, value, expected_key, expected_val):
+        patches = [JsonPatchOp(op=op, path=path, value=value)]
         result = apply_patch(doc, patches)
-        assert result["a~b"] == "new"
-
-    def test_tilde_one_escaping(self):
-        """``~1`` should decode to ``/``."""
-        doc = {"a/b": "old"}
-        patches = [JsonPatchOp(op="replace", path="/a~1b", value="new")]
-        result = apply_patch(doc, patches)
-        assert result["a/b"] == "new"
-
-    def test_combined_escaping(self):
-        """``~01`` should decode to ``~1`` (tilde + ``1``), not ``/``."""
-        doc = {"~1": "old"}
-        patches = [JsonPatchOp(op="replace", path="/~01", value="new")]
-        result = apply_patch(doc, patches)
-        assert result["~1"] == "new"
-
-    def test_slash_in_key_add(self):
-        doc = {}
-        patches = [JsonPatchOp(op="add", path="/config~1setting", value=True)]
-        result = apply_patch(doc, patches)
-        assert result["config/setting"] is True
+        assert result[expected_key] == expected_val
 
 
 # ===================================================================
@@ -211,59 +226,69 @@ class TestRFC6901Escaping:
 
 
 class TestPolicyEnforcement:
-    def test_remove_blocked_by_default(self):
-        doc = {"name": "Alice", "age": 28}
-        patches = [JsonPatchOp(op="remove", path="/age")]
-        with pytest.raises(PolicyViolationError, match="Remove operations are not allowed"):
-            apply_patch(doc, patches)
+    @pytest.mark.parametrize(
+        "doc,patches,policy,match",
+        [
+            (
+                {"name": "Alice", "age": 28},
+                [JsonPatchOp(op="remove", path="/age")],
+                None,
+                "Remove operations are not allowed",
+            ),
+            (
+                {"x": 0},
+                [JsonPatchOp(op="replace", path="/x", value=i) for i in range(5)],
+                PatchPolicy(max_ops=3),
+                "5 operations.*at most 3",
+            ),
+            (
+                {"a": {"b": {"c": "val"}}},
+                [JsonPatchOp(op="replace", path="/a/b/c", value="new")],
+                PatchPolicy(max_path_depth=2),
+                "depth 3.*max_path_depth=2",
+            ),
+            (
+                {"items": [1, 2]},
+                [JsonPatchOp(op="add", path="/items/-", value=3)],
+                PatchPolicy(allow_append=False),
+                "Append.*not allowed",
+            ),
+        ],
+        ids=["remove-blocked", "max-ops-exceeded", "max-depth-exceeded", "append-blocked"],
+    )
+    def test_policy_violations(self, doc, patches, policy, match):
+        with pytest.raises(PolicyViolationError, match=match):
+            apply_patch(doc, patches, policy=policy) if policy else apply_patch(doc, patches)
 
-    def test_remove_allowed_with_policy(self):
-        doc = {"name": "Alice", "age": 28}
-        policy = PatchPolicy(allow_remove=True)
-        patches = [JsonPatchOp(op="remove", path="/age")]
-        result = apply_patch(doc, patches, policy=policy)
-        assert result == {"name": "Alice"}
-
-    def test_max_ops_exceeded(self):
-        doc = {"x": 0}
-        policy = PatchPolicy(max_ops=3)
-        patches = [JsonPatchOp(op="replace", path="/x", value=i) for i in range(5)]
-        with pytest.raises(PolicyViolationError, match="5 operations.*at most 3"):
-            apply_patch(doc, patches, policy=policy)
-
-    def test_max_ops_within_limit(self):
-        doc = {"x": 0}
-        policy = PatchPolicy(max_ops=3)
-        patches = [JsonPatchOp(op="replace", path="/x", value=i) for i in range(3)]
-        result = apply_patch(doc, patches, policy=policy)
-        assert result["x"] == 2
-
-    def test_max_path_depth_exceeded(self):
-        doc = {"a": {"b": {"c": "val"}}}
-        policy = PatchPolicy(max_path_depth=2)
-        patches = [JsonPatchOp(op="replace", path="/a/b/c", value="new")]
-        with pytest.raises(PolicyViolationError, match="depth 3.*max_path_depth=2"):
-            apply_patch(doc, patches, policy=policy)
-
-    def test_max_path_depth_within_limit(self):
-        doc = {"a": {"b": "val"}}
-        policy = PatchPolicy(max_path_depth=2)
-        patches = [JsonPatchOp(op="replace", path="/a/b", value="new")]
-        result = apply_patch(doc, patches, policy=policy)
-        assert result["a"]["b"] == "new"
-
-    def test_append_blocked_by_policy(self):
-        doc = {"items": [1, 2]}
-        policy = PatchPolicy(allow_append=False)
-        patches = [JsonPatchOp(op="add", path="/items/-", value=3)]
-        with pytest.raises(PolicyViolationError, match="Append.*not allowed"):
-            apply_patch(doc, patches, policy=policy)
-
-    def test_append_allowed_by_default(self):
-        doc = {"items": [1, 2]}
-        patches = [JsonPatchOp(op="add", path="/items/-", value=3)]
-        result = apply_patch(doc, patches)
-        assert result["items"] == [1, 2, 3]
+    def test_policy_allows_within_limits(self):
+        # remove allowed
+        assert apply_patch(
+            {"name": "Alice", "age": 28},
+            [JsonPatchOp(op="remove", path="/age")],
+            policy=PatchPolicy(allow_remove=True),
+        ) == {"name": "Alice"}
+        # max_ops within limit
+        assert (
+            apply_patch(
+                {"x": 0},
+                [JsonPatchOp(op="replace", path="/x", value=i) for i in range(3)],
+                policy=PatchPolicy(max_ops=3),
+            )["x"]
+            == 2
+        )
+        # max_path_depth within limit
+        assert (
+            apply_patch(
+                {"a": {"b": "val"}},
+                [JsonPatchOp(op="replace", path="/a/b", value="new")],
+                policy=PatchPolicy(max_path_depth=2),
+            )["a"]["b"]
+            == "new"
+        )
+        # append allowed by default
+        assert apply_patch({"items": [1, 2]}, [JsonPatchOp(op="add", path="/items/-", value=3)])[
+            "items"
+        ] == [1, 2, 3]
 
 
 # ===================================================================
@@ -272,38 +297,36 @@ class TestPolicyEnforcement:
 
 
 class TestStringConcat:
-    def test_add_dash_on_string_field(self):
-        """When ``/-`` is applied to a string field, concatenate the value."""
-        doc = {"bio": "Hello"}
-        patches = [JsonPatchOp(op="add", path="/bio/-", value=" World")]
-        result = apply_patch(doc, patches)
-        assert result["bio"] == "Hello World"
-
-    def test_replace_dash_on_string_field(self):
-        """``replace`` with ``/-`` on a string should also concat."""
-        doc = {"bio": "Hello"}
-        patches = [JsonPatchOp(op="replace", path="/bio/-", value=" World")]
-        result = apply_patch(doc, patches)
-        assert result["bio"] == "Hello World"
-
-    def test_nested_string_concat(self):
-        doc = {"user": {"bio": "Base"}}
-        patches = [JsonPatchOp(op="add", path="/user/bio/-", value=" Extra")]
-        result = apply_patch(doc, patches)
-        assert result["user"]["bio"] == "Base Extra"
-
-    def test_string_concat_with_non_string_value(self):
-        """Non-string value should be converted to string for concat."""
-        doc = {"count": "Items: "}
-        patches = [JsonPatchOp(op="add", path="/count/-", value=42)]
-        result = apply_patch(doc, patches)
-        assert result["count"] == "Items: 42"
+    @pytest.mark.parametrize(
+        "doc,path,op,value,check_path,expected",
+        [
+            ({"bio": "Hello"}, "/bio/-", "add", " World", ["bio"], "Hello World"),
+            ({"bio": "Hello"}, "/bio/-", "replace", " World", ["bio"], "Hello World"),
+            (
+                {"user": {"bio": "Base"}},
+                "/user/bio/-",
+                "add",
+                " Extra",
+                ["user", "bio"],
+                "Base Extra",
+            ),
+            ({"count": "Items: "}, "/count/-", "add", 42, ["count"], "Items: 42"),
+        ],
+        ids=["add-dash", "replace-dash", "nested", "non-string-value"],
+    )
+    def test_string_concat_happy_paths(self, doc, path, op, value, check_path, expected):
+        result = apply_patch(doc, [JsonPatchOp(op=op, path=path, value=value)])
+        node = result
+        for key in check_path:
+            node = node[key]
+        assert node == expected
 
     def test_string_concat_invalid_list_index_is_patch_error(self):
-        doc = {"items": ["a", "b"]}
-        patches = [JsonPatchOp(op="add", path="/items/not-an-index/-", value="x")]
         with pytest.raises(PatchError):
-            apply_patch(doc, patches)
+            apply_patch(
+                {"items": ["a", "b"]},
+                [JsonPatchOp(op="add", path="/items/not-an-index/-", value="x")],
+            )
 
 
 # ===================================================================
@@ -312,62 +335,46 @@ class TestStringConcat:
 
 
 class TestNormalizePatches:
-    def test_list_of_dicts(self):
-        raw = [{"op": "add", "path": "/x", "value": 1}]
+    @pytest.mark.parametrize(
+        "raw,expected_op,expected_count",
+        [
+            ([{"op": "add", "path": "/x", "value": 1}], "add", 1),
+            ([JsonPatchOp(op="replace", path="/x", value=2)], "replace", 1),
+            (json.dumps([{"op": "add", "path": "/x", "value": 1}]), "add", 1),
+            ({"patches": [{"op": "add", "path": "/x", "value": 1}]}, "add", 1),
+            (json.dumps({"patches": [{"op": "replace", "path": "/x", "value": 5}]}), "replace", 1),
+            ({"op": "add", "path": "/x", "value": 1}, "add", 1),
+            ([], None, 0),
+        ],
+        ids=[
+            "list-dicts",
+            "list-ops",
+            "json-string",
+            "nested-key",
+            "json-nested",
+            "single-dict",
+            "empty",
+        ],
+    )
+    def test_normalize_happy_path(self, raw, expected_op, expected_count):
         result = normalize_patches(raw)
-        assert len(result) == 1
-        assert result[0].op == "add"
-        assert result[0].path == "/x"
-        assert result[0].value == 1
+        assert len(result) == expected_count
+        if expected_count > 0:
+            assert result[0].op == expected_op
 
-    def test_list_of_json_patch_ops(self):
-        ops = [JsonPatchOp(op="replace", path="/x", value=2)]
-        result = normalize_patches(ops)
-        assert result == ops
-
-    def test_json_string_input(self):
-        raw = json.dumps([{"op": "add", "path": "/x", "value": 1}])
-        result = normalize_patches(raw)
-        assert len(result) == 1
-        assert result[0].op == "add"
-
-    def test_nested_under_patches_key(self):
-        raw = {"patches": [{"op": "add", "path": "/x", "value": 1}]}
-        result = normalize_patches(raw)
-        assert len(result) == 1
-        assert result[0].op == "add"
-
-    def test_json_string_nested(self):
-        raw = json.dumps({"patches": [{"op": "replace", "path": "/x", "value": 5}]})
-        result = normalize_patches(raw)
-        assert len(result) == 1
-        assert result[0].op == "replace"
-        assert result[0].value == 5
-
-    def test_single_dict(self):
-        raw = {"op": "add", "path": "/x", "value": 1}
-        result = normalize_patches(raw)
-        assert len(result) == 1
-
-    def test_malformed_string_raises(self):
-        with pytest.raises(PatchError, match="Cannot (parse|normalize)"):
-            normalize_patches("this is not json at all")
-
-    def test_malformed_type_raises(self):
-        with pytest.raises(PatchError, match="Cannot normalize"):
-            normalize_patches(12345)
-
-    def test_malformed_item_raises(self):
-        with pytest.raises(PatchError, match="Cannot normalize patch item"):
-            normalize_patches([42])
-
-    def test_invalid_op_in_dict_raises(self):
-        with pytest.raises(PatchError, match="Cannot parse patch dict"):
-            normalize_patches([{"op": "invalid_op", "path": "/x"}])
-
-    def test_empty_list(self):
-        result = normalize_patches([])
-        assert result == []
+    @pytest.mark.parametrize(
+        "raw,match",
+        [
+            ("this is not json at all", "Cannot (parse|normalize)"),
+            (12345, "Cannot normalize"),
+            ([42], "Cannot normalize patch item"),
+            ([{"op": "invalid_op", "path": "/x"}], "Cannot parse patch dict"),
+        ],
+        ids=["bad-string", "bad-type", "bad-item", "invalid-op"],
+    )
+    def test_normalize_error(self, raw, match):
+        with pytest.raises(PatchError, match=match):
+            normalize_patches(raw)
 
 
 # ===================================================================
@@ -376,51 +383,49 @@ class TestNormalizePatches:
 
 
 class TestApplyPatchAndValidate:
-    def test_basic_validation(self):
-        doc = {"name": "Alice", "age": 28}
-        patches = [JsonPatchOp(op="replace", path="/age", value=29)]
-        result = apply_patch_and_validate(doc, patches, User)
+    def test_validates_various_inputs(self):
+        # dict input
+        result = apply_patch_and_validate(
+            {"name": "Alice", "age": 28},
+            [JsonPatchOp(op="replace", path="/age", value=29)],
+            User,
+        )
         assert isinstance(result.value, User)
-        assert result.value.age == 29
-        assert result.value.name == "Alice"
+        assert result.value.age == 29 and result.value.name == "Alice"
+        # ParseResult shape
+        assert result.flags == () and result.score == 0
 
-    def test_validation_failure(self):
-        doc = {"name": "Alice", "age": 28}
-        patches = [JsonPatchOp(op="replace", path="/age", value="not_a_number")]
-        # Pydantic will coerce "not_a_number" and fail
-        with pytest.raises(ValidationError):
-            apply_patch_and_validate(doc, patches, User)
+        # BaseModel input
+        result2 = apply_patch_and_validate(
+            User(name="Alice", age=28),
+            [JsonPatchOp(op="replace", path="/age", value=29)],
+            User,
+        )
+        assert result2.value.age == 29
 
-    def test_with_base_model_input(self):
-        user = User(name="Alice", age=28)
-        patches = [JsonPatchOp(op="replace", path="/age", value=29)]
-        result = apply_patch_and_validate(user, patches, User)
-        assert result.value.age == 29
-
-    def test_with_type_adapter(self):
-        doc = {"name": "Alice", "age": 28}
-        adapter = TypeAdapter(User)
-        patches = [JsonPatchOp(op="replace", path="/age", value=30)]
-        result = apply_patch_and_validate(doc, patches, adapter)
-        assert result.value.age == 30
+        # TypeAdapter
+        result3 = apply_patch_and_validate(
+            {"name": "Alice", "age": 28},
+            [JsonPatchOp(op="replace", path="/age", value=30)],
+            TypeAdapter(User),
+        )
+        assert result3.value.age == 30
 
     def test_nested_model_validation(self):
-        doc = {"name": "Alice", "age": 28, "address": {"city": "NYC", "zip": "10001"}}
-        patches = [JsonPatchOp(op="replace", path="/address/city", value="LA")]
-        result = apply_patch_and_validate(doc, patches, User)
-        assert result.value.address is not None
-        assert result.value.address.city == "LA"
-        assert result.value.address.zip == "10001"
+        result = apply_patch_and_validate(
+            {"name": "Alice", "age": 28, "address": {"city": "NYC", "zip": "10001"}},
+            [JsonPatchOp(op="replace", path="/address/city", value="LA")],
+            User,
+        )
+        assert result.value.address.city == "LA" and result.value.address.zip == "10001"
 
-    def test_result_has_parse_result_shape(self):
-        doc = {"name": "Alice", "age": 28}
-        patches = [JsonPatchOp(op="replace", path="/name", value="Bob")]
-        result = apply_patch_and_validate(doc, patches, User)
-        assert hasattr(result, "value")
-        assert hasattr(result, "flags")
-        assert hasattr(result, "score")
-        assert result.flags == ()
-        assert result.score == 0
+    def test_validation_failure(self):
+        with pytest.raises(ValidationError):
+            apply_patch_and_validate(
+                {"name": "Alice", "age": 28},
+                [JsonPatchOp(op="replace", path="/age", value="not_a_number")],
+                User,
+            )
 
 
 # ===================================================================
@@ -429,36 +434,39 @@ class TestApplyPatchAndValidate:
 
 
 class TestDeepCopy:
-    def test_original_doc_unchanged(self):
-        doc = {"name": "Alice", "nested": {"x": 1}}
+    @pytest.mark.parametrize(
+        "doc,patches,check_result,check_original",
+        [
+            (
+                {"name": "Alice", "nested": {"x": 1}},
+                [
+                    JsonPatchOp(op="replace", path="/name", value="Bob"),
+                    JsonPatchOp(op="replace", path="/nested/x", value=99),
+                ],
+                lambda r: r["name"] == "Bob" and r["nested"]["x"] == 99,
+                lambda d: d["name"] == "Alice" and d["nested"]["x"] == 1,
+            ),
+            (
+                {"items": [1, 2, 3]},
+                [JsonPatchOp(op="add", path="/items/-", value=4)],
+                lambda r: len(r["items"]) == 4,
+                lambda d: d["items"] == [1, 2, 3],
+            ),
+            (
+                {"a": {"b": [1, 2]}},
+                [JsonPatchOp(op="add", path="/a/b/-", value=3)],
+                lambda r: r["a"]["b"] == [1, 2, 3],
+                lambda d: d["a"]["b"] == [1, 2],
+            ),
+        ],
+        ids=["nested-dict", "list-append", "nested-list"],
+    )
+    def test_original_unchanged(self, doc, patches, check_result, check_original):
         original = copy.deepcopy(doc)
-        patches = [
-            JsonPatchOp(op="replace", path="/name", value="Bob"),
-            JsonPatchOp(op="replace", path="/nested/x", value=99),
-        ]
         result = apply_patch(doc, patches)
-        # Result should be modified.
-        assert result["name"] == "Bob"
-        assert result["nested"]["x"] == 99
-        # Original should be untouched.
+        assert check_result(result)
         assert doc == original
-        assert doc["name"] == "Alice"
-        assert doc["nested"]["x"] == 1
-
-    def test_original_list_unchanged(self):
-        doc = {"items": [1, 2, 3]}
-        original = copy.deepcopy(doc)
-        patches = [JsonPatchOp(op="add", path="/items/-", value=4)]
-        result = apply_patch(doc, patches)
-        assert len(result["items"]) == 4
-        assert doc == original
-
-    def test_nested_mutation_isolation(self):
-        doc = {"a": {"b": [1, 2]}}
-        patches = [JsonPatchOp(op="add", path="/a/b/-", value=3)]
-        result = apply_patch(doc, patches)
-        assert result["a"]["b"] == [1, 2, 3]
-        assert doc["a"]["b"] == [1, 2]
+        assert check_original(doc)
 
 
 # ===================================================================
@@ -467,83 +475,67 @@ class TestDeepCopy:
 
 
 class TestEdgeCases:
-    def test_empty_patches(self):
-        doc = {"x": 1}
-        result = apply_patch(doc, [])
-        assert result == {"x": 1}
+    @pytest.mark.parametrize(
+        "doc,patches,match,policy",
+        [
+            ({"x": 1}, [JsonPatchOp(op="replace", path="x", value=2)], "must start with '/'", None),
+            (
+                {"x": 42},
+                [JsonPatchOp(op="replace", path="/x/y", value=1)],
+                "Cannot (traverse|replace)",
+                None,
+            ),
+            (
+                {"name": "Alice"},
+                [JsonPatchOp(op="remove", path="/nonexistent")],
+                "does not exist.*cannot remove",
+                PatchPolicy(allow_remove=True),
+            ),
+        ],
+        ids=["no-leading-slash", "traverse-scalar", "remove-missing"],
+    )
+    def test_error_cases(self, doc, patches, match, policy):
+        with pytest.raises(PatchError, match=match):
+            apply_patch(doc, patches, policy=policy) if policy else apply_patch(doc, patches)
 
-    def test_invalid_pointer_no_leading_slash(self):
-        doc = {"x": 1}
-        patches = [JsonPatchOp(op="replace", path="x", value=2)]
-        with pytest.raises(PatchError, match="must start with '/'"):
-            apply_patch(doc, patches)
+    def test_various_happy_edge_cases(self):
+        # empty patches
+        assert apply_patch({"x": 1}, []) == {"x": 1}
+        # add to empty list
+        assert apply_patch({"items": []}, [JsonPatchOp(op="add", path="/items/-", value="first")])[
+            "items"
+        ] == ["first"]
+        # multiple appends
+        assert apply_patch(
+            {"tags": ["a"]},
+            [
+                JsonPatchOp(op="add", path="/tags/-", value="b"),
+                JsonPatchOp(op="add", path="/tags/-", value="c"),
+            ],
+        )["tags"] == ["a", "b", "c"]
+        # add nested object
+        assert apply_patch(
+            {"user": {}},
+            [JsonPatchOp(op="add", path="/user/profile", value={"name": "Alice", "active": True})],
+        )["user"]["profile"] == {"name": "Alice", "active": True}
+        # replace with None
+        assert (
+            apply_patch({"name": "Alice"}, [JsonPatchOp(op="replace", path="/name", value=None)])[
+                "name"
+            ]
+            is None
+        )
 
-    def test_traverse_into_scalar_raises(self):
-        doc = {"x": 42}
-        patches = [JsonPatchOp(op="replace", path="/x/y", value=1)]
-        with pytest.raises(PatchError, match="Cannot (traverse|replace)"):
-            apply_patch(doc, patches)
-
-    def test_remove_missing_key_raises(self):
-        doc = {"name": "Alice"}
-        policy = PatchPolicy(allow_remove=True)
-        patches = [JsonPatchOp(op="remove", path="/nonexistent")]
-        with pytest.raises(PatchError, match="does not exist.*cannot remove"):
-            apply_patch(doc, patches, policy=policy)
-
-    def test_patch_doc_model(self):
-        """PatchDoc is a valid Pydantic model for LLM tool schemas."""
+    def test_pydantic_models(self):
         pd = PatchDoc(
             json_doc_id="doc",
             planned_edits="Update name",
             patches=[JsonPatchOp(op="replace", path="/name", value="Bob")],
         )
-        assert pd.json_doc_id == "doc"
-        assert len(pd.patches) == 1
-
-    def test_json_patch_op_model(self):
+        assert pd.json_doc_id == "doc" and len(pd.patches) == 1
         op = JsonPatchOp(op="add", path="/x", value=42)
-        data = op.model_dump()
-        assert data["op"] == "add"
-        assert data["path"] == "/x"
-        assert data["value"] == 42
-
-    def test_remove_op_no_value(self):
-        op = JsonPatchOp(op="remove", path="/x")
-        assert op.value is None
-
-    def test_add_to_empty_list(self):
-        doc = {"items": []}
-        patches = [JsonPatchOp(op="add", path="/items/-", value="first")]
-        result = apply_patch(doc, patches)
-        assert result["items"] == ["first"]
-
-    def test_multiple_appends(self):
-        doc = {"tags": ["a"]}
-        patches = [
-            JsonPatchOp(op="add", path="/tags/-", value="b"),
-            JsonPatchOp(op="add", path="/tags/-", value="c"),
-        ]
-        result = apply_patch(doc, patches)
-        assert result["tags"] == ["a", "b", "c"]
-
-    def test_add_nested_object(self):
-        doc = {"user": {}}
-        patches = [
-            JsonPatchOp(
-                op="add",
-                path="/user/profile",
-                value={"name": "Alice", "active": True},
-            )
-        ]
-        result = apply_patch(doc, patches)
-        assert result["user"]["profile"] == {"name": "Alice", "active": True}
-
-    def test_replace_with_none_value(self):
-        doc = {"name": "Alice"}
-        patches = [JsonPatchOp(op="replace", path="/name", value=None)]
-        result = apply_patch(doc, patches)
-        assert result["name"] is None
+        assert op.model_dump() == {"op": "add", "path": "/x", "value": 42}
+        assert JsonPatchOp(op="remove", path="/x").value is None
 
 
 # ===================================================================
@@ -552,45 +544,43 @@ class TestEdgeCases:
 
 
 class TestCreateMissingListDetection:
-    def test_create_missing_list_when_next_token_is_digit(self):
-        """When path is /items/0 and items is missing, items should be
-        auto-created as a list (not a dict) because the next token '0' is a
-        digit.  This directly exercises the _resolve_parent look-ahead branch
-        without relying on /-."""
-        doc = {}
-        patches = [
-            JsonPatchOp(op="add", path="/items/0", value={"name": "Widget"}),
-        ]
-        result = apply_patch(doc, patches)
-        assert isinstance(result["items"], list)
-        assert result["items"][0] == {"name": "Widget"}
-
-    def test_add_nested_field_into_missing_list_index(self):
-        doc = {}
-        patches = [JsonPatchOp(op="add", path="/items/0/name", value="Widget")]
-        result = apply_patch(doc, patches)
-        assert result == {"items": [{"name": "Widget"}]}
-
-    def test_add_nested_field_into_empty_list(self):
-        doc = {"items": []}
-        patches = [JsonPatchOp(op="add", path="/items/0/name", value="Widget")]
-        result = apply_patch(doc, patches)
-        assert result == {"items": [{"name": "Widget"}]}
-
-    def test_create_missing_dict_when_next_token_is_string(self):
-        """When path is /metadata/key and metadata is missing, metadata should
-        be auto-created as a dict (existing behaviour)."""
-        doc = {}
-        patches = [JsonPatchOp(op="add", path="/metadata/key", value="val")]
-        result = apply_patch(doc, patches)
-        assert isinstance(result["metadata"], dict)
-        assert result["metadata"]["key"] == "val"
-
-    def test_create_missing_list_when_next_token_is_dash(self):
-        """When the next token after a missing key is '-', the container should
-        be a list (for append semantics)."""
-        doc = {}
-        patches = [JsonPatchOp(op="add", path="/tags/-", value="first")]
-        result = apply_patch(doc, patches)
-        assert isinstance(result["tags"], list)
-        assert result["tags"] == ["first"]
+    @pytest.mark.parametrize(
+        "doc,path,value,check",
+        [
+            (
+                {},
+                "/items/0",
+                {"name": "Widget"},
+                lambda r: isinstance(r["items"], list) and r["items"][0] == {"name": "Widget"},
+            ),
+            ({}, "/items/0/name", "Widget", lambda r: r == {"items": [{"name": "Widget"}]}),
+            (
+                {"items": []},
+                "/items/0/name",
+                "Widget",
+                lambda r: r == {"items": [{"name": "Widget"}]},
+            ),
+            (
+                {},
+                "/metadata/key",
+                "val",
+                lambda r: isinstance(r["metadata"], dict) and r["metadata"]["key"] == "val",
+            ),
+            (
+                {},
+                "/tags/-",
+                "first",
+                lambda r: isinstance(r["tags"], list) and r["tags"] == ["first"],
+            ),
+        ],
+        ids=[
+            "digit-creates-list",
+            "nested-into-missing",
+            "nested-into-empty",
+            "string-creates-dict",
+            "dash-creates-list",
+        ],
+    )
+    def test_auto_create_container(self, doc, path, value, check):
+        result = apply_patch(doc, [JsonPatchOp(op="add", path=path, value=value)])
+        assert check(result)

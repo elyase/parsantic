@@ -15,16 +15,15 @@ from parsantic.extract.providers.pydantic_ai_provider import (  # noqa: E402
 )
 
 
-class TestParseModelSpec:
-    def test_vertex_model_spec(self):
-        provider, model = _parse_model_spec("vertex:gemini-2.5-flash")
-        assert provider == "vertex"
-        assert model == "gemini-2.5-flash"
-
-    def test_vertex_model_with_version(self):
-        provider, model = _parse_model_spec("vertex:gemini-2.0-flash-001")
-        assert provider == "vertex"
-        assert model == "gemini-2.0-flash-001"
+@pytest.mark.parametrize(
+    "spec,expected",
+    [
+        ("vertex:gemini-2.5-flash", ("vertex", "gemini-2.5-flash")),
+        ("vertex:gemini-2.0-flash-001", ("vertex", "gemini-2.0-flash-001")),
+    ],
+)
+def test_parse_model_spec_vertex(spec, expected):
+    assert _parse_model_spec(spec) == expected
 
 
 class TestPydanticAIProviderVertexFields:
@@ -240,20 +239,18 @@ class TestBuildModelVertex:
 
 
 class TestFactoryVertexEnvVars:
-    def test_resolves_vertex_project_id(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("VERTEX_PROJECT_ID", "env-project")
+    @pytest.mark.parametrize(
+        "env_var,env_val,resolved_key",
+        [
+            ("VERTEX_PROJECT_ID", "env-project", "project_id"),
+            ("VERTEX_REGION", "europe-west1", "region"),
+            ("GOOGLE_APPLICATION_CREDENTIALS", "/path/to/sa.json", "service_account_file"),
+        ],
+    )
+    def test_resolves_env_var(self, monkeypatch, env_var, env_val, resolved_key):
+        monkeypatch.setenv(env_var, env_val)
         resolved = _kwargs_with_environment_defaults("vertex:gemini-2.5-flash", {})
-        assert resolved["project_id"] == "env-project"
-
-    def test_resolves_vertex_region(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("VERTEX_REGION", "europe-west1")
-        resolved = _kwargs_with_environment_defaults("vertex:gemini-2.5-flash", {})
-        assert resolved["region"] == "europe-west1"
-
-    def test_resolves_google_application_credentials(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/path/to/sa.json")
-        resolved = _kwargs_with_environment_defaults("vertex:gemini-2.5-flash", {})
-        assert resolved["service_account_file"] == "/path/to/sa.json"
+        assert resolved[resolved_key] == env_val
 
     def test_explicit_kwargs_override_env(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("VERTEX_PROJECT_ID", "env-project")

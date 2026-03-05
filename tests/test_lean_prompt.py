@@ -35,95 +35,47 @@ def _make_prompt(**kwargs: object) -> Prompt:
 class TestRenderPromptNativeMode:
     """_render_prompt with native_mode=True produces lean prompts."""
 
-    def test_no_schema_block(self):
-        prompt = _render_prompt(
-            _make_prompt(),
-            schema_text=_SCHEMA_TEXT,
+    def _render_native(self, **kwargs):
+        defaults = dict(
+            prompt_obj=_make_prompt(),
+            schema_text=None,
             examples=[],
             question=_QUESTION,
             format_handler=FormatHandler(),
             additional_context=None,
             native_mode=True,
         )
+        defaults.update(kwargs)
+        prompt_obj = defaults.pop("prompt_obj")
+        return _render_prompt(prompt_obj, **defaults)
+
+    def test_strips_schema_and_format_instructions(self):
+        prompt = self._render_native(schema_text=_SCHEMA_TEXT)
         assert "Schema:" not in prompt
         assert _SCHEMA_TEXT not in prompt
-
-    def test_no_format_instructions(self):
-        prompt = _render_prompt(
-            _make_prompt(),
-            schema_text=_SCHEMA_TEXT,
-            examples=[],
-            question=_QUESTION,
-            format_handler=FormatHandler(),
-            additional_context=None,
-            native_mode=True,
-        )
         assert "Output a single JSON" not in prompt
         assert "Do not include any surrounding prose" not in prompt
 
-    def test_no_qa_framing(self):
-        prompt = _render_prompt(
-            _make_prompt(),
-            schema_text=None,
-            examples=[],
-            question=_QUESTION,
-            format_handler=FormatHandler(),
-            additional_context=None,
-            native_mode=True,
-        )
+    def test_no_qa_framing_and_uses_separator(self):
+        prompt = self._render_native()
         assert "Q: " not in prompt
         assert "\nA:" not in prompt
-
-    def test_uses_separator_before_question(self):
-        prompt = _render_prompt(
-            _make_prompt(),
-            schema_text=None,
-            examples=[],
-            question=_QUESTION,
-            format_handler=FormatHandler(),
-            additional_context=None,
-            native_mode=True,
-        )
         assert "\n---\n" in prompt
         assert prompt.endswith(_QUESTION)
 
     def test_keeps_description(self):
-        prompt = _render_prompt(
-            _make_prompt(description="Extract person info."),
-            schema_text=None,
-            examples=[],
-            question=_QUESTION,
-            format_handler=FormatHandler(),
-            additional_context=None,
-            native_mode=True,
-        )
+        prompt = self._render_native(prompt_obj=_make_prompt(description="Extract person info."))
         assert prompt.startswith("Extract person info.")
 
     def test_keeps_additional_context(self):
-        prompt = _render_prompt(
-            _make_prompt(),
-            schema_text=None,
-            examples=[],
-            question=_QUESTION,
-            format_handler=FormatHandler(),
-            additional_context="Ignore hypothetical people.",
-            native_mode=True,
-        )
+        prompt = self._render_native(additional_context="Ignore hypothetical people.")
         assert "Ignore hypothetical people." in prompt
 
     def test_keeps_examples_without_qa(self):
         examples = [Example(text="Bob, age 30", output={"name": "Bob", "age": 30})]
-        prompt = _render_prompt(
-            _make_prompt(),
-            schema_text=None,
-            examples=examples,
-            question=_QUESTION,
-            format_handler=FormatHandler(),
-            additional_context=None,
-            native_mode=True,
-        )
+        prompt = self._render_native(examples=examples)
         assert "Example:" in prompt
-        assert "\u2192" in prompt  # arrow separator
+        assert "\u2192" in prompt
         assert "Q: Bob" not in prompt
         assert "A: " not in prompt
 
@@ -134,9 +86,9 @@ class TestRenderPromptNativeMode:
 class TestRenderPromptPromptModeUnchanged:
     """_render_prompt with native_mode=False is unchanged (regression)."""
 
-    def test_has_format_instructions(self):
-        prompt = _render_prompt(
-            _make_prompt(),
+    def _render_prompt_mode(self, **kwargs):
+        defaults = dict(
+            prompt_obj=_make_prompt(),
             schema_text=_SCHEMA_TEXT,
             examples=[],
             question=_QUESTION,
@@ -144,45 +96,24 @@ class TestRenderPromptPromptModeUnchanged:
             additional_context=None,
             native_mode=False,
         )
-        assert "Output a single JSON object" in prompt
+        defaults.update(kwargs)
+        prompt_obj = defaults.pop("prompt_obj")
+        return _render_prompt(prompt_obj, **defaults)
 
-    def test_has_schema_block(self):
-        prompt = _render_prompt(
-            _make_prompt(),
-            schema_text=_SCHEMA_TEXT,
-            examples=[],
-            question=_QUESTION,
-            format_handler=FormatHandler(),
-            additional_context=None,
-            native_mode=False,
-        )
+    def test_has_format_and_schema(self):
+        prompt = self._render_prompt_mode()
+        assert "Output a single JSON object" in prompt
         assert "Schema:" in prompt
         assert _SCHEMA_TEXT in prompt
 
     def test_has_qa_framing(self):
-        prompt = _render_prompt(
-            _make_prompt(),
-            schema_text=None,
-            examples=[],
-            question=_QUESTION,
-            format_handler=FormatHandler(),
-            additional_context=None,
-            native_mode=False,
-        )
+        prompt = self._render_prompt_mode(schema_text=None)
         assert f"Q: {_QUESTION}" in prompt
         assert prompt.rstrip().endswith("A:")
 
     def test_examples_use_qa(self):
         examples = [Example(text="Bob, age 30", output={"name": "Bob", "age": 30})]
-        prompt = _render_prompt(
-            _make_prompt(),
-            schema_text=None,
-            examples=examples,
-            question=_QUESTION,
-            format_handler=FormatHandler(),
-            additional_context=None,
-            native_mode=False,
-        )
+        prompt = self._render_prompt_mode(schema_text=None, examples=examples)
         assert "Q: Bob, age 30" in prompt
         assert "A: " in prompt
 

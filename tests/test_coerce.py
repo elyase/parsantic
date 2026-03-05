@@ -117,29 +117,34 @@ def test_float_from_comma_separated_ported_from_baml():
 # ===========================================================================
 
 
-def test_remove_accents_like_baml():
-    assert normalize_key("étude") == "etude"
-    assert normalize_key("français") == "francais"
-    assert normalize_key("Español") == "espanol"
-    assert normalize_key("português") == "portugues"
-    assert normalize_key("médium") == "medium"
-    assert normalize_key("Grün") == "grun"
-    assert normalize_key("Über") == "uber"
-    assert normalize_key("Straße") == "strasse"
-    assert normalize_key("Stadt") == "stadt"
-
-
-def test_ligatures_like_baml():
-    assert normalize_key("æ") == "ae"
-    assert normalize_key("Æ") == "ae"
-    assert normalize_key("ø") == "o"
-    assert normalize_key("Ø") == "o"
-    assert normalize_key("œ") == "oe"
-    assert normalize_key("Œ") == "oe"
-    assert normalize_key("København") == "kobenhavn"
-    assert normalize_key("cœur") == "coeur"
-    assert normalize_key("œuvre") == "oeuvre"
-    assert normalize_key("Straße ældre øl œuvre") == "strasseaeldreoloeuvre"
+def test_normalize_key_accents_and_ligatures():
+    # accents
+    for inp, exp in [
+        ("étude", "etude"),
+        ("français", "francais"),
+        ("Español", "espanol"),
+        ("português", "portugues"),
+        ("médium", "medium"),
+        ("Grün", "grun"),
+        ("Über", "uber"),
+        ("Straße", "strasse"),
+        ("Stadt", "stadt"),
+    ]:
+        assert normalize_key(inp) == exp, f"{inp!r} -> {exp!r}"
+    # ligatures
+    for inp, exp in [
+        ("æ", "ae"),
+        ("Æ", "ae"),
+        ("ø", "o"),
+        ("Ø", "o"),
+        ("œ", "oe"),
+        ("Œ", "oe"),
+        ("København", "kobenhavn"),
+        ("cœur", "coeur"),
+        ("œuvre", "oeuvre"),
+        ("Straße ældre øl œuvre", "strasseaeldreoloeuvre"),
+    ]:
+        assert normalize_key(inp) == exp, f"{inp!r} -> {exp!r}"
 
 
 # ===========================================================================
@@ -147,7 +152,8 @@ def test_ligatures_like_baml():
 # ===========================================================================
 
 
-def test_anyof_prefers_string_variant_like_baml():
+def test_anyof_string_handling():
+    # prefers string variant
     raw = "[json\nAnyOf[{,AnyOf[{,{},],]]"
     anyof = JsonishValue(
         value=raw,
@@ -158,23 +164,22 @@ def test_anyof_prefers_string_variant_like_baml():
             JsonishValue(value={}, raw=raw, completion=CompletionState.INCOMPLETE),
         ),
     )
-    res = coerce_jsonish_to_python(anyof, TypeAdapter(str), options=CoerceOptions())
-    assert res.value == "[json\n"
-
-
-def test_anyof_without_string_variant_falls_back_to_raw():
-    raw = "some raw input"
-    anyof = JsonishValue(
-        value=raw,
-        raw=raw,
+    assert (
+        coerce_jsonish_to_python(anyof, TypeAdapter(str), options=CoerceOptions()).value
+        == "[json\n"
+    )
+    # falls back to raw without string variant
+    raw2 = "some raw input"
+    anyof2 = JsonishValue(
+        value=raw2,
+        raw=raw2,
         completion=CompletionState.INCOMPLETE,
         candidates=(
-            JsonishValue(value={}, raw=raw, completion=CompletionState.INCOMPLETE),
-            JsonishValue(value=[], raw=raw, completion=CompletionState.INCOMPLETE),
+            JsonishValue(value={}, raw=raw2, completion=CompletionState.INCOMPLETE),
+            JsonishValue(value=[], raw=raw2, completion=CompletionState.INCOMPLETE),
         ),
     )
-    res = coerce_jsonish_to_python(anyof, TypeAdapter(str), options=CoerceOptions())
-    assert res.value == raw
+    assert coerce_jsonish_to_python(anyof2, TypeAdapter(str), options=CoerceOptions()).value == raw2
 
 
 # ===========================================================================
@@ -186,17 +191,11 @@ class _PersonHair(BaseModel):
     hair_color: str
 
 
-def test_model_key_normalization():
-    res = parse('{"hair color": "Grey"}', _PersonHair, is_done=True)
-    assert res.value.hair_color == "Grey"
-
-
-def test_streaming_partial_key_normalization():
+def test_model_key_normalization_and_streaming():
+    assert parse('{"hair color": "Grey"}', _PersonHair, is_done=True).value.hair_color == "Grey"
     sp = parse_stream(_PersonHair)
     sp.feed('{"hair color": "Gr')
-    partial = sp.parse_partial()
-    assert hasattr(partial.value, "hair_color")
-    assert partial.value.hair_color == "Gr"
+    assert sp.parse_partial().value.hair_color == "Gr"
 
 
 # ===========================================================================
@@ -208,18 +207,13 @@ class _WrapperDict(BaseModel):
     data: dict[str, int]
 
 
-def test_implied_key_single_field_model_from_object():
-    res = parse('{"a": 1}', _WrapperDict, is_done=True)
-    assert res.value.data == {"a": 1}
-
-
 class _WrapperScalar(BaseModel):
     n: int
 
 
-def test_implied_key_single_field_model_from_scalar():
-    res = parse("123", _WrapperScalar, is_done=True)
-    assert res.value.n == 123
+def test_implied_key_single_field_model():
+    assert parse('{"a": 1}', _WrapperDict, is_done=True).value.data == {"a": 1}
+    assert parse("123", _WrapperScalar, is_done=True).value.n == 123
 
 
 # ===========================================================================
@@ -231,22 +225,19 @@ class _Item(BaseModel):
     a: int
 
 
-def test_multiple_markdown_codeblocks_can_be_list():
-    text = """```json
-{"a": 1}
-```
-
-```json
-{"a": 2}
-```"""
-    res = parse(text, list[_Item], is_done=True)
-    assert [x.a for x in res.value] == [1, 2]
-
-
-def test_multiple_objects_in_free_text_can_be_list():
-    text = 'prefix {"a": 1} middle {"a": 2} suffix'
-    res = parse(text, list[_Item], is_done=True)
-    assert [x.a for x in res.value] == [1, 2]
+def test_multi_object_to_list():
+    # markdown codeblocks
+    assert [
+        x.a
+        for x in parse(
+            '```json\n{"a": 1}\n```\n\n```json\n{"a": 2}\n```', list[_Item], is_done=True
+        ).value
+    ] == [1, 2]
+    # free text
+    assert [
+        x.a
+        for x in parse('prefix {"a": 1} middle {"a": 2} suffix', list[_Item], is_done=True).value
+    ] == [1, 2]
 
 
 # ===========================================================================

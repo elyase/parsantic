@@ -44,58 +44,47 @@ def _make_provider(*, supports_native: bool = False) -> PydanticAIProvider:
 # ── _parse_model_spec ────────────────────────────────────────────────────
 
 
-class TestParseModelSpec:
-    def test_explicit_provider(self):
-        assert _parse_model_spec("openai:gpt-4o") == ("openai", "gpt-4o")
-
-    def test_bare_gpt(self):
-        assert _parse_model_spec("gpt-4o") == ("openai", "gpt-4o")
-
-    def test_bare_claude(self):
-        assert _parse_model_spec("claude-3-opus") == ("anthropic", "claude-3-opus")
-
-    def test_bare_gemini(self):
-        assert _parse_model_spec("gemini-2.0-flash") == ("gemini", "gemini-2.0-flash")
-
-    def test_unknown_bare(self):
-        assert _parse_model_spec("custom-model") == ("openai", "custom-model")
+@pytest.mark.parametrize(
+    "spec,expected",
+    [
+        ("openai:gpt-4o", ("openai", "gpt-4o")),
+        ("gpt-4o", ("openai", "gpt-4o")),
+        ("claude-3-opus", ("anthropic", "claude-3-opus")),
+        ("gemini-2.0-flash", ("gemini", "gemini-2.0-flash")),
+        ("custom-model", ("openai", "custom-model")),
+    ],
+    ids=["explicit", "bare-gpt", "bare-claude", "bare-gemini", "unknown-bare"],
+)
+def test_parse_model_spec(spec, expected):
+    assert _parse_model_spec(spec) == expected
 
 
 # ── _result_to_json_string ───────────────────────────────────────────────
 
 
-class TestResultToJsonString:
-    def test_string_passthrough(self):
-        assert _result_to_json_string('{"a":1}') == '{"a":1}'
+@pytest.mark.parametrize(
+    "input_val,check",
+    [
+        ('{"a":1}', lambda r: r == '{"a":1}'),
+        ({"name": "Alice", "age": 30}, lambda r: json.loads(r) == {"name": "Alice", "age": 30}),
+        ([1, 2, 3], lambda r: json.loads(r) == [1, 2, 3]),
+        (_SampleModel(name="Bob", age=25), lambda r: json.loads(r) == {"name": "Bob", "age": 25}),
+        ({"text": "日本語"}, lambda r: "日本語" in r),
+    ],
+    ids=["string-passthrough", "dict", "list", "pydantic-model", "unicode"],
+)
+def test_result_to_json_string(input_val, check):
+    assert check(_result_to_json_string(input_val))
 
-    def test_dict(self):
-        result = _result_to_json_string({"name": "Alice", "age": 30})
-        parsed = json.loads(result)
-        assert parsed == {"name": "Alice", "age": 30}
 
-    def test_list(self):
-        result = _result_to_json_string([1, 2, 3])
-        assert json.loads(result) == [1, 2, 3]
+def test_result_to_json_string_non_native_values():
+    from datetime import datetime
+    from decimal import Decimal
 
-    def test_pydantic_model(self):
-        model = _SampleModel(name="Bob", age=25)
-        result = _result_to_json_string(model)
-        parsed = json.loads(result)
-        assert parsed == {"name": "Bob", "age": 25}
-
-    def test_unicode_preserved(self):
-        result = _result_to_json_string({"text": "日本語"})
-        assert "日本語" in result
-
-    def test_dict_with_non_json_native_values(self):
-        """to_jsonable_python handles datetime/Decimal inside dicts."""
-        from datetime import datetime
-        from decimal import Decimal
-
-        result = _result_to_json_string({"ts": datetime(2025, 1, 1), "val": Decimal("3.14")})
-        parsed = json.loads(result)
-        assert "2025" in parsed["ts"]
-        assert float(parsed["val"]) == pytest.approx(3.14)
+    result = _result_to_json_string({"ts": datetime(2025, 1, 1), "val": Decimal("3.14")})
+    parsed = json.loads(result)
+    assert "2025" in parsed["ts"]
+    assert float(parsed["val"]) == pytest.approx(3.14)
 
 
 # ── _extract_raw_json_from_messages ──────────────────────────────────────
@@ -161,48 +150,34 @@ class TestExtractRawJsonFromMessages:
 # ── supports_native_structured_output ────────────────────────────────────
 
 
-class TestSupportsNativeStructuredOutput:
-    def test_returns_false_by_default(self):
-        provider = _make_provider(supports_native=False)
-        assert provider.supports_native_structured_output() is False
-
-    def test_returns_true_when_set(self):
-        provider = _make_provider(supports_native=True)
-        assert provider.supports_native_structured_output() is True
+def test_supports_native_structured_output():
+    assert _make_provider(supports_native=False).supports_native_structured_output() is False
+    assert _make_provider(supports_native=True).supports_native_structured_output() is True
 
 
 # ── _resolve_output_type ─────────────────────────────────────────────────
 
 
 class TestResolveOutputType:
-    def test_returns_none_for_prompt_mode(self):
+    def test_returns_none_when_appropriate(self):
         provider = _make_provider(supports_native=True)
-        result = provider._resolve_output_type(_SampleModel, "prompt")
-        assert result is None
+        assert provider._resolve_output_type(_SampleModel, "prompt") is None
+        assert provider._resolve_output_type(None, "native") is None
+        assert (
+            _make_provider(supports_native=False)._resolve_output_type(_SampleModel, "auto") is None
+        )
 
-    def test_returns_none_when_no_target(self):
-        provider = _make_provider(supports_native=True)
-        result = provider._resolve_output_type(None, "native")
-        assert result is None
-
-    def test_returns_native_output_for_native_mode(self):
+    def test_returns_native_output_when_appropriate(self):
         from pydantic_ai import NativeOutput
 
-        provider = _make_provider(supports_native=False)  # doesn't matter for "native"
-        result = provider._resolve_output_type(_SampleModel, "native")
-        assert isinstance(result, NativeOutput)
-
-    def test_returns_native_output_for_auto_when_supported(self):
-        from pydantic_ai import NativeOutput
-
-        provider = _make_provider(supports_native=True)
-        result = provider._resolve_output_type(_SampleModel, "auto")
-        assert isinstance(result, NativeOutput)
-
-    def test_returns_none_for_auto_when_not_supported(self):
-        provider = _make_provider(supports_native=False)
-        result = provider._resolve_output_type(_SampleModel, "auto")
-        assert result is None
+        assert isinstance(
+            _make_provider(supports_native=False)._resolve_output_type(_SampleModel, "native"),
+            NativeOutput,
+        )
+        assert isinstance(
+            _make_provider(supports_native=True)._resolve_output_type(_SampleModel, "auto"),
+            NativeOutput,
+        )
 
 
 # ── infer with native structured output ──────────────────────────────────
@@ -299,12 +274,7 @@ class TestInferWithNativeOutput:
 # ── ExtractOptions structured_output field ───────────────────────────────
 
 
-class TestExtractOptionsStructuredOutput:
-    def test_default_is_auto(self):
-        opts = ExtractOptions()
-        assert opts.structured_output == "auto"
-
-    def test_accepts_valid_values(self):
-        for val in ("auto", "native", "prompt"):
-            opts = ExtractOptions(structured_output=val)
-            assert opts.structured_output == val
+def test_extract_options_structured_output():
+    assert ExtractOptions().structured_output == "auto"
+    for val in ("auto", "native", "prompt"):
+        assert ExtractOptions(structured_output=val).structured_output == val

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from parsantic.jsonish import ParseOptions, parse_jsonish
 
 
@@ -131,92 +133,34 @@ def test_multiple_codeblocks_not_merged_when_fence_like_text_present_like_baml()
 # ---- A3: plain fences, tilde fences, case-insensitive language tags ----
 
 
-def test_plain_backtick_fence_no_language():
-    """Plain ``` fences with no language tag should be parsed."""
-    text = """```
-{"key": "value"}
-```
-"""
+@pytest.mark.parametrize(
+    "fence_open,fence_close,key,val",
+    [
+        ("```", "```", "key", "value"),
+        ("~~~", "~~~", "x", 42),
+        ("~~~json", "~~~", "x", 42),
+        ("```JSON", "```", "a", 1),
+        ("```Json", "```", "b", 2),
+        ("```jsonc", "```", "c", 3),
+        ("```json5", "```", "d", 4),
+        ("```application/json", "```", "e", 5),
+    ],
+    ids=[
+        "backtick-no-lang",
+        "tilde-no-lang",
+        "tilde-json",
+        "JSON-upper",
+        "Json-mixed",
+        "jsonc",
+        "json5",
+        "application-json",
+    ],
+)
+def test_fence_variants_extract_json(fence_open, fence_close, key, val):
+    text = f'{fence_open}\n{{"{key}": {val if isinstance(val, int) else chr(34) + str(val) + chr(34)}}}\n{fence_close}\n'
     v = parse_jsonish(text, options=ParseOptions(), is_done=True)
     assert v.candidates
-    assert any(isinstance(c.value, dict) and c.value.get("key") == "value" for c in v.candidates)
-
-
-def test_tilde_fence():
-    """~~~ fences should be supported."""
-    text = """~~~
-{"x": 42}
-~~~
-"""
-    v = parse_jsonish(text, options=ParseOptions(), is_done=True)
-    assert v.candidates
-    assert any(isinstance(c.value, dict) and c.value.get("x") == 42 for c in v.candidates)
-
-
-def test_tilde_fence_with_language():
-    """~~~ fences with a language tag should be supported."""
-    text = """~~~json
-{"x": 42}
-~~~
-"""
-    v = parse_jsonish(text, options=ParseOptions(), is_done=True)
-    assert v.candidates
-    assert any(isinstance(c.value, dict) and c.value.get("x") == 42 for c in v.candidates)
-
-
-def test_case_insensitive_language_tag_JSON():
-    """Uppercase JSON tag should work."""
-    text = """```JSON
-{"a": 1}
-```
-"""
-    v = parse_jsonish(text, options=ParseOptions(), is_done=True)
-    assert v.candidates
-    assert any(isinstance(c.value, dict) and c.value.get("a") == 1 for c in v.candidates)
-
-
-def test_case_insensitive_language_tag_Json():
-    """Mixed-case Json tag should work."""
-    text = """```Json
-{"b": 2}
-```
-"""
-    v = parse_jsonish(text, options=ParseOptions(), is_done=True)
-    assert v.candidates
-    assert any(isinstance(c.value, dict) and c.value.get("b") == 2 for c in v.candidates)
-
-
-def test_jsonc_language_tag():
-    """jsonc tag should work."""
-    text = """```jsonc
-{"c": 3}
-```
-"""
-    v = parse_jsonish(text, options=ParseOptions(), is_done=True)
-    assert v.candidates
-    assert any(isinstance(c.value, dict) and c.value.get("c") == 3 for c in v.candidates)
-
-
-def test_json5_language_tag():
-    """json5 tag should work."""
-    text = """```json5
-{"d": 4}
-```
-"""
-    v = parse_jsonish(text, options=ParseOptions(), is_done=True)
-    assert v.candidates
-    assert any(isinstance(c.value, dict) and c.value.get("d") == 4 for c in v.candidates)
-
-
-def test_application_json_language_tag():
-    """application/json tag should work (slash in tag)."""
-    text = """```application/json
-{"e": 5}
-```
-"""
-    v = parse_jsonish(text, options=ParseOptions(), is_done=True)
-    assert v.candidates
-    assert any(isinstance(c.value, dict) and c.value.get("e") == 5 for c in v.candidates)
+    assert any(isinstance(c.value, dict) and c.value.get(key) == val for c in v.candidates)
 
 
 def test_multiple_json_blocks_with_commentary():

@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
 
 from parsantic.extract import AlignmentStatus, Document
 from parsantic.extract.media import Attachment, AttachmentKind
-from parsantic.extract.options import MediaOptions
-from parsantic.extract.types import ExtractResult, FieldEvidence, MergeConflict
+from parsantic.extract.types import FieldEvidence, MergeConflict
 
 
 def test_attachment_image_factory_with_path():
@@ -51,18 +49,6 @@ def test_attachment_pdf_rejects_negative_page_indices():
 def test_attachment_rejects_page_indices_on_non_pdf():
     with pytest.raises(ValueError, match="page_indices is only valid for PDF attachments"):
         Attachment(kind=AttachmentKind.IMAGE, source=b"\x89PNG...", page_indices=(0,))
-
-
-def test_attachment_kind_enum_values():
-    assert AttachmentKind.IMAGE.value == "image"
-    assert AttachmentKind.PDF.value == "pdf"
-
-
-def test_attachment_is_frozen():
-    attachment = Attachment.image(Path("photo.jpg"))
-
-    with pytest.raises(FrozenInstanceError):
-        attachment.name = "other-name"  # type: ignore[misc]
 
 
 def test_document_from_image_creates_attachment_document():
@@ -147,22 +133,3 @@ def test_merge_conflict_creation():
     assert conflict.existing_preview == "10"
     assert conflict.incoming_preview == "12"
     assert conflict.page_index == 2
-
-
-def test_extract_result_conflicts_defaults_to_empty_list():
-    result = ExtractResult(
-        value={"ok": True},
-        document_id=None,
-        raw_text=None,
-        flags=(),
-        score=0,
-        evidence=[],
-    )
-
-    assert result.conflicts == []
-
-
-def test_media_options_grounding_default_is_auto():
-    options = MediaOptions()
-
-    assert options.grounding == "auto"

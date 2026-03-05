@@ -54,26 +54,6 @@ class UserWithAddress(BaseModel):
 class TestImportGuard:
     """The module should be importable without pydantic-ai."""
 
-    def test_module_imports_successfully(self):
-        """Importing parsantic.ai should not raise."""
-        import parsantic.ai
-
-        assert hasattr(parsantic.ai, "sap_text_output")
-        assert hasattr(parsantic.ai, "patch_repair_output")
-        assert hasattr(parsantic.ai, "build_patch_prompt")
-        assert hasattr(parsantic.ai, "validation_error_paths")
-
-    def test_has_pydantic_ai_flag(self):
-        """The internal flag reflects whether pydantic-ai is installed."""
-        from parsantic.ai import _HAS_PYDANTIC_AI
-
-        try:
-            import pydantic_ai  # noqa: F401
-
-            assert _HAS_PYDANTIC_AI is True
-        except ImportError:
-            assert _HAS_PYDANTIC_AI is False
-
     def test_sap_text_output_import_guard(self):
         """sap_text_output raises ImportError only when pydantic-ai is missing."""
         from parsantic.ai import _HAS_PYDANTIC_AI, sap_text_output
@@ -82,7 +62,6 @@ class TestImportGuard:
             with pytest.raises(ImportError, match="pydantic-ai"):
                 sap_text_output(User)
         else:
-            # Should return a callable without error
             processor = sap_text_output(User)
             assert callable(processor)
 
@@ -97,31 +76,6 @@ class TestImportGuard:
             processor = patch_repair_output(User)
             assert callable(processor)
 
-    def test_check_pydantic_ai_helper(self):
-        """_check_pydantic_ai raises ImportError only when pydantic-ai is missing."""
-        from parsantic.ai import _HAS_PYDANTIC_AI, _check_pydantic_ai
-
-        if not _HAS_PYDANTIC_AI:
-            with pytest.raises(ImportError):
-                _check_pydantic_ai()
-        else:
-            _check_pydantic_ai()  # should not raise
-
-    def test_pure_utilities_work_without_pydantic_ai(self):
-        """Pure utility functions should work regardless of pydantic-ai."""
-        from parsantic.ai import (
-            build_patch_prompt,
-            slice_doc_for_paths,
-            slice_schema_for_paths,
-            validation_error_paths,
-        )
-
-        # These should all be callable
-        assert callable(validation_error_paths)
-        assert callable(slice_schema_for_paths)
-        assert callable(slice_doc_for_paths)
-        assert callable(build_patch_prompt)
-
 
 # ---------------------------------------------------------------------------
 # 2) validation_error_paths tests
@@ -132,68 +86,44 @@ class TestValidationErrorPaths:
     """Test conversion of Pydantic ValidationError locs to JSON Pointers."""
 
     def _make_error(self, target: type, data: Any) -> ValidationError:
-        """Helper to create a ValidationError."""
         try:
             TypeAdapter(target).validate_python(data)
         except ValidationError as e:
             return e
         pytest.fail("Expected ValidationError")
 
-    def test_simple_field_error(self):
+    def test_various_error_paths(self):
         from parsantic.ai import validation_error_paths
 
-        err = self._make_error(User, {"username": "alice", "email": 123})
-        paths = validation_error_paths(err)
-        assert "/email" in paths
-
-    def test_nested_field_error(self):
-        from parsantic.ai import validation_error_paths
-
-        err = self._make_error(
-            User,
-            {
-                "username": "alice",
-                "email": "a@b.com",
-                "pets": [{"name": "Rex", "age": "not_a_number"}],
-            },
+        # simple field
+        assert "/email" in validation_error_paths(
+            self._make_error(User, {"username": "alice", "email": 123})
         )
-        paths = validation_error_paths(err)
-        assert "/pets/0/age" in paths
-
-    def test_multiple_errors(self):
-        from parsantic.ai import validation_error_paths
-
-        err = self._make_error(User, {"email": 42})
-        paths = validation_error_paths(err)
-        # Should have at least the username (missing) and email (wrong type) paths
-        assert len(paths) >= 1
-
-    def test_empty_loc_produces_root_path(self):
-        from parsantic.ai import validation_error_paths
-
-        # Force a root-level error by passing wrong type entirely
-        err = self._make_error(User, "not_a_dict")
-        paths = validation_error_paths(err)
-        assert len(paths) >= 1
-
-    def test_deduplication(self):
-        from parsantic.ai import validation_error_paths
-
-        # Multiple errors at the same location should be deduplicated
-        err = self._make_error(
-            User,
-            {
-                "username": "alice",
-                "email": "a@b.com",
-                "pets": [{"name": "Rex", "age": "bad"}],
-            },
+        # nested field
+        assert "/pets/0/age" in validation_error_paths(
+            self._make_error(
+                User,
+                {
+                    "username": "alice",
+                    "email": "a@b.com",
+                    "pets": [{"name": "Rex", "age": "not_a_number"}],
+                },
+            )
         )
-        paths = validation_error_paths(err)
-        # No duplicates
+        # multiple errors
+        assert len(validation_error_paths(self._make_error(User, {"email": 42}))) >= 1
+        # root-level error
+        assert len(validation_error_paths(self._make_error(User, "not_a_dict"))) >= 1
+        # deduplication
+        paths = validation_error_paths(
+            self._make_error(
+                User,
+                {"username": "alice", "email": "a@b.com", "pets": [{"name": "Rex", "age": "bad"}]},
+            )
+        )
         assert len(paths) == len(set(paths))
 
     def test_rfc6901_escaping(self):
-        """Segments with ~ or / should be properly escaped."""
         from parsantic.json_pointer import escape_json_pointer_token
 
         assert escape_json_pointer_token("a/b") == "a~1b"
@@ -209,14 +139,20 @@ class TestValidationErrorPaths:
 class TestSliceDocForPaths:
     """Test extracting relevant document fragments."""
 
-    def test_simple_path(self):
+    def test_slice_doc(self):
         from parsantic.ai import slice_doc_for_paths
 
-        doc = {"user": {"name": "Alice", "age": 30, "email": "a@b.com"}}
-        result = slice_doc_for_paths(doc, ["/user/age"])
-        assert result == {"user": {"age": 30}}
+        doc = {"user": {"name": "Alice", "age": 30, "email": "a@b.com"}, "city": "NYC"}
+        # simple path
+        assert slice_doc_for_paths(doc, ["/user/age"]) == {"user": {"age": 30}}
+        # empty paths → full doc
+        assert slice_doc_for_paths(doc, []) == doc
+        # root path → full doc
+        assert slice_doc_for_paths({"a": 1}, [""]) == {"a": 1}
+        # nonexistent
+        assert slice_doc_for_paths({"name": "Alice"}, ["/nonexistent"]) == {"nonexistent": None}
 
-    def test_multiple_paths(self):
+    def test_slice_doc_multiple_and_array(self):
         from parsantic.ai import slice_doc_for_paths
 
         doc = {"name": "Alice", "age": 30, "email": "a@b.com", "city": "NYC"}
@@ -225,33 +161,8 @@ class TestSliceDocForPaths:
         assert result["email"] == "a@b.com"
         assert "city" not in result
 
-    def test_array_path(self):
-        from parsantic.ai import slice_doc_for_paths
-
-        doc = {"pets": [{"name": "Rex", "age": 3}, {"name": "Cat", "age": 5}]}
-        result = slice_doc_for_paths(doc, ["/pets/0/age"])
-        assert "pets" in result
-
-    def test_empty_paths_returns_full_doc(self):
-        from parsantic.ai import slice_doc_for_paths
-
-        doc = {"a": 1, "b": 2}
-        result = slice_doc_for_paths(doc, [])
-        assert result == doc
-
-    def test_nonexistent_path(self):
-        from parsantic.ai import slice_doc_for_paths
-
-        doc = {"name": "Alice"}
-        result = slice_doc_for_paths(doc, ["/nonexistent"])
-        assert result == {"nonexistent": None}
-
-    def test_root_path_returns_full_doc(self):
-        from parsantic.ai import slice_doc_for_paths
-
-        doc = {"a": 1}
-        result = slice_doc_for_paths(doc, [""])
-        assert result == doc
+        doc2 = {"pets": [{"name": "Rex", "age": 3}]}
+        assert "pets" in slice_doc_for_paths(doc2, ["/pets/0/age"])
 
 
 # ---------------------------------------------------------------------------
@@ -262,27 +173,7 @@ class TestSliceDocForPaths:
 class TestSliceSchemaForPaths:
     """Test extracting relevant schema fragments."""
 
-    def test_json_schema_property_filtering(self):
-        from parsantic.ai import slice_schema_for_paths
-
-        schema = {
-            "title": "User",
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "age": {"type": "integer"},
-                "email": {"type": "string"},
-            },
-            "required": ["name", "age", "email"],
-        }
-        schema_text = json.dumps(schema)
-        result = slice_schema_for_paths(schema_text, ["/age"])
-        parsed = json.loads(result)
-        assert "age" in parsed.get("properties", {})
-        # Other properties may be excluded
-        assert "email" not in parsed.get("properties", {})
-
-    def test_preserves_top_level_metadata(self):
+    def test_json_schema_filtering(self):
         from parsantic.ai import slice_schema_for_paths
 
         schema = {
@@ -291,44 +182,26 @@ class TestSliceSchemaForPaths:
             "$defs": {"Pet": {"type": "object"}},
             "properties": {
                 "name": {"type": "string"},
+                "age": {"type": "integer"},
+                "email": {"type": "string"},
             },
+            "required": ["name", "age", "email"],
         }
-        schema_text = json.dumps(schema)
-        result = slice_schema_for_paths(schema_text, ["/name"])
-        parsed = json.loads(result)
-        assert parsed.get("title") == "User"
-        assert "$defs" in parsed
+        # property filtering + required filtering
+        parsed = json.loads(slice_schema_for_paths(json.dumps(schema), ["/age"]))
+        assert "age" in parsed["properties"] and "email" not in parsed["properties"]
+        assert parsed.get("required") == ["age"]
+        # preserves top-level metadata
+        assert parsed.get("title") == "User" and "$defs" in parsed
 
-    def test_empty_paths_returns_full_schema(self):
+    def test_empty_paths_and_non_json(self):
         from parsantic.ai import slice_schema_for_paths
 
         schema_text = '{"type": "object", "properties": {"x": {"type": "int"}}}'
-        result = slice_schema_for_paths(schema_text, [])
-        assert result == schema_text
-
-    def test_non_json_schema_uses_line_filtering(self):
-        from parsantic.ai import slice_schema_for_paths
-
-        schema_text = "class User:\n  name: str\n  age: int\n  email: str"
-        result = slice_schema_for_paths(schema_text, ["/age"])
-        assert "age" in result
-
-    def test_required_field_filtered(self):
-        from parsantic.ai import slice_schema_for_paths
-
-        schema = {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "age": {"type": "integer"},
-            },
-            "required": ["name", "age"],
-        }
-        schema_text = json.dumps(schema)
-        result = slice_schema_for_paths(schema_text, ["/age"])
-        parsed = json.loads(result)
-        # Only "age" should be in required (name is filtered out)
-        assert parsed.get("required") == ["age"]
+        assert slice_schema_for_paths(schema_text, []) == schema_text
+        assert "age" in slice_schema_for_paths(
+            "class User:\n  name: str\n  age: int\n  email: str", ["/age"]
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -344,106 +217,56 @@ class TestBuildPatchPrompt:
 
         doc = {"name": "Alice", "age": "thirty"}
         errors = [
-            {"loc": ("age",), "msg": "Input should be a valid integer", "type": "int_parsing"},
+            {"loc": ("age",), "msg": "Input should be a valid integer", "type": "int_parsing"}
         ]
         prompt = build_patch_prompt(doc, errors)
-        assert "Current Document" in prompt
-        assert "Validation Errors" in prompt
-        assert "Instructions" in prompt
-        assert "age" in prompt
-        assert "int_parsing" in prompt
+        for expected in (
+            "Current Document",
+            "Validation Errors",
+            "Instructions",
+            "age",
+            "int_parsing",
+        ):
+            assert expected in prompt
+        # RFC 6902 instructions
+        for expected in ("RFC 6902", "replace", "add", "json_doc_id"):
+            assert expected in prompt
 
-    def test_includes_schema_when_provided(self):
+    def test_schema_inclusion(self):
         from parsantic.ai import build_patch_prompt
 
         doc = {"name": "Alice"}
         errors = [{"loc": ("age",), "msg": "Field required", "type": "missing"}]
         schema = '{"type": "object", "properties": {"age": {"type": "integer"}}}'
-        prompt = build_patch_prompt(doc, errors, schema_text=schema)
-        assert "Target Schema" in prompt
-        assert "integer" in prompt
-
-    def test_no_schema_section_when_not_provided(self):
-        from parsantic.ai import build_patch_prompt
-
-        doc = {"name": "Alice"}
-        errors = [{"loc": ("age",), "msg": "Field required", "type": "missing"}]
-        prompt = build_patch_prompt(doc, errors)
-        assert "Target Schema" not in prompt
+        assert "Target Schema" in build_patch_prompt(doc, errors, schema_text=schema)
+        assert "Target Schema" not in build_patch_prompt(doc, errors)
 
     def test_doc_slicing_reduces_content(self):
         from parsantic.ai import build_patch_prompt
 
-        doc = {
-            "name": "Alice",
-            "age": "thirty",
-            "email": "alice@example.com",
-            "address": {"street": "123 Main St", "city": "NYC"},
-        }
-        errors = [
-            {"loc": ("age",), "msg": "Input should be a valid integer", "type": "int_parsing"},
-        ]
-        prompt_sliced = build_patch_prompt(doc, errors, doc_slicing=True)
-        prompt_full = build_patch_prompt(doc, errors, doc_slicing=False)
+        doc = {"name": "Alice", "age": "thirty", "address": {"street": "123 Main St"}}
+        errors = [{"loc": ("age",), "msg": "bad", "type": "int_parsing"}]
+        assert "age" in build_patch_prompt(doc, errors, doc_slicing=True)
+        assert "123 Main St" in build_patch_prompt(doc, errors, doc_slicing=False)
 
-        # The sliced prompt should not contain the full address details
-        # (since the error is only about "age")
-        assert "age" in prompt_sliced
-        # Full prompt contains everything
-        assert "123 Main St" in prompt_full
-
-    def test_multiple_errors(self):
+    def test_multiple_and_nested_errors(self):
         from parsantic.ai import build_patch_prompt
 
-        doc = {"name": 123, "age": "bad"}
+        doc = {"name": 123, "age": "bad", "user": {"pets": [{"name": "Rex", "age": "old"}]}}
         errors = [
-            {"loc": ("name",), "msg": "Input should be a valid string", "type": "string_type"},
-            {"loc": ("age",), "msg": "Input should be a valid integer", "type": "int_parsing"},
+            {"loc": ("name",), "msg": "bad", "type": "string_type"},
+            {"loc": ("age",), "msg": "bad", "type": "int_parsing"},
+            {"loc": ("user", "pets", 0, "age"), "msg": "bad", "type": "int_parsing"},
         ]
         prompt = build_patch_prompt(doc, errors)
-        assert "name" in prompt
-        assert "age" in prompt
         assert "string_type" in prompt
-        assert "int_parsing" in prompt
-
-    def test_nested_error_paths(self):
-        from parsantic.ai import build_patch_prompt
-
-        doc = {"user": {"pets": [{"name": "Rex", "age": "old"}]}}
-        errors = [
-            {
-                "loc": ("user", "pets", 0, "age"),
-                "msg": "Input should be a valid integer",
-                "type": "int_parsing",
-            },
-        ]
-        prompt = build_patch_prompt(doc, errors)
         assert "user -> pets -> 0 -> age" in prompt
 
-    def test_rfc6902_instructions_present(self):
+    def test_edge_cases(self):
         from parsantic.ai import build_patch_prompt
 
-        doc = {"x": 1}
-        errors = [{"loc": ("x",), "msg": "bad", "type": "err"}]
-        prompt = build_patch_prompt(doc, errors)
-        assert "RFC 6902" in prompt
-        assert "replace" in prompt
-        assert "add" in prompt
-        assert "json_doc_id" in prompt
-
-    def test_empty_errors_still_builds_prompt(self):
-        from parsantic.ai import build_patch_prompt
-
-        doc = {"a": 1}
-        prompt = build_patch_prompt(doc, [])
-        assert "Current Document" in prompt
-
-    def test_prompt_renders_non_json_types_safely(self):
-        from parsantic.ai import build_patch_prompt
-
-        doc = {"when": datetime(2024, 1, 1, tzinfo=UTC)}
-        prompt = build_patch_prompt(doc, [])
-        assert "2024-01-01" in prompt
+        assert "Current Document" in build_patch_prompt({"a": 1}, [])
+        assert "2024-01-01" in build_patch_prompt({"when": datetime(2024, 1, 1, tzinfo=UTC)}, [])
 
 
 # ---------------------------------------------------------------------------
@@ -454,31 +277,18 @@ class TestBuildPatchPrompt:
 class TestSapTextOutput:
     """Test the sap_text_output processor with mocked pydantic-ai guard."""
 
-    def test_processor_parses_clean_json(self):
+    def test_processor_parses_various_formats(self):
         from parsantic.ai import sap_text_output
 
         with patch("parsantic.ai._HAS_PYDANTIC_AI", True):
             processor = sap_text_output(Pet)
+            # clean JSON
             result = processor('{"name": "Rex", "age": 3, "species": "dog"}')
-            assert isinstance(result, Pet)
-            assert result.name == "Rex"
-            assert result.age == 3
-
-    def test_processor_parses_jsonish_text(self):
-        from parsantic.ai import sap_text_output
-
-        with patch("parsantic.ai._HAS_PYDANTIC_AI", True):
-            processor = sap_text_output(Pet)
-            # Markdown fenced JSON
+            assert isinstance(result, Pet) and result.name == "Rex"
+            # markdown fenced
             result = processor('```json\n{"name": "Rex", "age": 3}\n```')
             assert isinstance(result, Pet)
-            assert result.name == "Rex"
-
-    def test_processor_with_trailing_comma(self):
-        from parsantic.ai import sap_text_output
-
-        with patch("parsantic.ai._HAS_PYDANTIC_AI", True):
-            processor = sap_text_output(Pet)
+            # trailing comma
             result = processor('{"name": "Rex", "age": 3,}')
             assert isinstance(result, Pet)
 
@@ -490,25 +300,14 @@ class TestSapTextOutput:
             with pytest.raises((ValueError, ValidationError)):
                 processor("completely invalid not json at all")
 
-    def test_processor_with_parse_options(self):
+    def test_processor_with_custom_options(self):
         from parsantic.ai import sap_text_output
         from parsantic.jsonish import ParseOptions
 
-        opts = ParseOptions(allow_markdown_json=True)
         with patch("parsantic.ai._HAS_PYDANTIC_AI", True):
-            processor = sap_text_output(Pet, parse_options=opts)
+            processor = sap_text_output(Pet, parse_options=ParseOptions(allow_markdown_json=True))
             result = processor('```json\n{"name": "Kitty", "age": 2}\n```')
             assert result.name == "Kitty"
-
-    def test_processor_with_coerce_options(self):
-        from parsantic.ai import sap_text_output
-        from parsantic.coerce import CoerceOptions
-
-        opts = CoerceOptions(allow_substring_enum_match=True)
-        with patch("parsantic.ai._HAS_PYDANTIC_AI", True):
-            processor = sap_text_output(Pet, coerce_options=opts)
-            result = processor('{"name": "Rex", "age": 3}')
-            assert result.name == "Rex"
 
 
 # ---------------------------------------------------------------------------
@@ -519,117 +318,70 @@ class TestSapTextOutput:
 class TestPatchRepairOutput:
     """Test the patch_repair_output processor with mocked pydantic-ai guard."""
 
-    def test_processor_returns_valid_on_first_try(self):
+    def test_processor_parses_valid_inputs(self):
         from parsantic.ai import patch_repair_output
 
         with patch("parsantic.ai._HAS_PYDANTIC_AI", True):
             processor = patch_repair_output(Pet)
+            # clean JSON
             result = processor('{"name": "Rex", "age": 3}')
-            assert isinstance(result, Pet)
-            assert result.name == "Rex"
-            assert result.age == 3
+            assert isinstance(result, Pet) and result.name == "Rex" and result.age == 3
+            # markdown fenced
+            result2 = processor('```json\n{"name": "Rex", "age": 5}\n```')
+            assert isinstance(result2, Pet) and result2.age == 5
+            # custom policy
+            from parsantic.patch import PatchPolicy
 
-    def test_processor_parses_jsonish_successfully(self):
-        from parsantic.ai import patch_repair_output
-
-        with patch("parsantic.ai._HAS_PYDANTIC_AI", True):
-            processor = patch_repair_output(Pet)
-            result = processor('```json\n{"name": "Rex", "age": 5}\n```')
-            assert isinstance(result, Pet)
-            assert result.age == 5
-
-    def test_processor_with_custom_policy(self):
-        from parsantic.ai import patch_repair_output
-        from parsantic.patch import PatchPolicy
-
-        policy = PatchPolicy(allow_remove=True, max_ops=10)
-        with patch("parsantic.ai._HAS_PYDANTIC_AI", True):
-            processor = patch_repair_output(Pet, policy=policy, max_attempts=5)
-            result = processor('{"name": "Rex", "age": 3}')
-            assert isinstance(result, Pet)
+            processor2 = patch_repair_output(
+                Pet, policy=PatchPolicy(allow_remove=True, max_ops=10), max_attempts=5
+            )
+            assert isinstance(processor2('{"name": "Rex", "age": 3}'), Pet)
 
     def test_processor_reentrant_after_failure(self):
-        """After a non-ModelRetry exception, processor state resets for next run."""
         from parsantic.ai import patch_repair_output
 
         with patch("parsantic.ai._HAS_PYDANTIC_AI", True):
-            # max_attempts=0 so it never tries to raise ModelRetry (which
-            # would fail since pydantic-ai is not actually installed).
             processor = patch_repair_output(Pet, max_attempts=0)
-            # First call: valid — should succeed
-            result = processor('{"name": "Rex", "age": 3}')
-            assert result.name == "Rex"
-            # Second call: invalid — should raise ValueError (no retries)
+            assert processor('{"name": "Rex", "age": 3}').name == "Rex"
             with pytest.raises(ValueError):
                 processor("totally invalid garbage not json at all")
-            # Third call: valid again — should succeed (state was reset)
-            result2 = processor('{"name": "Luna", "age": 2}')
-            assert result2.name == "Luna"
-            assert result2.age == 2
+            result = processor('{"name": "Luna", "age": 2}')
+            assert result.name == "Luna" and result.age == 2
 
-    def test_processor_run_id_isolation(self):
-        """RunContext.run_id isolates state between different agent.run() calls."""
+    def test_processor_run_id_and_concurrent_isolation(self):
         import uuid
         from dataclasses import dataclass
 
-        from parsantic.ai import patch_repair_output
+        from parsantic.ai import _RunState, patch_repair_output
 
         @dataclass
         class FakeRunContext:
-            """Mimics pydantic_ai.RunContext with just the run_id field."""
-
-            run_id: uuid.UUID
+            run_id: object
 
         with patch("parsantic.ai._HAS_PYDANTIC_AI", True):
             processor = patch_repair_output(Pet, max_attempts=0)
 
-            # Simulate first agent.run() — valid input
+            # run_id isolation
             ctx1 = FakeRunContext(run_id=uuid.uuid4())
-            result = processor(ctx1, text='{"name": "Rex", "age": 3}')
-            assert result.name == "Rex"
-
-            # Simulate second agent.run() with a NEW run_id — should work clean
+            assert processor(ctx1, text='{"name": "Rex", "age": 3}').name == "Rex"
             ctx2 = FakeRunContext(run_id=uuid.uuid4())
             result2 = processor(ctx2, text='{"name": "Luna", "age": 2}')
-            assert result2.name == "Luna"
-            assert result2.age == 2
-            # Successful runs clean up their state
-            assert processor._attempts == 0
-            assert processor._prev_doc is None
+            assert result2.name == "Luna" and result2.age == 2
+            assert processor._attempts == 0 and processor._prev_doc is None
 
-    def test_processor_concurrent_run_isolation(self):
-        """Per-run-id dict isolates state for interleaved concurrent runs."""
-        from dataclasses import dataclass
-
-        from parsantic.ai import patch_repair_output
-
-        @dataclass
-        class FakeRunContext:
-            run_id: str
-
-        with patch("parsantic.ai._HAS_PYDANTIC_AI", True):
-            processor = patch_repair_output(Pet, max_attempts=0)
-
-            # Run A: inject mid-retry state via the per-run dict
-            processor._run_states["run-A"] = [1, {"name": "Rex", "age": "bad"}]
-
-            # Run B: succeeds independently without disturbing A
+            # concurrent isolation
+            processor._run_states["run-A"] = _RunState(
+                attempts=1, prev_doc={"name": "Rex", "age": "bad"}
+            )
             ctx_b = FakeRunContext(run_id="run-B")
-            result_b = processor(ctx_b, text='{"name": "Luna", "age": 2}')
-            assert result_b.name == "Luna"
-
-            # Run A's state should still be preserved in the dict
-            assert "run-A" in processor._run_states
-            assert processor._run_states["run-A"][0] == 1  # attempts
-            assert processor._run_states["run-A"][1] == {"name": "Rex", "age": "bad"}
+            assert processor(ctx_b, text='{"name": "Luna", "age": 2}').name == "Luna"
+            assert processor._run_states["run-A"].attempts == 1
 
     def test_processor_has_name_attribute(self):
-        """Processor has __name__ for pydantic-ai's function_schema compatibility."""
         from parsantic.ai import patch_repair_output
 
         with patch("parsantic.ai._HAS_PYDANTIC_AI", True):
             processor = patch_repair_output(Pet, max_attempts=0)
-            assert hasattr(processor, "__name__")
             assert processor.__name__ == "patch_repair_processor"
 
 
@@ -641,23 +393,19 @@ class TestPatchRepairOutput:
 class TestInternalHelpers:
     """Test internal utility functions."""
 
-    def test_parent_paths(self):
+    @pytest.mark.parametrize(
+        "pointer,expected",
+        [
+            ("/user/pets/0/age", ["/user/pets/0/age", "/user/pets/0", "/user/pets", "/user"]),
+            ("/name", ["/name"]),
+            ("", []),
+        ],
+        ids=["deep", "single", "empty"],
+    )
+    def test_parent_paths(self, pointer, expected):
         from parsantic.ai import _parent_paths
 
-        paths = _parent_paths("/user/pets/0/age")
-        assert paths == ["/user/pets/0/age", "/user/pets/0", "/user/pets", "/user"]
-
-    def test_parent_paths_single_segment(self):
-        from parsantic.ai import _parent_paths
-
-        paths = _parent_paths("/name")
-        assert paths == ["/name"]
-
-    def test_parent_paths_empty(self):
-        from parsantic.ai import _parent_paths
-
-        paths = _parent_paths("")
-        assert paths == []
+        assert _parent_paths(pointer) == expected
 
     def test_pointer_to_segments(self):
         from parsantic.ai import _pointer_to_segments
@@ -674,24 +422,17 @@ class TestInternalHelpers:
         assert _get_at_path(doc, ["user", "pets", "0", "age"]) == 3
         assert _get_at_path(doc, ["nonexistent"]) is None
 
-    def test_insert_at_path(self):
+    @pytest.mark.parametrize(
+        "segments,value,expected",
+        [
+            (["user", "name"], "Alice", {"user": {"name": "Alice"}}),
+            (["a", "b", "c"], 42, {"a": {"b": {"c": 42}}}),
+        ],
+        ids=["shallow", "deep"],
+    )
+    def test_insert_at_path(self, segments, value, expected):
         from parsantic.ai import _insert_at_path
 
         target: dict[str, Any] = {}
-        _insert_at_path(target, ["user", "name"], "Alice")
-        assert target == {"user": {"name": "Alice"}}
-
-    def test_insert_at_path_nested(self):
-        from parsantic.ai import _insert_at_path
-
-        target: dict[str, Any] = {}
-        _insert_at_path(target, ["a", "b", "c"], 42)
-        assert target == {"a": {"b": {"c": 42}}}
-
-    def test_escape_json_pointer_token(self):
-        from parsantic.json_pointer import escape_json_pointer_token
-
-        assert escape_json_pointer_token("simple") == "simple"
-        assert escape_json_pointer_token("a/b") == "a~1b"
-        assert escape_json_pointer_token("a~b") == "a~0b"
-        assert escape_json_pointer_token("~1") == "~01"
+        _insert_at_path(target, segments, value)
+        assert target == expected

@@ -97,7 +97,9 @@ def _create_provider(model: str | Any | None, provider_kwargs: dict[str, Any] | 
 def _existing_to_dict(existing: dict[str, Any] | BaseModel) -> dict[str, Any]:
     if isinstance(existing, BaseModel):
         return existing.model_dump(mode="json")
-    return dict(existing)
+    import copy
+
+    return copy.deepcopy(existing)
 
 
 # ---------------------------------------------------------------------------

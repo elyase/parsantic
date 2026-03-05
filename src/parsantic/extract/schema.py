@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
@@ -26,9 +25,3 @@ class PydanticSchemaAdapter:
         if isinstance(value, BaseModel):
             return value.model_dump(mode="json")
         return self.adapter.dump_python(value, mode="json")
-
-    def render_schema(self, mode: str = "compact") -> str:
-        schema = self.adapter.json_schema()
-        if mode == "compact":
-            return json.dumps(schema, ensure_ascii=False)
-        return json.dumps(schema, indent=2, ensure_ascii=False)

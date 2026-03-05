@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
@@ -22,6 +23,7 @@ from .coerce import CoerceOptions
 from .json_pointer import build_json_pointer, parse_json_pointer
 from .jsonish import ParseOptions
 from .patch import PatchPolicy, apply_patch, normalize_patches
+from .prompts import render_policy_lines
 
 # ---------------------------------------------------------------------------
 # Import guard for pydantic-ai
@@ -35,6 +37,14 @@ try:
     _HAS_PYDANTIC_AI = True
 except ImportError:
     _HAS_PYDANTIC_AI = False
+
+
+@dataclass(slots=True)
+class _RunState:
+    """Per-run retry state for _PatchRepairProcessor."""
+
+    attempts: int = 0
+    prev_doc: dict[str, Any] | None = None
 
 
 def _check_pydantic_ai() -> None:
@@ -219,6 +229,8 @@ def _get_at_path(doc: Any, segments: list[str]) -> Any:
         elif isinstance(current, list):
             try:
                 idx = int(seg)
+                if idx < 0:
+                    return None
                 current = current[idx]
             except (ValueError, IndexError):
                 return None
@@ -245,6 +257,8 @@ def _insert_at_path(target: dict[str, Any], segments: list[str], value: Any) -> 
         elif isinstance(current, list):
             try:
                 idx = int(seg)
+                if idx < 0 or idx - len(current) > 100:
+                    return
                 while len(current) <= idx:
                     current.append({} if not is_next_index else [])
                 current = current[idx]
@@ -260,6 +274,8 @@ def _insert_at_path(target: dict[str, Any], segments: list[str], value: Any) -> 
     elif isinstance(current, list):
         try:
             idx = int(last)
+            if idx < 0 or idx - len(current) > 100:
+                return
             while len(current) <= idx:
                 current.append(None)
             current[idx] = value
@@ -352,14 +368,7 @@ def build_patch_prompt(
 
     errors_text = "\n".join(error_lines)
     effective_policy = policy or PatchPolicy()
-    policy_text = "\n".join(
-        [
-            f"- remove operations allowed: {'yes' if effective_policy.allow_remove else 'no'}",
-            f"- max operations: {effective_policy.max_ops}",
-            f"- max path depth: {effective_policy.max_path_depth}",
-            f"- append (/-) allowed: {'yes' if effective_policy.allow_append else 'no'}",
-        ]
-    )
+    policy_text = render_policy_lines(effective_policy)
 
     prompt = f"""The following JSON document has validation errors that need to be fixed.
 
@@ -425,8 +434,8 @@ def sap_text_output[T](
 
     Returns
     -------
-    Callable[[str], T]
-        A processor function: ``(text: str) -> T``.
+    Callable[..., T]
+        A processor function accepting ``(text)`` or ``(RunContext, text)``.
 
     Raises
     ------
@@ -435,9 +444,10 @@ def sap_text_output[T](
     """
     _check_pydantic_ai()
 
-    def processor(text: str) -> T:
+    def processor(ctx_or_text: Any, text: str = "") -> T:
+        actual_text = ctx_or_text if isinstance(ctx_or_text, str) else text
         result: ParseResult[T] = parse(
-            text,
+            actual_text,
             target,
             parse_options=parse_options,
             coerce_options=coerce_options,
@@ -556,9 +566,9 @@ def patch_repair_output[T](
             # State for direct (non-RunContext) calls
             self._attempts = 0
             self._prev_doc = None
-            # Per-run state for pydantic-ai RunContext calls: {run_id: [attempts, prev_doc]}
-            self._run_states: dict[str, list[Any]] = {}
-            self._current_run_id: str | None = None
+            # Per-run state for pydantic-ai RunContext calls
+            self._run_states: dict[Any, _RunState] = {}
+            self._current_run_id: Any | None = None
 
         def reset(self) -> None:
             """Reset all state (direct-call state and current run state)."""
@@ -568,23 +578,30 @@ def patch_repair_output[T](
                 self._run_states.pop(self._current_run_id, None)
                 self._current_run_id = None
 
-        def _load_run_state(self, run_id: str) -> None:
+        def _load_run_state(self, run_id: Any) -> None:
             """Load per-run state into the working slots."""
             state = self._run_states.get(run_id)
             if state is not None:
-                self._attempts, self._prev_doc = state
+                self._attempts = state.attempts
+                self._prev_doc = state.prev_doc
             else:
                 self._attempts = 0
                 self._prev_doc = None
             self._current_run_id = run_id
 
+        _MAX_RUN_STATES = 64
+
         def _save_run_state(self) -> None:
             """Persist working slots back to per-run storage."""
             if self._current_run_id is not None:
-                self._run_states[self._current_run_id] = [
-                    self._attempts,
-                    self._prev_doc,
-                ]
+                self._run_states[self._current_run_id] = _RunState(
+                    attempts=self._attempts,
+                    prev_doc=self._prev_doc,
+                )
+                # Evict oldest entries to prevent unbounded memory growth.
+                while len(self._run_states) > self._MAX_RUN_STATES:
+                    oldest = next(iter(self._run_states))
+                    del self._run_states[oldest]
 
         def __call__(self, ctx_or_text: RunContext[Any], text: str = "") -> T:
             """Process model output, with optional RunContext for per-run state isolation.
@@ -712,10 +729,14 @@ def patch_repair_output[T](
                 if self._attempts < self._max_attempts:
                     self._attempts += 1
                     MR = _get_model_retry()
-                    raise MR(
-                        "Failed to extract a JSON object from model output. "
+                    msg = (
+                        "Failed to extract valid JSON Patch operations from model output. "
+                        "Return ONLY a JSON array of RFC 6902 JSON Patch operations."
+                        if self._prev_doc is not None
+                        else "Failed to extract a JSON object from model output. "
                         "Please return a single JSON object matching the schema."
                     )
+                    raise MR(msg)
                 raise ValueError("Failed to extract document from model output")
 
             # Try validating the raw dict

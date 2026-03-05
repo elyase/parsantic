@@ -16,16 +16,19 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class MediaChunk:
-    """A single chunk for multimodal extraction - one page or one image."""
+    """A single chunk for multimodal extraction - one page or one image.
+
+    When ``attachment_index`` is ``None``, the chunk represents an aggregate
+    of multiple attachments (e.g., the "single" media strategy).
+    """
 
     attachment: Attachment
-    attachment_index: int
+    attachment_index: int | None
     page_index: int | None
     text: str = ""
 
 
 def _should_rasterize_pdf(
-    attachment: Attachment,
     pdf_mode: Literal["auto", "native", "raster"],
     provider_supports_native_pdf: bool,
 ) -> bool:
@@ -136,7 +139,7 @@ def _normalize_image_chunk(
             except ImportError:
                 pass  # No vision deps — send image as-is
             except Exception:
-                pass  # Invalid/unrecognized image — send as-is
+                logger.debug("Image normalization failed, sending as-is", exc_info=True)
 
     return MediaChunk(
         attachment=attachment,
@@ -170,7 +173,7 @@ def chunk_attachments(
                 _normalize_image_chunk(attachment, att_idx, max_dim=opts.max_image_dim, text=text)
             )
         elif attachment.kind is AttachmentKind.PDF:
-            if _should_rasterize_pdf(attachment, opts.pdf_mode, provider_supports_native_pdf):
+            if _should_rasterize_pdf(opts.pdf_mode, provider_supports_native_pdf):
                 chunks.extend(
                     _rasterize_pdf_chunks(
                         attachment,
@@ -190,4 +193,4 @@ def chunk_attachments(
 
 def needs_media(attachments: Sequence[Attachment]) -> bool:
     """Return True if any attachments are present."""
-    return len(attachments) > 0
+    return bool(attachments)

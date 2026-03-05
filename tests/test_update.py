@@ -76,112 +76,76 @@ class SingleStringProvider:
 class TestUpdateBasic:
     """Basic happy-path tests."""
 
+    _DOC = {"name": "Alex", "role": "Engineer", "skills": ["Python"], "years_experience": 3}
+
     def test_simple_replace(self):
         provider = FakeProvider(
             responses=['[{"op": "replace", "path": "/role", "value": "Senior Engineer"}]']
         )
         result = update(
-            existing={
-                "name": "Alex",
-                "role": "Engineer",
-                "skills": ["Python"],
-                "years_experience": 3,
-            },
-            instruction="Alex got promoted.",
-            target=User,
-            model=provider,
+            existing=self._DOC, instruction="Alex got promoted.", target=User, model=provider
         )
         assert isinstance(result, UpdateResult)
-        assert result.value.role == "Senior Engineer"
-        assert result.value.name == "Alex"
-        assert result.attempts == 1
-        assert len(result.patches) == 1
-        assert result.patches[0].op == "replace"
+        assert result.value.role == "Senior Engineer" and result.value.name == "Alex"
+        assert (
+            result.attempts == 1 and len(result.patches) == 1 and result.patches[0].op == "replace"
+        )
 
     def test_multiple_patches(self):
         provider = FakeProvider(
             responses=[
-                """[
-                {"op": "replace", "path": "/role", "value": "Senior Engineer"},
-                {"op": "replace", "path": "/years_experience", "value": 5},
-                {"op": "add", "path": "/skills/-", "value": "Rust"}
-            ]"""
+                '[{"op":"replace","path":"/role","value":"Senior Engineer"},{"op":"replace","path":"/years_experience","value":5},{"op":"add","path":"/skills/-","value":"Rust"}]'
             ]
         )
         result = update(
-            existing={
-                "name": "Alex",
-                "role": "Engineer",
-                "skills": ["Python"],
-                "years_experience": 3,
-            },
+            existing=self._DOC,
             instruction="Promoted and learned Rust.",
             target=User,
             model=provider,
         )
-        assert result.value.role == "Senior Engineer"
-        assert result.value.years_experience == 5
-        assert "Rust" in result.value.skills
-        assert "Python" in result.value.skills
-        assert len(result.patches) == 3
-
-    def test_doc_before_after(self):
-        original = {"name": "Alex", "role": "Engineer", "skills": ["Python"], "years_experience": 3}
-        provider = FakeProvider(responses=['[{"op": "replace", "path": "/role", "value": "Lead"}]'])
-        result = update(existing=original, instruction="Promoted.", target=User, model=provider)
-        assert result.doc_before == original
-        assert result.doc_after["/role"] if False else result.doc_after["role"] == "Lead"
-        assert result.doc_after["name"] == "Alex"
-
-    def test_accepts_basemodel_instance(self):
-        user = User(name="Alex", role="Engineer", skills=["Python"], years_experience=3)
-        provider = FakeProvider(responses=['[{"op": "replace", "path": "/role", "value": "Lead"}]'])
-        result = update(existing=user, instruction="Promoted.", target=User, model=provider)
-        assert result.value.role == "Lead"
-        assert result.doc_before == {
-            "name": "Alex",
-            "role": "Engineer",
-            "skills": ["Python"],
-            "years_experience": 3,
-        }
-
-    def test_accepts_single_string_provider_output(self):
-        provider = SingleStringProvider(
-            response='[{"op": "replace", "path": "/role", "value": "Lead"}]'
+        assert result.value.role == "Senior Engineer" and result.value.years_experience == 5
+        assert (
+            "Rust" in result.value.skills
+            and "Python" in result.value.skills
+            and len(result.patches) == 3
         )
-        result = update(
-            existing={
-                "name": "Alex",
-                "role": "Engineer",
-                "skills": ["Python"],
-                "years_experience": 3,
-            },
+
+    def test_doc_before_after_and_input_variants(self):
+        provider = FakeProvider(responses=['[{"op": "replace", "path": "/role", "value": "Lead"}]'])
+        # dict input + doc_before/after
+        result = update(existing=self._DOC, instruction="Promoted.", target=User, model=provider)
+        assert result.doc_before == self._DOC and result.doc_after["role"] == "Lead"
+        # BaseModel input
+        provider2 = FakeProvider(
+            responses=['[{"op": "replace", "path": "/role", "value": "Lead"}]']
+        )
+        result2 = update(
+            existing=User(**self._DOC), instruction="Promoted.", target=User, model=provider2
+        )
+        assert result2.value.role == "Lead" and result2.doc_before == self._DOC
+        # SingleStringProvider
+        result3 = update(
+            existing=self._DOC,
             instruction="Promoted.",
             target=User,
-            model=provider,
+            model=SingleStringProvider(
+                response='[{"op": "replace", "path": "/role", "value": "Lead"}]'
+            ),
         )
-        assert result.value.role == "Lead"
+        assert result3.value.role == "Lead"
 
 
 class TestUpdateMarkdownFences:
-    """LLM output wrapped in markdown fences."""
-
-    def test_fenced_output(self):
-        provider = FakeProvider(
-            responses=['```json\n[{"op": "replace", "path": "/role", "value": "CTO"}]\n```']
-        )
-        result = update(
-            existing={"name": "Alex", "role": "CEO", "skills": [], "years_experience": 10},
-            instruction="Changed role.",
-            target=User,
-            model=provider,
-        )
-        assert result.value.role == "CTO"
-
-    def test_fenced_with_trailing_comma(self):
-        provider = FakeProvider(
-            responses=['```json\n[{"op": "replace", "path": "/role", "value": "CTO"},]\n```']
-        )
+    @pytest.mark.parametrize(
+        "response",
+        [
+            '```json\n[{"op": "replace", "path": "/role", "value": "CTO"}]\n```',
+            '```json\n[{"op": "replace", "path": "/role", "value": "CTO"},]\n```',
+        ],
+        ids=["clean", "trailing-comma"],
+    )
+    def test_fenced_output(self, response):
+        provider = FakeProvider(responses=[response])
         result = update(
             existing={"name": "Alex", "role": "CEO", "skills": [], "years_experience": 10},
             instruction="Changed role.",
@@ -263,25 +227,15 @@ class TestUpdatePolicy:
 
 
 class TestUpdateAsync:
-    """Async version."""
-
-    def test_aupdate_basic(self):
-        provider = FakeProvider(responses=['[{"op": "replace", "path": "/role", "value": "Lead"}]'])
-        result = asyncio.run(
-            aupdate(
-                existing={"name": "Alex", "role": "Engineer", "skills": [], "years_experience": 3},
-                instruction="Promoted.",
-                target=User,
-                model=provider,
-            )
-        )
-        assert result.value.role == "Lead"
-        assert result.attempts == 1
-
-    def test_aupdate_accepts_single_string_provider_output(self):
-        provider = SingleStringProvider(
-            response='[{"op": "replace", "path": "/role", "value": "Lead"}]'
-        )
+    @pytest.mark.parametrize(
+        "provider",
+        [
+            FakeProvider(responses=['[{"op": "replace", "path": "/role", "value": "Lead"}]']),
+            SingleStringProvider(response='[{"op": "replace", "path": "/role", "value": "Lead"}]'),
+        ],
+        ids=["list-provider", "single-string-provider"],
+    )
+    def test_aupdate(self, provider):
         result = asyncio.run(
             aupdate(
                 existing={"name": "Alex", "role": "Engineer", "skills": [], "years_experience": 3},
@@ -323,53 +277,47 @@ class TestUpdatePromptContent:
 
 
 class TestUpdateEdgeCases:
-    """Edge cases."""
-
-    def test_empty_patches(self):
-        """LLM returns empty patch list — object unchanged."""
-        provider = FakeProvider(responses=["[]"])
+    def test_empty_patches_and_raw_text(self):
+        # empty patches
         result = update(
             existing={"name": "Alex", "role": "Engineer", "skills": [], "years_experience": 3},
             instruction="No changes needed.",
             target=User,
-            model=provider,
+            model=FakeProvider(responses=["[]"]),
         )
-        assert result.value.name == "Alex"
-        assert result.value.role == "Engineer"
-        assert len(result.patches) == 0
-
-    def test_raw_text_preserved(self):
+        assert (
+            result.value.name == "Alex"
+            and result.value.role == "Engineer"
+            and len(result.patches) == 0
+        )
+        # raw_text preserved
         raw = '[{"op": "replace", "path": "/role", "value": "CTO"}]'
-        provider = FakeProvider(responses=[raw])
-        result = update(
+        result2 = update(
             existing={"name": "Alex", "role": "CEO", "skills": [], "years_experience": 10},
             instruction="Changed role.",
             target=User,
-            model=provider,
+            model=FakeProvider(responses=[raw]),
         )
-        assert result.raw_text == raw
+        assert result2.raw_text == raw
 
 
 class TestRetryPolicyValidation:
     """RetryPolicy rejects invalid values."""
 
-    def test_negative_max_retries(self):
+    @pytest.mark.parametrize(
+        "kwargs,match",
+        [
+            ({"max_retries": -1}, "max_retries must be >= 0"),
+            ({"base_delay": -1.0}, "base_delay must be >= 0"),
+            ({"max_delay": -1.0}, "max_delay must be >= 0"),
+        ],
+        ids=["neg-max-retries", "neg-base-delay", "neg-max-delay"],
+    )
+    def test_rejects_negative_values(self, kwargs, match):
         from parsantic.retry import RetryPolicy
 
-        with pytest.raises(ValueError, match="max_retries must be >= 0"):
-            RetryPolicy(max_retries=-1)
-
-    def test_negative_base_delay(self):
-        from parsantic.retry import RetryPolicy
-
-        with pytest.raises(ValueError, match="base_delay must be >= 0"):
-            RetryPolicy(base_delay=-1.0)
-
-    def test_negative_max_delay(self):
-        from parsantic.retry import RetryPolicy
-
-        with pytest.raises(ValueError, match="max_delay must be >= 0"):
-            RetryPolicy(max_delay=-1.0)
+        with pytest.raises(ValueError, match=match):
+            RetryPolicy(**kwargs)
 
     def test_valid_policy(self):
         from parsantic.retry import RetryPolicy

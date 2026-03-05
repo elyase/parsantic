@@ -18,4 +18,5 @@ def resolve_model(model: str | Any | None = None) -> str | Any:
     """
     if model is not None:
         return model
-    return os.environ.get("PARSANTIC_MODEL", DEFAULT_MODEL)
+    env = os.environ.get("PARSANTIC_MODEL", "").strip()
+    return env or DEFAULT_MODEL

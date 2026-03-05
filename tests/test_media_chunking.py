@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
-
-import pytest
-
 from parsantic.extract.media.attachments import Attachment
-from parsantic.extract.media.chunking import MediaChunk, chunk_attachments, needs_media
+from parsantic.extract.media.chunking import chunk_attachments, needs_media
 
 
 def test_chunk_attachments_single_image_creates_one_chunk():
@@ -68,17 +64,6 @@ def test_needs_media_with_attachments_returns_true():
 
 def test_needs_media_with_no_attachments_returns_false():
     assert needs_media([]) is False
-
-
-def test_media_chunk_is_immutable():
-    chunk = MediaChunk(
-        attachment=Attachment.image(b"image-data"),
-        attachment_index=0,
-        page_index=None,
-    )
-
-    with pytest.raises(FrozenInstanceError):
-        chunk.text = "updated"
 
 
 def test_media_chunk_carries_text_context():

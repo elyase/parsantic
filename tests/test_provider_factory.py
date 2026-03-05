@@ -36,18 +36,18 @@ def test_factory_picks_provider_specific_api_key(monkeypatch: pytest.MonkeyPatch
     assert resolved["api_key"] == "openai-key"
 
 
-def test_factory_supports_additional_provider_keys(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-key")
-    resolved = _kwargs_with_environment_defaults("anthropic:claude-sonnet", {})
-    assert resolved["api_key"] == "anthropic-key"
-
-    monkeypatch.setenv("MISTRAL_API_KEY", "mistral-key")
-    resolved = _kwargs_with_environment_defaults("mistral:mistral-large", {})
-    assert resolved["api_key"] == "mistral-key"
-
-    monkeypatch.setenv("GROQ_API_KEY", "groq-key")
-    resolved = _kwargs_with_environment_defaults("groq:llama-3.3-70b", {})
-    assert resolved["api_key"] == "groq-key"
+@pytest.mark.parametrize(
+    "env_var,env_val,model_spec",
+    [
+        ("ANTHROPIC_API_KEY", "anthropic-key", "anthropic:claude-sonnet"),
+        ("MISTRAL_API_KEY", "mistral-key", "mistral:mistral-large"),
+        ("GROQ_API_KEY", "groq-key", "groq:llama-3.3-70b"),
+    ],
+)
+def test_factory_supports_additional_provider_keys(monkeypatch, env_var, env_val, model_spec):
+    monkeypatch.setenv(env_var, env_val)
+    resolved = _kwargs_with_environment_defaults(model_spec, {})
+    assert resolved["api_key"] == env_val
 
 
 def test_factory_supports_provider_base_url(monkeypatch: pytest.MonkeyPatch):

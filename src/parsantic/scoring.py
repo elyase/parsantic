@@ -54,7 +54,7 @@ def score_flags(flags: Iterable[str]) -> int:
 
 def pick_best(scored: list[ScoredValue]) -> ScoredValue:
     """Select the best candidate by (score, flag count, generation order)."""
-    return sorted(
+    return min(
         enumerate(scored),
         key=lambda pair: (pair[1].score, len(pair[1].flags), pair[0]),
-    )[0][1]
+    )[1]

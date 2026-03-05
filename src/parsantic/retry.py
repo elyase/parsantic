@@ -38,6 +38,8 @@ class RetryPolicy:
             raise ValueError(f"base_delay must be >= 0, got {self.base_delay}")
         if self.max_delay < 0:
             raise ValueError(f"max_delay must be >= 0, got {self.max_delay}")
+        if not (self.backoff_factor > 0 and self.backoff_factor == self.backoff_factor):
+            raise ValueError(f"backoff_factor must be > 0 and finite, got {self.backoff_factor}")
 
     def delay_for_attempt(self, attempt: int) -> float:
         """Compute delay in seconds before the given retry attempt (0-indexed)."""

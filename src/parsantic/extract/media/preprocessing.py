@@ -9,14 +9,23 @@ if TYPE_CHECKING:
     pass
 
 
-def _check_vision_deps() -> None:
-    """Raise ImportError with clear message if vision deps are missing."""
+def _check_pymupdf() -> None:
+    """Raise ImportError if PyMuPDF (fitz) is not installed."""
     try:
-        import fitz  # noqa: F401 - PyMuPDF
+        import fitz  # noqa: F401
+    except ImportError:
+        raise ImportError(
+            "PyMuPDF required for PDF operations. Install with: pip install parsantic[vision]"
+        ) from None
+
+
+def _check_pillow() -> None:
+    """Raise ImportError if Pillow (PIL) is not installed."""
+    try:
         import PIL  # noqa: F401
     except ImportError:
         raise ImportError(
-            "Vision dependencies required. Install with: pip install parsantic[vision]"
+            "Pillow required for image operations. Install with: pip install parsantic[vision]"
         ) from None
 
 
@@ -25,7 +34,7 @@ def has_text_layer(source: Path | bytes) -> bool:
 
     Returns True if any page has extractable text (>10 chars after strip).
     """
-    _check_vision_deps()
+    _check_pymupdf()
     import fitz
 
     data = source if isinstance(source, bytes) else source.read_bytes()
@@ -52,7 +61,7 @@ def rasterize_pdf(
 
     Returns list of (page_index, image_bytes) tuples. page_index is 0-based.
     """
-    _check_vision_deps()
+    _check_pymupdf()
     import fitz
 
     data = source if isinstance(source, bytes) else source.read_bytes()
@@ -96,29 +105,28 @@ def normalize_image(
 
     Returns PNG bytes.
     """
-    _check_vision_deps()
+    _check_pillow()
     from PIL import Image, ImageOps
 
-    img = Image.open(io.BytesIO(data))
+    with Image.open(io.BytesIO(data)) as img:
+        # Fix EXIF orientation.
+        img = ImageOps.exif_transpose(img)
 
-    # Fix EXIF orientation.
-    img = ImageOps.exif_transpose(img)
+        # Convert to RGB (handles CMYK, RGBA, palette, etc.).
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
 
-    # Convert to RGB (handles CMYK, RGBA, palette, etc.).
-    if img.mode not in ("RGB", "L"):
-        img = img.convert("RGB")
+        # Resize if largest dimension exceeds max_dim.
+        w, h = img.size
+        if max(w, h) > max_dim:
+            scale = max_dim / max(w, h)
+            new_w = max(1, int(w * scale))
+            new_h = max(1, int(h * scale))
+            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
-    # Resize if largest dimension exceeds max_dim.
-    w, h = img.size
-    if max(w, h) > max_dim:
-        scale = max_dim / max(w, h)
-        new_w = int(w * scale)
-        new_h = int(h * scale)
-        img = img.resize((new_w, new_h), Image.LANCZOS)
-
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return buf.getvalue()
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
 
 
 def file_hash(data: bytes) -> str:

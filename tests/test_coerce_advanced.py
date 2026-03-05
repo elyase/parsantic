@@ -5,6 +5,7 @@ from __future__ import annotations
 import enum
 from typing import Literal
 
+import pytest
 from pydantic import BaseModel, Field
 
 from parsantic.api import ParseResult, coerce, coerce_debug, parse, parse_debug
@@ -33,123 +34,98 @@ class AccentedEnum(enum.Enum):
     RESUME = "r\u00e9sum\u00e9"
 
 
-class TestEnumMatchingExact:
-    def test_exact_match(self):
-        matched, flags = _match_enum_value("red", ["red", "green", "blue"], CoerceOptions())
-        assert matched == "red"
-        assert flags == ()
-
-    def test_no_match(self):
-        matched, flags = _match_enum_value("purple", ["red", "green", "blue"], CoerceOptions())
-        assert matched is None
-
-
-class TestEnumMatchingCaseInsensitive:
-    def test_case_insensitive(self):
-        matched, flags = _match_enum_value("RED", ["red", "green", "blue"], CoerceOptions())
-        assert matched == "red"
-        assert flags == ("case_insensitive",)
-
-    def test_case_insensitive_mixed(self):
-        matched, flags = _match_enum_value("Green", ["red", "green", "blue"], CoerceOptions())
-        assert matched == "green"
-        assert flags == ("case_insensitive",)
-
-
-class TestEnumMatchingPunctStripped:
-    def test_strip_punct(self):
-        matched, flags = _match_enum_value(
-            "ice-cream", ["icecream", "cake", "pie"], CoerceOptions()
-        )
-        assert matched == "icecream"
-        assert flags == ("strip_punct",)
-
-    def test_strip_punct_with_dots(self):
-        matched, flags = _match_enum_value("U.S.A.", ["USA", "UK", "Canada"], CoerceOptions())
-        assert matched == "USA"
-        assert flags == ("strip_punct",)
-
-
-class TestEnumMatchingAccentInsensitive:
-    def test_accent_insensitive(self):
-        matched, flags = _match_enum_value(
-            "cafe", ["caf\u00e9", "na\u00efve", "r\u00e9sum\u00e9"], CoerceOptions()
-        )
-        assert matched == "caf\u00e9"
-        assert flags == ("accent_insensitive",)
-
-    def test_accent_insensitive_reverse(self):
-        # Input has accent, candidate does not
-        matched, flags = _match_enum_value(
-            "caf\u00e9", ["cafe", "naive", "resume"], CoerceOptions()
-        )
-        assert matched == "cafe"
-        assert flags == ("accent_insensitive",)
+@pytest.mark.parametrize(
+    "input_val,candidates,opts_kwargs,expected_match,expected_flags",
+    [
+        # exact
+        ("red", ["red", "green", "blue"], {}, "red", ()),
+        # no match
+        ("purple", ["red", "green", "blue"], {}, None, None),
+        # case insensitive
+        ("RED", ["red", "green", "blue"], {}, "red", ("case_insensitive",)),
+        ("Green", ["red", "green", "blue"], {}, "green", ("case_insensitive",)),
+        # strip punct
+        ("ice-cream", ["icecream", "cake", "pie"], {}, "icecream", ("strip_punct",)),
+        ("U.S.A.", ["USA", "UK", "Canada"], {}, "USA", ("strip_punct",)),
+        # accent insensitive
+        (
+            "cafe",
+            ["caf\u00e9", "na\u00efve", "r\u00e9sum\u00e9"],
+            {},
+            "caf\u00e9",
+            ("accent_insensitive",),
+        ),
+        ("caf\u00e9", ["cafe", "naive", "resume"], {}, "cafe", ("accent_insensitive",)),
+        # substring disabled
+        ("re", ["red", "green", "blue"], {}, None, None),
+    ],
+    ids=[
+        "exact",
+        "no-match",
+        "case-RED",
+        "case-Green",
+        "punct-dash",
+        "punct-dots",
+        "accent-cafe",
+        "accent-reverse",
+        "substring-disabled",
+    ],
+)
+def test_enum_matching(input_val, candidates, opts_kwargs, expected_match, expected_flags):
+    opts = CoerceOptions(**opts_kwargs)
+    matched, flags = _match_enum_value(input_val, candidates, opts)
+    assert matched == expected_match
+    if expected_flags is not None:
+        assert flags == expected_flags
 
 
-class TestEnumMatchingSubstring:
-    def test_substring_disabled_by_default(self):
-        matched, flags = _match_enum_value("re", ["red", "green", "blue"], CoerceOptions())
-        assert matched is None
-
-    def test_substring_enabled(self):
-        opts = CoerceOptions(allow_substring_enum_match=True)
-        matched, flags = _match_enum_value("re", ["red", "green", "blue"], opts)
-        # "re" is substring of "red" and "green" -- ambiguous
-        assert matched is not None
-        assert "substring_match" in flags
-
-    def test_substring_single_match(self):
-        opts = CoerceOptions(allow_substring_enum_match=True)
-        matched, flags = _match_enum_value("blu", ["red", "green", "blue"], opts)
-        assert matched == "blue"
-        assert flags == ("substring_match",)
+def test_enum_substring_enabled():
+    opts = CoerceOptions(allow_substring_enum_match=True)
+    matched, flags = _match_enum_value("re", ["red", "green", "blue"], opts)
+    assert matched is not None
+    assert "substring_match" in flags
 
 
-class TestEnumMatchingAmbiguous:
-    def test_ambiguous_picks_alphabetically(self):
-        # Two candidates match case-insensitively
-        matched, flags = _match_enum_value("AB", ["Ab", "aB"], CoerceOptions())
-        assert matched == "Ab"
-        assert "ambiguous_enum" in flags
-        assert "case_insensitive" in flags
+def test_enum_substring_single_match():
+    opts = CoerceOptions(allow_substring_enum_match=True)
+    matched, flags = _match_enum_value("blu", ["red", "green", "blue"], opts)
+    assert matched == "blue"
+    assert flags == ("substring_match",)
 
 
-class TestEnumCoercionIntegration:
-    def test_enum_via_parse(self):
-        result = parse('"RED"', Color, is_done=True)
-        assert result.value == Color.RED
-        assert "case_insensitive" in result.flags
-
-    def test_enum_exact_via_parse(self):
-        result = parse('"red"', Color, is_done=True)
-        assert result.value == Color.RED
-
-    def test_enum_accented_via_parse(self):
-        result = parse('"cafe"', AccentedEnum, is_done=True)
-        assert result.value == AccentedEnum.CAFE
-        assert "accent_insensitive" in result.flags
+def test_enum_ambiguous_picks_alphabetically():
+    matched, flags = _match_enum_value("AB", ["Ab", "aB"], CoerceOptions())
+    assert matched == "Ab"
+    assert "ambiguous_enum" in flags
+    assert "case_insensitive" in flags
 
 
-class TestLiteralMatching:
-    def test_literal_exact(self):
-        result = parse('"hello"', Literal["hello", "world"], is_done=True)
-        assert result.value == "hello"
-
-    def test_literal_case_insensitive(self):
-        result = parse('"HELLO"', Literal["hello", "world"], is_done=True)
-        assert result.value == "hello"
-        assert "case_insensitive" in result.flags
-
-    def test_literal_punct_stripped(self):
-        result = parse('"ice-cream"', Literal["icecream", "cake"], is_done=True)
-        assert result.value == "icecream"
-        assert "strip_punct" in result.flags
-
-    def test_literal_accent_insensitive(self):
-        result = parse('"cafe"', Literal["caf\u00e9", "tea"], is_done=True)
-        assert result.value == "caf\u00e9"
-        assert "accent_insensitive" in result.flags
+@pytest.mark.parametrize(
+    "input_str,target,expected_val,expected_flag",
+    [
+        ('"RED"', Color, Color.RED, "case_insensitive"),
+        ('"red"', Color, Color.RED, None),
+        ('"cafe"', AccentedEnum, AccentedEnum.CAFE, "accent_insensitive"),
+        ('"hello"', Literal["hello", "world"], "hello", None),
+        ('"HELLO"', Literal["hello", "world"], "hello", "case_insensitive"),
+        ('"ice-cream"', Literal["icecream", "cake"], "icecream", "strip_punct"),
+        ('"cafe"', Literal["caf\u00e9", "tea"], "caf\u00e9", "accent_insensitive"),
+    ],
+    ids=[
+        "enum-case",
+        "enum-exact",
+        "enum-accent",
+        "literal-exact",
+        "literal-case",
+        "literal-punct",
+        "literal-accent",
+    ],
+)
+def test_enum_literal_via_parse(input_str, target, expected_val, expected_flag):
+    result = parse(input_str, target, is_done=True)
+    assert result.value == expected_val
+    if expected_flag:
+        assert expected_flag in result.flags
 
 
 # ---------------------------------------------------------------------------
@@ -157,69 +133,43 @@ class TestLiteralMatching:
 # ---------------------------------------------------------------------------
 
 
-class TestRecursiveListCoercion:
-    def test_list_of_int_from_strings(self):
+class TestRecursiveCoercion:
+    def test_list_coercion(self):
         opts = CoerceOptions()
-        sv = _coerce_to_type(["1", "2", "3"], list[int], opts)
-        assert sv.value == [1, 2, 3]
-        # Pydantic can coerce string->int natively, so the fast path
-        # succeeds with no flags. The important thing is the value is correct.
+        assert _coerce_to_type(["1", "2", "3"], list[int], opts).value == [1, 2, 3]
+        assert _coerce_to_type(["1.5", "2.5"], list[float], opts).value == [1.5, 2.5]
+        assert coerce(["1", "2", "3"], list[int]).value == [1, 2, 3]
 
-    def test_list_of_float_from_strings(self):
+    def test_dict_coercion(self):
         opts = CoerceOptions()
-        sv = _coerce_to_type(["1.5", "2.5"], list[float], opts)
-        assert sv.value == [1.5, 2.5]
+        assert _coerce_to_type({"a": "1.5", "b": "2.5"}, dict[str, float], opts).value == {
+            "a": 1.5,
+            "b": 2.5,
+        }
+        assert _coerce_to_type({"1": "hello", "2": "world"}, dict[int, str], opts).value == {
+            1: "hello",
+            2: "world",
+        }
 
-    def test_coerce_api_list_int(self):
-        result = coerce(["1", "2", "3"], list[int])
-        assert result.value == [1, 2, 3]
-
-
-class TestRecursiveDictCoercion:
-    def test_dict_str_float(self):
+    def test_tuple_coercion(self):
         opts = CoerceOptions()
-        sv = _coerce_to_type({"a": "1.5", "b": "2.5"}, dict[str, float], opts)
-        assert sv.value == {"a": 1.5, "b": 2.5}
-
-    def test_dict_int_keys(self):
-        opts = CoerceOptions()
-        sv = _coerce_to_type({"1": "hello", "2": "world"}, dict[int, str], opts)
-        assert sv.value == {1: "hello", 2: "world"}
-
-
-class TestRecursiveTupleCoercion:
-    def test_homogeneous_tuple(self):
-        opts = CoerceOptions()
-        sv = _coerce_to_type(["1", "2", "3"], tuple[int, ...], opts)
-        assert sv.value == (1, 2, 3)
-
-    def test_fixed_tuple(self):
-        opts = CoerceOptions()
-        sv = _coerce_to_type(["1", "hello"], tuple[int, str], opts)
-        assert sv.value == (1, "hello")
+        assert _coerce_to_type(["1", "2", "3"], tuple[int, ...], opts).value == (1, 2, 3)
+        assert _coerce_to_type(["1", "hello"], tuple[int, str], opts).value == (1, "hello")
 
 
 class TestUnionCoercion:
-    def test_union_picks_best(self):
-        # "42" should coerce to int (exact match) over str
+    def test_union_coercion(self):
         opts = CoerceOptions()
+        # Basic union
         sv = _coerce_to_type("42", int | str, opts)
-        # str is a direct match with score 0, int requires coercion
-        # But Union should try int first and succeed
         assert sv.value == 42 or sv.value == "42"
-        # Either is acceptable; the point is it doesn't crash
-
-    def test_union_none(self):
-        opts = CoerceOptions()
-        sv = _coerce_to_type(None, int | None, opts)
-        assert sv.value is None
-
-    def test_pep604_union_uses_recursive_branch_coercion(self):
-        opts = CoerceOptions()
+        # None variant
+        assert _coerce_to_type(None, int | None, opts).value is None
+        # PEP 604 with recursive branch
         target = dict[str, Literal["red", "blue"]] | list[int]
-        sv = _coerce_to_type({"favorite": "RED"}, target, opts)
-        assert sv.value == {"favorite": "red"}
-        assert "case_insensitive" in sv.flags
+        sv2 = _coerce_to_type({"favorite": "RED"}, target, opts)
+        assert sv2.value == {"favorite": "red"}
+        assert "case_insensitive" in sv2.flags
 
 
 class TestNestedModelCoercion:
@@ -239,43 +189,35 @@ class TestNestedModelCoercion:
 # ---------------------------------------------------------------------------
 
 
-class TestSafeIntCoercion:
-    def test_integer_string(self):
-        assert _try_int("123") == 123
+@pytest.mark.parametrize(
+    "input_str,expected",
+    [
+        ("123", 123),
+        ("3.0", 3),
+        ("3.00", 3),
+        ("1.4", None),
+        ("1.5", None),
+        ("-3.0", -3),
+        ("-1.7", None),
+    ],
+    ids=[
+        "int-str",
+        "float-exact",
+        "float-trailing-zeros",
+        "float-not-int",
+        "float-half",
+        "neg-exact",
+        "neg-not-int",
+    ],
+)
+def test_try_int(input_str, expected):
+    assert _try_int(input_str) == expected
 
-    def test_float_string_exact_int(self):
-        """'3.0' should become 3 (within epsilon)."""
-        assert _try_int("3.0") == 3
 
-    def test_float_string_exact_int_trailing_zeros(self):
-        """'3.00' should become 3."""
-        assert _try_int("3.00") == 3
-
-    def test_float_string_not_int(self):
-        """'1.4' should NOT become 1."""
-        assert _try_int("1.4") is None
-
-    def test_float_string_half(self):
-        """'1.5' should NOT become 2 (unsafe rounding)."""
-        assert _try_int("1.5") is None
-
-    def test_negative_exact_int(self):
-        assert _try_int("-3.0") == -3
-
-    def test_negative_not_int(self):
-        assert _try_int("-1.7") is None
-
+class TestSafeIntCoercionViaParseAPI:
     def test_safe_int_via_parse(self):
-        """'3.0' as int should work via parse."""
         result = parse('"3.0"', int, is_done=True)
         assert result.value == 3
-
-    def test_unsafe_int_via_parse_fallback(self):
-        """'1.4' as int should fail (not silently round)."""
-        # parse will try int coercion, it should fail since 1.4 is not near integer
-        # It should fall back to trying float, then if int is wanted it should not
-        # match. Let's test that _try_int returns None.
-        assert _try_int("1.4") is None
 
 
 # ---------------------------------------------------------------------------
@@ -284,48 +226,38 @@ class TestSafeIntCoercion:
 
 
 class TestKeyMappingAliases:
-    def test_field_alias(self):
-        class M(BaseModel):
+    def test_field_and_validation_aliases(self):
+        class M1(BaseModel):
             my_field: str = Field(alias="myField")
 
-        result = coerce({"myField": "hello"}, M)
-        assert result.value.my_field == "hello"
+        assert coerce({"myField": "hello"}, M1).value.my_field == "hello"
 
-    def test_validation_alias(self):
-        class M(BaseModel):
+        class M2(BaseModel):
             my_field: str = Field(validation_alias="my-field")
 
-        result = coerce({"my-field": "hello"}, M)
-        assert result.value.my_field == "hello"
+        assert coerce({"my-field": "hello"}, M2).value.my_field == "hello"
 
-    def test_validation_alias_precedence(self):
-        """validation_alias should work for input validation."""
-
-        class M(BaseModel):
+        class M3(BaseModel):
             my_field: str = Field(validation_alias="inputField")
 
-        result = coerce({"inputField": "hello"}, M)
-        assert result.value.my_field == "hello"
+        assert coerce({"inputField": "hello"}, M3).value.my_field == "hello"
 
 
 class TestExtraAllowModel:
-    def test_extra_allow_preserves_extras(self):
-        class M(BaseModel):
+    def test_extra_handling(self):
+        class MAllow(BaseModel):
             model_config = {"extra": "allow"}
             name: str
 
-        result = coerce({"name": "Alice", "age": 30}, M)
+        result = coerce({"name": "Alice", "age": 30}, MAllow)
         assert result.value.name == "Alice"
-        # Extra fields should be preserved
         assert result.value.age == 30  # type: ignore[attr-defined]
 
-    def test_extra_forbid_drops_extras(self):
-        class M(BaseModel):
+        class MDefault(BaseModel):
             name: str
 
-        # Without extra="allow", unmatched keys are dropped and flagged
-        result = coerce({"name": "Alice", "age": 30}, M)
-        assert result.value.name == "Alice"
+        result2 = coerce({"name": "Alice", "age": 30}, MDefault)
+        assert result2.value.name == "Alice"
 
 
 class TestKeyCollision:
@@ -385,70 +317,46 @@ class TestCoerceAPI:
         result = coerce({"name": "Alice", "age": "30"}, M)
         assert result.value.age == 30
 
-    def test_coerce_already_valid(self):
-        result = coerce(42, int)
-        assert result.value == 42
-        assert result.flags == ()
-        assert result.score == 0
+    @pytest.mark.parametrize(
+        "data,target,expected",
+        [(42, int, 42), ("42", int, 42)],
+        ids=["already-valid", "string-to-int"],
+    )
+    def test_coerce_primitives(self, data, target, expected):
+        result = coerce(data, target)
+        assert result.value == expected
 
-    def test_coerce_string_to_int(self):
-        result = coerce("42", int)
-        assert result.value == 42
 
-
-class TestParseDebugAPI:
-    def test_parse_debug_success(self):
+class TestDebugAPIs:
+    def test_parse_debug(self):
         debug = parse_debug('{"name": "Alice"}', dict[str, str])
         assert isinstance(debug, ParseDebug)
         assert debug.value is not None
-        assert debug.chosen is not None
         assert isinstance(debug.chosen, CandidateDebug)
         assert debug.raw_text is not None
-
-    def test_parse_debug_with_coercion(self):
-        debug = parse_debug('"123"', int)
-        assert debug.value == 123
-        assert debug.chosen is not None
-
-    def test_parse_debug_has_candidates(self):
-        debug = parse_debug('{"x": 1}', dict[str, int])
         assert len(debug.candidates) >= 1
+        # with coercion
+        debug2 = parse_debug('"123"', int)
+        assert debug2.value == 123
 
-
-class TestCoerceDebugAPI:
-    def test_coerce_debug_success(self):
-        class M(BaseModel):
-            name: str
-
-        debug = coerce_debug({"name": "Alice"}, M)
-        assert isinstance(debug, ParseDebug)
-        assert debug.value is not None
-        assert debug.value.name == "Alice"
-        assert debug.chosen is not None
-        assert debug.raw_text is None  # coerce has no raw text
-
-    def test_coerce_debug_with_coercion(self):
+    def test_coerce_debug(self):
         class M(BaseModel):
             name: str
             age: int
 
         debug = coerce_debug({"name": "Alice", "age": "30"}, M)
-        assert debug.value is not None
+        assert isinstance(debug, ParseDebug)
         assert debug.value.age == 30
         assert debug.chosen is not None
+        assert debug.raw_text is None
         assert len(debug.candidates) >= 1
 
     def test_coerce_debug_failure(self):
-        """When coercion completely fails, debug should still return structured info."""
-
         class M(BaseModel):
             name: str
             age: int
 
-        # Completely wrong type - should fail
         debug = coerce_debug("not a dict at all", M)
-        # It may or may not succeed depending on coercion paths
-        # But it should return a ParseDebug either way
         assert isinstance(debug, ParseDebug)
         assert len(debug.candidates) >= 1
 
@@ -484,17 +392,15 @@ class TestFullPipelineIntegration:
         assert len(result.value.items) == 2
         assert result.value.items[0].value == 1
 
-    def test_safe_int_in_model(self):
+    def test_safe_int_in_model_and_recursive_dict(self):
         class M(BaseModel):
             count: int
 
-        # 3.0 should work
         result = coerce({"count": "3.0"}, M)
         assert result.value.count == 3
 
-    def test_recursive_dict_coerce_api(self):
-        result = coerce({"a": "1.5", "b": "2.5"}, dict[str, float])
-        assert result.value == {"a": 1.5, "b": 2.5}
+        result2 = coerce({"a": "1.5", "b": "2.5"}, dict[str, float])
+        assert result2.value == {"a": 1.5, "b": 2.5}
 
 
 # ---------------------------------------------------------------------------

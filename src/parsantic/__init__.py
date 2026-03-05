@@ -3,7 +3,7 @@ from importlib.metadata import PackageNotFoundError, version
 try:
     __version__ = version("parsantic")
 except PackageNotFoundError:  # pragma: no cover - local source tree without installed metadata
-    __version__ = "0.2.0"
+    __version__ = "0.0.0-dev"
 
 from .api import coerce, coerce_debug, parse, parse_debug, parse_stream
 from .coerce import CoerceOptions

@@ -207,9 +207,21 @@ def _merge_values(
         return base
     if isinstance(base, list) and isinstance(other, list):
         merged = list(base)
+        seen: set[str] = set()
+        for item in merged:
+            try:
+                seen.add(json.dumps(item, sort_keys=True, default=str))
+            except (ValueError, TypeError):
+                pass
         for item in other:
-            if item not in merged:
+            try:
+                key = json.dumps(item, sort_keys=True, default=str)
+            except (ValueError, TypeError):
+                key = None
+            if key is None or key not in seen:
                 merged.append(item)
+                if key is not None:
+                    seen.add(key)
         return merged
     if isinstance(base, dict) and isinstance(other, dict):
         merged = dict(base)
@@ -414,14 +426,14 @@ class Extractor:
     def __enter__(self) -> Extractor:
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
-        return None
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
 
     async def __aenter__(self) -> Extractor:
         return self
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:
-        return None
+    async def __aexit__(self, exc_type, exc, tb) -> bool:
+        return False
 
     def extract[T](
         self,
@@ -904,6 +916,17 @@ def _process_inferred_chunks[T](
 
     for chunk_idx, (chunk, raw) in enumerate(zip(chunks, inferred, strict=True)):
         if not raw:
+            if debug:
+                debug_entries.append(
+                    ChunkDebug(
+                        chunk_index=chunk_idx,
+                        chunk_text_preview=chunk.text[:100],
+                        raw_output="",
+                        flags=(),
+                        score=0,
+                        error="empty output",
+                    )
+                )
             continue
         chunk_outputs.append(raw)
 
@@ -1183,7 +1206,7 @@ def _accumulate_media_pass[T](
             state.chunk_debug_entries.append(
                 ChunkDebug(
                     chunk_index=req_idx,
-                    chunk_text_preview=raw[:100],
+                    chunk_text_preview=(chunk.text or "")[:100],
                     raw_output=raw,
                     flags=parsed.flags if parsed is not None else (),
                     score=parsed.score if parsed is not None else 0,
@@ -1267,11 +1290,19 @@ def extract_iter[T](
                     inferred = _infer_media_batch(
                         ctx.provider, [single_req], batch_length, **_native_kwargs
                     )
+                    # For "single" mode, use a synthetic aggregate chunk with None
+                    # indices to avoid misattributing evidence to the first attachment.
+                    aggregate_chunk = MediaChunk(
+                        attachment=media_chunks[0].attachment if media_chunks else media_chunks,
+                        attachment_index=None,
+                        page_index=None,
+                        text=media_chunks[0].text if media_chunks else "",
+                    )
                     state = _accumulate_media_pass(
                         pass_index=_pass,
                         state=state,
                         media_requests=[single_req],
-                        media_chunks=media_chunks[:1] if media_chunks else media_chunks,
+                        media_chunks=[aggregate_chunk],
                         inferred=inferred,
                         target=target,
                         ctx=ctx,
@@ -1472,11 +1503,17 @@ async def extract_aiter[T](
                     inferred = await _ainfer_media_batch(
                         ctx.provider, [single_req], batch_length, **_native_kwargs
                     )
+                    aggregate_chunk = MediaChunk(
+                        attachment=media_chunks[0].attachment if media_chunks else media_chunks,
+                        attachment_index=None,
+                        page_index=None,
+                        text=media_chunks[0].text if media_chunks else "",
+                    )
                     state = _accumulate_media_pass(
                         pass_index=_pass,
                         state=state,
                         media_requests=[single_req],
-                        media_chunks=media_chunks[:1] if media_chunks else media_chunks,
+                        media_chunks=[aggregate_chunk],
                         inferred=inferred,
                         target=target,
                         ctx=ctx,

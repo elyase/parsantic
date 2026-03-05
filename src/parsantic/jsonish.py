@@ -19,6 +19,10 @@ class ParseOptions:
     depth_limit: int = 100
     max_candidates: int = 64
 
+    def __post_init__(self) -> None:
+        if self.max_candidates < 1:
+            raise ValueError(f"max_candidates must be >= 1, got {self.max_candidates}")
+
 
 @dataclass(frozen=True, slots=True)
 class JsonishValue:
@@ -89,18 +93,20 @@ def parse_jsonish(
     # 2) markdown fenced blocks
     if options.allow_markdown_json:
         candidates.extend(
-            _parse_markdown_blocks(text, options=options, is_done=False, _depth=_depth)
+            _parse_markdown_blocks(text, options=options, is_done=is_done, _depth=_depth)
         )
 
     # 3) balanced JSON substrings
     if options.allow_find_all_json_objects:
-        candidates.extend(_parse_all_json_objects(text, options=options, is_done=False))
+        candidates.extend(_parse_all_json_objects(text, options=options, is_done=is_done))
 
     # 4) fixing parser
     if options.allow_fixes:
         try:
             candidates.extend(_fixing_parse(text, is_done=is_done))
         # Keep broad behavior when the fixing parser fails and continue with fallback strategies.
+        except RecursionError:
+            raise
         except Exception:
             pass
 
@@ -216,13 +222,15 @@ def _parse_markdown_blocks(
                             allow_markdown_json=False,
                             allow_find_all_json_objects=False,
                             allow_fixes=True,
-                            allow_as_string=True,
+                            allow_as_string=False,
                             depth_limit=options.depth_limit,
                         ),
                         is_done=is_done,
                         _depth=_depth + 1,
                     )
                 # Keep broad behavior when parsing a markdown candidate fails.
+                except RecursionError:
+                    raise
                 except Exception:
                     continue
                 md_content = candidate
@@ -244,6 +252,8 @@ def _parse_markdown_blocks(
                 _depth=_depth + 1,
             )
         # Keep broad behavior when parsing markdown wrapper fails.
+        except RecursionError:
+            raise
         except Exception:
             continue
         # Flatten nested AnyOf: markdown is a wrapper, not a candidate set by itself.

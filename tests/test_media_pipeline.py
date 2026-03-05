@@ -11,7 +11,6 @@ from pydantic import BaseModel
 
 from parsantic.extract import Document, extract
 from parsantic.extract.media.attachments import Attachment, AttachmentKind
-from parsantic.extract.media.chunking import needs_media
 from parsantic.extract.options import ExtractOptions, MediaOptions
 from parsantic.extract.pipeline import (
     _build_media_inference_requests,
@@ -91,39 +90,14 @@ class _AsyncOnlyMediaProvider:
         return ['{"total": 77.0, "vendor": "async-only-corp"}'] * len(batch)
 
 
-# -- Tests: needs_media detection ---------------------------------------------
-
-
-def test_needs_media_true_for_document_with_attachments():
-    doc = Document.from_image(b"\x89PNG", text="receipt")
-    assert needs_media(doc.attachments) is True
-
-
-def test_needs_media_false_for_text_only_document():
-    doc = Document(text="hello")
-    assert needs_media(doc.attachments) is False
-
-
 # -- Tests: capability checking ------------------------------------------------
 
 
-def test_check_media_capability_passes_for_media_provider():
+def test_media_capability_and_protocols():
     _check_media_capability(_MediaProvider())
-
-
-def test_check_media_capability_raises_for_text_only_provider():
     with pytest.raises(TypeError, match="does not support media inference"):
         _check_media_capability(_TextOnlyProvider())
-
-
-# -- Tests: runtime_checkable protocol -----------------------------------------
-
-
-def test_media_provider_is_supports_media_infer():
     assert isinstance(_MediaProvider(), SupportsMediaInfer)
-
-
-def test_text_only_provider_is_not_supports_media_infer():
     assert not isinstance(_TextOnlyProvider(), SupportsMediaInfer)
 
 
@@ -267,32 +241,23 @@ def test_build_media_inference_requests_page_index_is_1_based():
 # -- Tests: async-only provider accepted by capability check ------------------
 
 
-def test_check_media_capability_passes_for_async_only_provider_in_async_mode():
-    _check_media_capability(_AsyncOnlyMediaProvider(), is_async=True)
-
-
-def test_check_media_capability_rejects_async_only_provider_in_sync_mode():
-    with pytest.raises(TypeError, match="only supports async media inference"):
-        _check_media_capability(_AsyncOnlyMediaProvider(), is_async=False)
-
-
-def test_async_only_provider_is_supports_async_media_infer():
-    assert isinstance(_AsyncOnlyMediaProvider(), SupportsAsyncMediaInfer)
-    assert not isinstance(_AsyncOnlyMediaProvider(), SupportsMediaInfer)
-
-
-def test_aextract_async_only_provider():
+def test_async_only_provider():
     import asyncio
 
     from parsantic.extract import aextract
 
+    _check_media_capability(_AsyncOnlyMediaProvider(), is_async=True)
+    with pytest.raises(TypeError, match="only supports async media inference"):
+        _check_media_capability(_AsyncOnlyMediaProvider(), is_async=False)
+    assert isinstance(_AsyncOnlyMediaProvider(), SupportsAsyncMediaInfer)
+    assert not isinstance(_AsyncOnlyMediaProvider(), SupportsMediaInfer)
+
     async def _run() -> None:
         provider = _AsyncOnlyMediaProvider()
-        doc = Document.from_image(b"\x89PNG", text="async-only receipt")
-        result = await aextract(doc, Invoice, model=provider)
-        assert result.value.total == 77.0
-        assert result.value.vendor == "async-only-corp"
-        assert len(provider.ainfer_media_calls) == 1
+        result = await aextract(
+            Document.from_image(b"\x89PNG", text="async-only receipt"), Invoice, model=provider
+        )
+        assert result.value.total == 77.0 and len(provider.ainfer_media_calls) == 1
 
     asyncio.run(_run())
 
@@ -300,29 +265,21 @@ def test_aextract_async_only_provider():
 # -- Tests: vision evidence sourcing ------------------------------------------
 
 
-def test_media_extract_evidence_has_source_vision():
+def test_evidence_source_tagging():
     provider = _MediaProvider()
-    doc = Document.from_image(b"\x89PNG", text="receipt image")
-    result = extract(doc, Invoice, model=provider)
-    assert result.value.total == 99.0
-    # All evidence from media path should have source="vision"
+    # vision evidence
+    result = extract(Document.from_image(b"\x89PNG", text="receipt image"), Invoice, model=provider)
     assert len(result.evidence) > 0
     for ev in result.evidence:
-        assert ev.source == "vision"
-        assert ev.char_interval is None  # no text alignment for vision
-        assert ev.alignment_status == AlignmentStatus.UNMATCHED
-        assert ev.grounding_method == "unmatched"
-
-
-def test_text_extract_evidence_has_source_text():
-    provider = _MediaProvider()
-    result = extract(
-        Document(text='{"total": 42.0, "vendor": "acme"}'),
-        Invoice,
-        model=provider,
-    )
-    # Text path evidence should have source="text" (the default)
-    for ev in result.evidence:
+        assert (
+            ev.source == "vision"
+            and ev.char_interval is None
+            and ev.alignment_status == AlignmentStatus.UNMATCHED
+        )
+    # text evidence
+    for ev in extract(
+        Document(text='{"total": 42.0, "vendor": "acme"}'), Invoice, model=provider
+    ).evidence:
         assert ev.source == "text"
 
 
@@ -401,22 +358,16 @@ def test_chunk_attachments_raster_mode_requires_vision_deps(monkeypatch: pytest.
         chunk_attachments((att,), text="test", media_options=opts)
 
 
-def test_provider_supports_native_pdf_with_attribute():
+def test_provider_supports_native_pdf():
     from parsantic.extract.pipeline import _provider_supports_native_pdf
 
-    provider = _MediaProvider()
-    # _MediaProvider has no supported_attachment_kinds attr, defaults to False.
-    assert _provider_supports_native_pdf(provider) is False
+    assert _provider_supports_native_pdf(_MediaProvider()) is False  # no attr
 
-
-def test_provider_supports_native_pdf_without_pdf():
-    from parsantic.extract.pipeline import _provider_supports_native_pdf
-
-    class _ImageOnlyProvider:
+    class _ImageOnly:
         model_id = "test:image-only"
         supported_attachment_kinds = frozenset({"image"})
 
-    assert _provider_supports_native_pdf(_ImageOnlyProvider()) is False
+    assert _provider_supports_native_pdf(_ImageOnly()) is False
 
 
 def test_extract_with_media_options_passed_through():

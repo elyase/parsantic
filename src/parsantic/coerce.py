@@ -788,10 +788,16 @@ def _coerce_model_keys(
         candidates: list[str] = [field_name]
         if field.alias and field.alias not in candidates:
             candidates.append(field.alias)
-        # B4: also check validation_alias
+        # B4: also check validation_alias (supports str and AliasChoices)
         val_alias = field.validation_alias
-        if val_alias is not None and isinstance(val_alias, str) and val_alias not in candidates:
-            candidates.append(val_alias)
+        if val_alias is not None:
+            if isinstance(val_alias, str):
+                if val_alias not in candidates:
+                    candidates.append(val_alias)
+            elif hasattr(val_alias, "choices"):
+                for choice in val_alias.choices:
+                    if isinstance(choice, str) and choice not in candidates:
+                        candidates.append(choice)
 
         for cand in candidates:
             # register exact alias lookup
@@ -869,10 +875,19 @@ def _try_implied_single_field_model(
 
     (field_name, field) = next(iter(model_type.model_fields.items()))
 
-    # If the value is already a dict that contains the field (or its alias), don't do implied-key.
+    # If the value is already a dict that contains the field (or its alias/validation_alias),
+    # don't do implied-key.
     if isinstance(value, dict):
         if field_name in value or (field.alias and field.alias in value):
             return None
+        val_alias = field.validation_alias
+        if val_alias is not None:
+            if isinstance(val_alias, str) and val_alias in value:
+                return None
+            if hasattr(val_alias, "choices"):
+                for choice in val_alias.choices:
+                    if isinstance(choice, str) and choice in value:
+                        return None
 
     try:
         validated = _type_adapter_for(model_type).validate_python({field_name: value})

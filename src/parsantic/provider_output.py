@@ -11,6 +11,8 @@ def normalize_text_outputs(
     context: str = "provider",
 ) -> list[str]:
     """Normalize provider output into a ``list[str]`` with strict shape checks."""
+    if outputs is None:
+        raise TypeError(f"{context} returned None, expected a list of strings")
     if isinstance(outputs, str):
         normalized: list[Any] = [outputs]
     elif isinstance(outputs, (dict, set, frozenset)):
