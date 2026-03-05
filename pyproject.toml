@@ -30,6 +30,7 @@ authors = [
 [project.optional-dependencies]
 ai = ["pydantic-ai>=0.0.36"]
 vision = ["pymupdf>=1.24.0", "pillow>=10.0.0"]
+web = ["httpx>=0.24.0"]
 
 [project.urls]
 Documentation = "https://elyase.github.io/parsantic"

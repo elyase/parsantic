@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from .alignment import AlignmentOptions
 from .formatting import FormatOptions
 from .prompt import PromptValidationLevel
 from .tokenizer import Tokenizer, TokenizerName
+
+if TYPE_CHECKING:
+    from .alignment import Resolver
 
 
 @dataclass(slots=True)
@@ -37,6 +40,7 @@ class ExtractOptions:
     repair: Literal["none", "local"] = "none"
     chunk_error: Literal["raise", "skip"] = "skip"
     merge_strategy: Literal["first_wins", "last_wins", "prefer_non_null"] = "first_wins"
+    resolver: Resolver | None = None
 
     def __post_init__(self) -> None:
         if self.passes < 1:

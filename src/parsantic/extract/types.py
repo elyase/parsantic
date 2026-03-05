@@ -10,6 +10,17 @@ if TYPE_CHECKING:
     from .media.attachments import Attachment
 
 
+def _import_httpx():  # type: ignore[no-untyped-def]
+    try:
+        import httpx
+
+        return httpx
+    except ImportError:
+        raise ImportError(
+            "httpx is required for URL fetching. Install with: pip install parsantic[web]"
+        ) from None
+
+
 class AlignmentStatus(str, Enum):
     MATCH_EXACT = "match_exact"
     MATCH_LESSER = "match_lesser"
@@ -23,6 +34,10 @@ class Document:
     document_id: str | None = None
     additional_context: str | None = None
     attachments: tuple[Attachment, ...] = ()
+
+    @staticmethod
+    def _is_url(text: str) -> bool:
+        return text.startswith(("http://", "https://"))
 
     @classmethod
     def from_image(
@@ -62,6 +77,56 @@ class Document:
             document_id=document_id,
             additional_context=additional_context,
             attachments=(Attachment.pdf(source, page_indices=page_indices, name=name),),
+        )
+
+    @classmethod
+    def from_url(
+        cls,
+        url: str,
+        *,
+        document_id: str | None = None,
+        additional_context: str | None = None,
+        timeout: float = 30.0,
+        headers: dict[str, str] | None = None,
+    ) -> Document:
+        """Fetch text content from a URL and create a Document.
+
+        Requires httpx: pip install parsantic[web]
+        """
+        httpx = _import_httpx()
+        response = httpx.get(url, timeout=timeout, headers=headers or {}, follow_redirects=True)
+        response.raise_for_status()
+        return cls(
+            text=response.text,
+            document_id=document_id or url,
+            additional_context=additional_context,
+        )
+
+    @classmethod
+    async def afrom_url(
+        cls,
+        url: str,
+        *,
+        document_id: str | None = None,
+        additional_context: str | None = None,
+        timeout: float = 30.0,
+        headers: dict[str, str] | None = None,
+    ) -> Document:
+        """Async version of from_url."""
+        httpx = _import_httpx()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                url,
+                timeout=timeout,
+                headers=headers or {},
+                follow_redirects=True,
+            )
+            response.raise_for_status()
+            text = response.text
+        return cls(
+            text=text,
+            document_id=document_id or url,
+            additional_context=additional_context,
         )
 
 

@@ -7,7 +7,7 @@ except PackageNotFoundError:  # pragma: no cover - local source tree without ins
 
 from .api import coerce, coerce_debug, parse, parse_debug, parse_stream
 from .coerce import CoerceOptions
-from .extract import Extractor, extract, extract_aiter, extract_iter
+from .extract import Extractor, extract, extract_aiter, extract_batch, extract_iter, visualize
 from .jsonish import ParseOptions
 from .patch import (
     JsonPatchOp,
@@ -59,7 +59,9 @@ __all__ = [
     "coerce_debug",
     "extract",
     "extract_aiter",
+    "extract_batch",
     "extract_iter",
+    "visualize",
     "normalize_patches",
     "parse",
     "ParseOptions",

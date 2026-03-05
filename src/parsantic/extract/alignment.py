@@ -2,10 +2,28 @@ from __future__ import annotations
 
 import difflib
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Protocol, runtime_checkable
 
 from .tokenizer import TokenizedText, Tokenizer, TokenizerName, get_tokenizer, tokens_lower
 from .types import AlignmentStatus, FieldEvidence
+
+
+@runtime_checkable
+class Resolver(Protocol):
+    """Protocol for evidence alignment resolvers.
+
+    Implementations take extracted field values and align them back to source text.
+    """
+
+    def resolve(
+        self,
+        source_text: str,
+        path: str,
+        value: str,
+        *,
+        tokenized_source: TokenizedText | None = None,
+    ) -> FieldEvidence: ...
 
 
 @dataclass(slots=True)
@@ -13,6 +31,46 @@ class AlignmentOptions:
     enable_fuzzy_alignment: bool = True
     fuzzy_threshold: float = 0.75
     accept_match_lesser: bool = True
+
+
+@dataclass(slots=True)
+class TokenAlignmentResolver:
+    """Default resolver using token-based alignment (exact, lesser, fuzzy)."""
+
+    options: AlignmentOptions = field(default_factory=AlignmentOptions)
+    tokenizer: TokenizerName | Tokenizer | None = None
+
+    def resolve(
+        self,
+        source_text: str,
+        path: str,
+        value: str,
+        *,
+        tokenized_source: TokenizedText | None = None,
+    ) -> FieldEvidence:
+        return align_value_to_text(
+            source_text,
+            path,
+            value,
+            tokenizer=self.tokenizer,
+            options=self.options,
+            tokenized_source=tokenized_source,
+        )
+
+
+def get_resolver(
+    resolver: Resolver | None = None,
+    *,
+    options: AlignmentOptions | None = None,
+    tokenizer: TokenizerName | Tokenizer | None = None,
+) -> Resolver:
+    """Return the provided resolver or create a default TokenAlignmentResolver."""
+    if resolver is not None:
+        return resolver
+    return TokenAlignmentResolver(
+        options=options or AlignmentOptions(),
+        tokenizer=tokenizer,
+    )
 
 
 def _token_interval_from_chars(
