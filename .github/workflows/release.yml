@@ -41,7 +41,7 @@ jobs:
           PY
 
       - name: Run tests
-        run: uv sync --frozen && uv run --no-sync pytest
+        run: uv sync --frozen --extra ai --extra vision && uv run --no-sync pytest
 
       - name: Build (wheel + sdist)
         run: uv build

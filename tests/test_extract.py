@@ -22,7 +22,9 @@ from parsantic.extract import (
     Example,
     ExtractDebug,
     ExtractOptions,
+    FieldScopePolicy,
     StaticProvider,
+    Strategy,
     extract,
     extract_aiter,
     extract_iter,
@@ -44,6 +46,16 @@ class Resume(BaseModel):
 
 class Items(BaseModel):
     items: list[str]
+
+
+class LineItem(BaseModel):
+    code: str
+    amount: int | None = None
+    description: str | None = None
+
+
+class Order(BaseModel):
+    line_items: list[LineItem]
 
 
 class Person(BaseModel):
@@ -159,6 +171,10 @@ def test_extract_smoke():
     assert "/email" in by_path
     assert by_path["/name"].alignment_status == AlignmentStatus.MATCH_EXACT
     assert by_path["/email"].alignment_status == AlignmentStatus.MATCH_EXACT
+    assert result.sources["/name"].scope == "document"
+    assert result.sources["/name"].pages == ()
+    assert result.sources["/email"].scope == "document"
+    assert result.sources["/email"].pages == ()
 
 
 def test_extract_accepts_single_string_provider_output():
@@ -173,6 +189,203 @@ def test_chunking_and_multipass_merge():
     options = ExtractOptions(max_char_buffer=7, passes=2)
     result = extract("Alpha.\nBeta.", Items, model=provider, options=options)
     assert result.value.items == ["Alpha", "Beta"]
+
+
+def test_chunk_merge_preserves_repeated_object_items():
+    provider = ChunkAwareProvider(
+        mappings=[
+            ("Alpha", '{"line_items": [{"code": "A", "amount": 10}]}'),
+            ("Beta", '{"line_items": [{"code": "A", "amount": 10}]}'),
+        ]
+    )
+
+    result = extract(
+        "Alpha.\nBeta.",
+        Order,
+        model=provider,
+        options=ExtractOptions(max_char_buffer=7),
+    )
+
+    assert result.value.line_items == [
+        LineItem(code="A", amount=10, description=None),
+        LineItem(code="A", amount=10, description=None),
+    ]
+
+
+def test_hybrid_text_supports_root_array_targets():
+    provider = ChunkAwareProvider(
+        mappings=[
+            (
+                "Alpha.\nBeta.",
+                (
+                    '[{"code": "A", "description": "Widget"}, '
+                    '{"code": "A", "description": "Widget"}]'
+                ),
+            ),
+            ("Alpha", '[{"code": "A", "amount": 10}]'),
+            ("Beta", '[{"code": "A", "amount": 10}]'),
+        ]
+    )
+
+    result = extract(
+        "Alpha.\nBeta.",
+        list[LineItem],
+        model=provider,
+        options=ExtractOptions(
+            mode="hybrid",
+            max_char_buffer=7,
+            strategy=None,
+        ),
+    )
+
+    assert result.value == [
+        LineItem(code="A", amount=10, description="Widget"),
+        LineItem(code="A", amount=10, description="Widget"),
+    ]
+    assert result.sources["/0/amount"].scope == "document"
+    assert result.sources["/0/description"].scope == "document"
+
+
+def test_hybrid_text_supports_root_array_field_scope_paths():
+    provider = ChunkAwareProvider(
+        mappings=[
+            (
+                "Alpha.\nBeta.",
+                (
+                    '[{"code": "A", "description": "Widget"}, '
+                    '{"code": "A", "description": "Widget"}]'
+                ),
+            ),
+            ("Alpha", '[{"code": "A", "amount": 10}]'),
+            ("Beta", '[{"code": "A", "amount": 10}]'),
+        ]
+    )
+
+    result = extract(
+        "Alpha.\nBeta.",
+        list[LineItem],
+        model=provider,
+        options=ExtractOptions(
+            strategy=Strategy(
+                plan="hybrid",
+                field_scope=FieldScopePolicy(
+                    by_path={
+                        "/*/amount": "local",
+                        "/*/description": "global",
+                    }
+                ),
+            ),
+            max_char_buffer=7,
+        ),
+    )
+
+    assert result.value == [
+        LineItem(code="A", amount=10, description="Widget"),
+        LineItem(code="A", amount=10, description="Widget"),
+    ]
+
+
+def test_hybrid_text_root_array_sources_use_root_index_paths():
+    provider = ChunkAwareProvider(
+        mappings=[
+            (
+                "Alpha.\nBeta.",
+                (
+                    '[{"code": "A", "description": "Widget A"}, '
+                    '{"code": "B", "description": "Widget B"}]'
+                ),
+            ),
+            ("Alpha", '[{"code": "A", "amount": 10}]'),
+            ("Beta", '[{"code": "B", "amount": 20}]'),
+        ]
+    )
+
+    result = extract(
+        "Alpha.\nBeta.",
+        list[LineItem],
+        model=provider,
+        options=ExtractOptions(
+            strategy=Strategy(
+                plan="hybrid",
+                field_scope=FieldScopePolicy(
+                    by_path={
+                        "/*/amount": "local",
+                        "/*/description": "global",
+                    }
+                ),
+            ),
+            max_char_buffer=7,
+        ),
+    )
+
+    assert result.value == [
+        LineItem(code="A", amount=10, description="Widget A"),
+        LineItem(code="B", amount=20, description="Widget B"),
+    ]
+    assert set(result.sources) >= {
+        "/0/code",
+        "/0/amount",
+        "/0/description",
+        "/1/code",
+        "/1/amount",
+        "/1/description",
+    }
+    assert result.sources["/0/amount"].scope == "document"
+    assert result.sources["/1/amount"].scope == "document"
+    assert result.sources["/0/description"].scope == "document"
+    assert result.sources["/1/description"].scope == "document"
+
+
+def test_hybrid_text_supports_scalar_root_targets():
+    provider = ChunkAwareProvider(
+        mappings=[
+            ("Alpha.\nBeta.", '"SETTLED"'),
+            ("Alpha", '"PENDING"'),
+            ("Beta", '"APPROVED"'),
+        ],
+        fallback='"PENDING"',
+    )
+
+    result = extract(
+        "Alpha.\nBeta.",
+        str,
+        model=provider,
+        options=ExtractOptions(
+            mode="hybrid",
+            max_char_buffer=7,
+            strategy=None,
+        ),
+    )
+
+    assert result.value == "SETTLED"
+    assert result.sources["/"].scope == "document"
+
+
+def test_hybrid_text_supports_scalar_root_scope_rules():
+    provider = ChunkAwareProvider(
+        mappings=[
+            ("Alpha.\nBeta.", '"SETTLED"'),
+            ("Alpha", '"PENDING"'),
+            ("Beta", '"PENDING"'),
+        ],
+        fallback='"PENDING"',
+    )
+
+    result = extract(
+        "Alpha.\nBeta.",
+        str,
+        model=provider,
+        options=ExtractOptions(
+            strategy=Strategy(
+                plan="hybrid",
+                field_scope=FieldScopePolicy(by_path={"/": "global"}),
+            ),
+            max_char_buffer=7,
+        ),
+    )
+
+    assert result.value == "SETTLED"
+    assert result.sources["/"].scope == "document"
 
 
 def test_chunk_parsing_allows_partial_then_final_validates():
@@ -430,6 +643,20 @@ def test_extract_prompt_uses_array_instruction_for_list_targets():
         debug=True,
     )
     assert "Output a single JSON array" in result.debug.rendered_prompt_preview
+
+
+def test_render_prompt_uses_scalar_instruction_for_scalar_targets():
+    rendered = _render_prompt(
+        Prompt(description="Extract."),
+        schema_text=None,
+        examples=[],
+        question="Alpha",
+        format_handler=FormatHandler(FormatOptions(format="json")),
+        additional_context=None,
+        output_kind="scalar",
+    )
+
+    assert "Output a single JSON value" in rendered
 
 
 # ===========================================================================

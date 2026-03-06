@@ -15,6 +15,7 @@ from parsantic.extract.providers.pydantic_ai_provider import (  # noqa: E402
     PydanticAIProvider,
     _extract_raw_json_from_messages,
     _parse_model_spec,
+    _requires_explicit_api_key,
     _result_to_json_string,
 )
 
@@ -57,6 +58,27 @@ def _make_provider(*, supports_native: bool = False) -> PydanticAIProvider:
 )
 def test_parse_model_spec(spec, expected):
     assert _parse_model_spec(spec) == expected
+
+
+@pytest.mark.parametrize(
+    ("spec", "expected"),
+    [
+        ("gemini:gemini-2.5-flash", True),
+        ("gemini-2.0-flash", True),
+        ("openai:gpt-4o-mini", False),
+        ("gpt-4o-mini", False),
+    ],
+)
+def test_requires_explicit_api_key(spec, expected):
+    assert _requires_explicit_api_key(spec) is expected
+
+
+def test_gemini_provider_without_api_key_raises_clear_error():
+    with pytest.raises(
+        ValueError,
+        match="Gemini models require GEMINI_API_KEY or an explicit api_key provider kwarg",
+    ):
+        PydanticAIProvider(model_id="gemini:gemini-2.5-flash")
 
 
 # ── _result_to_json_string ───────────────────────────────────────────────

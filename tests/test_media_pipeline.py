@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -11,11 +12,18 @@ from pydantic import BaseModel
 
 from parsantic.extract import Document, extract
 from parsantic.extract.media.attachments import Attachment, AttachmentKind
-from parsantic.extract.options import ExtractOptions, MediaOptions
+from parsantic.extract.options import (
+    ExtractOptions,
+    FieldScopePolicy,
+    MediaOptions,
+    Strategy,
+)
 from parsantic.extract.pipeline import (
     _build_media_inference_requests,
     _check_media_capability,
+    _DocumentState,
     _infer_media_batch,
+    _merge_hybrid_states,
 )
 from parsantic.extract.providers.base import (
     InferenceRequest,
@@ -30,6 +38,41 @@ from parsantic.extract.types import AlignmentStatus
 class Invoice(BaseModel):
     total: float
     vendor: str = ""
+
+
+class Patient(BaseModel):
+    name: str = ""
+    dob: str = ""
+
+
+class LineItem(BaseModel):
+    code: str
+    amount: int | None = None
+    description: str | None = None
+
+
+class Record(BaseModel):
+    patient: Patient
+    line_items: list[LineItem]
+
+
+class AmountOnly(BaseModel):
+    amount: float
+
+
+def _vision_evidence(path: str, *, value_preview: str, page_index: int | None):
+    from parsantic.extract.types import FieldEvidence
+
+    return FieldEvidence(
+        path=path,
+        value_preview=value_preview,
+        char_interval=None,
+        token_interval=None,
+        alignment_status=AlignmentStatus.UNMATCHED,
+        source="vision",
+        page_index=page_index,
+        grounding_method="unmatched",
+    )
 
 
 @dataclass(slots=True)
@@ -47,6 +90,23 @@ class _MediaProvider:
     """Provider that supports both text and media inference."""
 
     model_id: str | None = "test:media"
+    supported_attachment_kinds = frozenset({"image", "pdf"})
+    infer_media_calls: list[list[InferenceRequest]] = field(default_factory=list)
+
+    def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
+        return ['{"total": 42.0, "vendor": "acme"}'] * len(batch_prompts)
+
+    def infer_media(self, batch: Sequence[InferenceRequest], **kwargs: Any) -> Sequence[str]:
+        self.infer_media_calls.append(list(batch))
+        return ['{"total": 99.0, "vendor": "vision-corp"}'] * len(batch)
+
+
+@dataclass(slots=True)
+class _ImageOnlyMediaProvider:
+    """Provider that accepts images but explicitly rejects native PDFs."""
+
+    model_id: str | None = "test:image-only-media"
+    supported_attachment_kinds = frozenset({"image"})
     infer_media_calls: list[list[InferenceRequest]] = field(default_factory=list)
 
     def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
@@ -62,6 +122,7 @@ class _AsyncMediaProvider:
     """Provider with both sync and async media support."""
 
     model_id: str | None = "test:async-media"
+    supported_attachment_kinds = frozenset({"image", "pdf"})
     ainfer_media_calls: list[list[InferenceRequest]] = field(default_factory=list)
 
     def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
@@ -88,6 +149,150 @@ class _AsyncOnlyMediaProvider:
     async def ainfer_media(self, batch: Sequence[InferenceRequest], **kwargs: Any) -> Sequence[str]:
         self.ainfer_media_calls.append(list(batch))
         return ['{"total": 77.0, "vendor": "async-only-corp"}'] * len(batch)
+
+
+@dataclass(slots=True)
+class _HybridMediaProvider:
+    """Provider that returns different outputs for whole-doc vs per-page requests."""
+
+    model_id: str | None = "test:hybrid-media"
+    infer_calls: list[list[str]] = field(default_factory=list)
+    infer_media_calls: list[list[InferenceRequest]] = field(default_factory=list)
+
+    def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
+        self.infer_calls.append(list(batch_prompts))
+        return ['{"total": 1.0, "vendor": "text-path"}'] * len(batch_prompts)
+
+    def infer_media(self, batch: Sequence[InferenceRequest], **kwargs: Any) -> Sequence[str]:
+        self.infer_media_calls.append(list(batch))
+        outputs: list[str] = []
+        for request in batch:
+            if request.page_index is None:
+                outputs.append('{"total": 555.0, "vendor": "global-vendor"}')
+            elif request.page_index == 1:
+                outputs.append('{"total": 99.0, "vendor": "page-1-vendor"}')
+            else:
+                outputs.append('{"vendor": "page-2-vendor"}')
+        return outputs
+
+
+@dataclass(slots=True)
+class _SimpleModeHybridMediaProvider:
+    """Provider used to verify document/page branch separation in simple mode."""
+
+    model_id: str | None = "test:simple-hybrid-media"
+    supported_attachment_kinds = frozenset({"image", "pdf"})
+    infer_media_calls: list[list[InferenceRequest]] = field(default_factory=list)
+
+    def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
+        return ['{"total": 1.0, "vendor": "text-path"}'] * len(batch_prompts)
+
+    def infer_media(self, batch: Sequence[InferenceRequest], **kwargs: Any) -> Sequence[str]:
+        self.infer_media_calls.append(list(batch))
+        outputs: list[str] = []
+        for request in batch:
+            if request.page_index is None:
+                outputs.append('{"total": 555.0, "vendor": "global-vendor"}')
+            elif request.page_index == 1:
+                outputs.append('{"total": 99.0}')
+            else:
+                outputs.append("{}")
+        return outputs
+
+
+@dataclass(slots=True)
+class _RootArrayHybridMediaProvider:
+    """Provider that returns array outputs for whole-doc vs per-page requests."""
+
+    model_id: str | None = "test:root-array-hybrid-media"
+    supported_attachment_kinds = frozenset({"image", "pdf"})
+    infer_media_calls: list[list[InferenceRequest]] = field(default_factory=list)
+
+    def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
+        return [
+            '[{"code": "A", "description": "Widget A"}, {"code": "B", "description": "Widget B"}]'
+        ] * len(batch_prompts)
+
+    def infer_media(self, batch: Sequence[InferenceRequest], **kwargs: Any) -> Sequence[str]:
+        self.infer_media_calls.append(list(batch))
+        outputs: list[str] = []
+        for request in batch:
+            if request.page_index is None:
+                outputs.append(
+                    '[{"code": "A", "description": "Widget A"}, '
+                    '{"code": "B", "description": "Widget B"}]'
+                )
+            elif request.page_index == 1:
+                outputs.append('[{"code": "A", "amount": 10}]')
+            else:
+                outputs.append('[{"code": "B", "amount": 20}]')
+        return outputs
+
+
+@dataclass(slots=True)
+class _RootArrayBackfillMediaProvider:
+    """Provider that forces whole-doc selection and PDF page backfill for a root array."""
+
+    model_id: str | None = "test:root-array-backfill-media"
+    supported_attachment_kinds = frozenset({"image", "pdf"})
+    infer_media_calls: list[list[InferenceRequest]] = field(default_factory=list)
+
+    def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
+        return ['[{"amount": 85.0}]'] * len(batch_prompts)
+
+    def infer_media(self, batch: Sequence[InferenceRequest], **kwargs: Any) -> Sequence[str]:
+        self.infer_media_calls.append(list(batch))
+        outputs: list[str] = []
+        for request in batch:
+            if request.page_index is None:
+                outputs.append('[{"amount": 85.0}]')
+            else:
+                outputs.append("[]")
+        return outputs
+
+
+@dataclass(slots=True)
+class _ScalarHybridMediaProvider:
+    """Provider that forces whole-doc selection for a scalar root."""
+
+    model_id: str | None = "test:scalar-hybrid-media"
+    supported_attachment_kinds = frozenset({"image", "pdf"})
+    infer_media_calls: list[list[InferenceRequest]] = field(default_factory=list)
+
+    def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
+        return ['"SETTLED"'] * len(batch_prompts)
+
+    def infer_media(self, batch: Sequence[InferenceRequest], **kwargs: Any) -> Sequence[str]:
+        self.infer_media_calls.append(list(batch))
+        outputs: list[str] = []
+        for request in batch:
+            if request.page_index is None:
+                outputs.append('"SETTLED"')
+            elif request.page_index == 1:
+                outputs.append('"PENDING"')
+            elif request.page_index == 2:
+                outputs.append('"APPROVED"')
+            else:
+                outputs.append('"PENDING"')
+        return outputs
+
+
+def _create_hybrid_fixture_pdf(tmp_path: Path) -> Path:
+    fitz = pytest.importorskip("fitz")
+
+    pdf_path = tmp_path / "hybrid_fixture.pdf"
+    pdf = fitz.open()
+    pages = (
+        "Page 1\nCase Status: PENDING\nPatient: Jane Roe\nCode: A\nDescription: Widget A\nAmount: 25",
+        "Page 2\nCase Status: APPROVED\nCode: B\nDescription: Widget B\nAmount: 35",
+        "Page 3\nCase Status: SETTLED\nFinal Total: 85\nSummary: approved for closure",
+    )
+    for page_text in pages:
+        page = pdf.new_page()
+        page.insert_text((72, 72), page_text)
+    pdf.save(pdf_path)
+    pdf.close()
+    return pdf_path
 
 
 # -- Tests: capability checking ------------------------------------------------
@@ -157,6 +362,519 @@ def test_extract_pdf_document_with_page_indices():
     assert "Focus on pages: 1, 2, 3." in req.prompt
 
 
+def test_extract_pdf_document_auto_mode_uses_text_layer_extraction(tmp_path: Path):
+    fitz = pytest.importorskip("fitz")
+
+    pdf_path = tmp_path / "text_layer.pdf"
+    pdf = fitz.open()
+    page1 = pdf.new_page()
+    page1.insert_text((72, 72), "Invoice Number: INV-123")
+    page2 = pdf.new_page()
+    page2.insert_text((72, 72), "Vendor: Acme Corp\nTotal: 85.0")
+    pdf.save(pdf_path)
+    pdf.close()
+
+    class _AutoPdfTextProvider:
+        def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
+            return ['{"total": 85.0, "vendor": "Acme Corp"}'] * len(batch_prompts)
+
+    result = extract(
+        Document.from_pdf(pdf_path),
+        Invoice,
+        model=_AutoPdfTextProvider(),
+    )
+
+    assert result.value.total == 85.0
+    assert result.value.vendor == "Acme Corp"
+
+
+def test_extract_pdf_document_with_native_strategy_preset():
+    provider = _MediaProvider()
+    doc = Document.from_pdf(b"%PDF", page_indices=[0, 1])
+
+    result = extract(
+        doc,
+        Invoice,
+        model=provider,
+        options=ExtractOptions(strategy="native"),
+    )
+
+    assert result.value.total == 99.0
+    assert len(provider.infer_media_calls) == 1
+    assert len(provider.infer_media_calls[0]) == 1
+    req = provider.infer_media_calls[0][0]
+    assert req.page_index is None
+    assert "Focus on pages: 1, 2." in req.prompt
+
+
+def test_extract_pdf_document_rejects_native_pdf_when_provider_lacks_support():
+    provider = _ImageOnlyMediaProvider()
+    doc = Document.from_pdf(b"%PDF")
+
+    with pytest.raises(TypeError, match="does not support native PDF input"):
+        extract(
+            doc,
+            Invoice,
+            model=provider,
+            options=ExtractOptions(media=MediaOptions(pdf_mode="native")),
+        )
+
+
+def test_extract_pdf_document_hybrid_mode_rejects_native_document_branch_when_provider_lacks_support():
+    provider = _ImageOnlyMediaProvider()
+    doc = Document.from_pdf(b"%PDF")
+
+    with pytest.raises(TypeError, match="does not support native PDF input"):
+        extract(
+            doc,
+            Invoice,
+            model=provider,
+            options=ExtractOptions(
+                mode="hybrid",
+                document_input="native",
+                page_input="image",
+            ),
+        )
+
+
+def test_extract_pdf_document_with_auditable_strategy_uses_page_map_reduce(monkeypatch):
+    provider = _MediaProvider()
+    doc = Document.from_pdf(b"%PDF", page_indices=[0, 1])
+
+    from parsantic.extract.media import preprocessing as preprocessing_mod
+
+    def _fake_rasterize_pdf(
+        source, *, dpi=200, page_indices=None, raster_format="jpeg", jpeg_quality=85
+    ):
+        assert page_indices == (0, 1)
+        return [(0, b"page-1"), (1, b"page-2")]
+
+    monkeypatch.setattr(preprocessing_mod, "rasterize_pdf", _fake_rasterize_pdf)
+
+    result = extract(
+        doc,
+        Invoice,
+        model=provider,
+        options=ExtractOptions(strategy="auditable"),
+    )
+
+    assert result.value.total == 99.0
+    assert len(provider.infer_media_calls) == 1
+    requests = provider.infer_media_calls[0]
+    assert len(requests) == 2
+    assert [req.page_index for req in requests] == [1, 2]
+    assert all(req.attachments[0].kind == AttachmentKind.IMAGE for req in requests)
+
+
+def test_extract_pdf_document_with_hybrid_strategy_routes_fields_by_scope(monkeypatch):
+    provider = _HybridMediaProvider()
+    doc = Document.from_pdf(Path("/Users/yaser/parsantic/examples/sample_invoice.pdf"))
+
+    from parsantic.extract.media import preprocessing as preprocessing_mod
+
+    monkeypatch.setattr(preprocessing_mod, "has_text_layer", lambda source: True)
+
+    def _fake_rasterize_pdf(
+        source, *, dpi=200, page_indices=None, raster_format="jpeg", jpeg_quality=85
+    ):
+        assert page_indices is None
+        return [(0, b"page-1"), (1, b"page-2")]
+
+    monkeypatch.setattr(preprocessing_mod, "rasterize_pdf", _fake_rasterize_pdf)
+
+    result = extract(
+        doc,
+        Invoice,
+        model=provider,
+        options=ExtractOptions(
+            strategy=Strategy(
+                plan="hybrid",
+                field_scope=FieldScopePolicy(
+                    by_path={
+                        "/total": "local",
+                        "/vendor": "global",
+                    }
+                ),
+            )
+        ),
+    )
+
+    assert result.value.total == 99.0
+    assert result.value.vendor == "global-vendor"
+    assert provider.infer_calls == []
+    assert len(provider.infer_media_calls) == 2
+    assert any([req.page_index for req in batch] == [1, 2] for batch in provider.infer_media_calls)
+    assert any([req.page_index for req in batch] == [None] for batch in provider.infer_media_calls)
+
+    evidence_by_path = {evidence.path: evidence for evidence in result.evidence}
+    assert evidence_by_path["/total"].page_index == 1
+    assert evidence_by_path["/vendor"].page_index is None
+
+
+def test_extract_pdf_document_with_hybrid_mode_uses_native_document_branch_and_page_sources(
+    monkeypatch,
+):
+    provider = _SimpleModeHybridMediaProvider()
+    doc = Document.from_pdf(Path("/Users/yaser/parsantic/examples/sample_invoice.pdf"))
+
+    from parsantic.extract.media import preprocessing as preprocessing_mod
+
+    monkeypatch.setattr(preprocessing_mod, "has_text_layer", lambda source: True)
+
+    def _fake_rasterize_pdf(
+        source, *, dpi=200, page_indices=None, raster_format="jpeg", jpeg_quality=85
+    ):
+        assert page_indices is None
+        return [(0, b"page-1"), (1, b"page-2")]
+
+    monkeypatch.setattr(preprocessing_mod, "rasterize_pdf", _fake_rasterize_pdf)
+
+    result = extract(
+        doc,
+        Invoice,
+        model=provider,
+        options=ExtractOptions(
+            mode="hybrid",
+            document_input="native",
+            page_input="image",
+        ),
+    )
+
+    assert result.value.total == 99.0
+    assert result.value.vendor == "global-vendor"
+    assert len(provider.infer_media_calls) == 2
+    assert any([req.page_index for req in batch] == [1, 2] for batch in provider.infer_media_calls)
+    assert any([req.page_index for req in batch] == [None] for batch in provider.infer_media_calls)
+    page_batch = next(
+        batch for batch in provider.infer_media_calls if batch[0].page_index is not None
+    )
+    whole_batch = next(batch for batch in provider.infer_media_calls if batch[0].page_index is None)
+    assert all(req.attachments[0].kind == AttachmentKind.IMAGE for req in page_batch)
+    assert whole_batch[0].attachments[0].kind == AttachmentKind.PDF
+    assert result.sources["/total"].scope == "page"
+    assert result.sources["/total"].pages == (1,)
+    assert result.sources["/vendor"].scope == "document"
+    assert result.sources["/vendor"].pages == ()
+
+
+def test_extract_pdf_document_hybrid_mode_supports_root_array_targets(monkeypatch):
+    provider = _RootArrayHybridMediaProvider()
+    doc = Document.from_pdf(Path("/Users/yaser/parsantic/examples/sample_invoice.pdf"))
+
+    from parsantic.extract.media import preprocessing as preprocessing_mod
+
+    monkeypatch.setattr(preprocessing_mod, "has_text_layer", lambda source: True)
+
+    def _fake_rasterize_pdf(
+        source, *, dpi=200, page_indices=None, raster_format="jpeg", jpeg_quality=85
+    ):
+        assert page_indices is None
+        return [(0, b"page-1"), (1, b"page-2")]
+
+    monkeypatch.setattr(preprocessing_mod, "rasterize_pdf", _fake_rasterize_pdf)
+
+    result = extract(
+        doc,
+        list[LineItem],
+        model=provider,
+        options=ExtractOptions(
+            mode="hybrid",
+            document_input="native",
+            page_input="image",
+        ),
+    )
+
+    assert result.value == [
+        LineItem(code="A", amount=10, description="Widget A"),
+        LineItem(code="B", amount=20, description="Widget B"),
+    ]
+    assert len(provider.infer_media_calls) == 2
+    assert result.sources["/0/amount"].scope == "page"
+    assert result.sources["/0/amount"].pages == (1,)
+    assert result.sources["/1/amount"].scope == "page"
+    assert result.sources["/1/amount"].pages == (2,)
+    assert result.sources["/0/description"].scope == "page"
+    assert result.sources["/0/description"].pages == (1,)
+    assert result.sources["/1/description"].scope == "page"
+    assert result.sources["/1/description"].pages == (1,)
+
+
+def test_extract_pdf_document_hybrid_mode_backfills_root_array_page_sources_for_whole_selected_leaf(
+    monkeypatch,
+):
+    provider = _RootArrayBackfillMediaProvider()
+    doc = Document.from_pdf(Path("/Users/yaser/parsantic/examples/sample_invoice.pdf"))
+
+    from parsantic.extract.media import preprocessing as preprocessing_mod
+
+    monkeypatch.setattr(preprocessing_mod, "has_text_layer", lambda source: True)
+
+    def _fake_rasterize_pdf(
+        source, *, dpi=200, page_indices=None, raster_format="jpeg", jpeg_quality=85
+    ):
+        assert page_indices is None
+        return [(0, b"page-1"), (1, b"page-2")]
+
+    monkeypatch.setattr(preprocessing_mod, "rasterize_pdf", _fake_rasterize_pdf)
+
+    result = extract(
+        doc,
+        list[AmountOnly],
+        model=provider,
+        options=ExtractOptions(
+            mode="hybrid",
+            document_input="native",
+            page_input="image",
+        ),
+    )
+
+    assert result.value == [AmountOnly(amount=85.0)]
+    assert len(provider.infer_media_calls) == 2
+    assert result.sources["/0/amount"].scope == "page"
+    assert result.sources["/0/amount"].pages == (2,)
+
+
+def test_extract_pdf_document_hybrid_mode_supports_scalar_root_targets(monkeypatch, tmp_path: Path):
+    provider = _ScalarHybridMediaProvider()
+    doc = Document.from_pdf(_create_hybrid_fixture_pdf(tmp_path))
+
+    from parsantic.extract.media import preprocessing as preprocessing_mod
+
+    monkeypatch.setattr(preprocessing_mod, "has_text_layer", lambda source: True)
+
+    def _fake_rasterize_pdf(
+        source, *, dpi=200, page_indices=None, raster_format="jpeg", jpeg_quality=85
+    ):
+        assert page_indices is None
+        return [(0, b"page-1"), (1, b"page-2"), (2, b"page-3")]
+
+    monkeypatch.setattr(preprocessing_mod, "rasterize_pdf", _fake_rasterize_pdf)
+
+    result = extract(
+        doc,
+        str,
+        model=provider,
+        options=ExtractOptions(
+            mode="hybrid",
+            document_input="native",
+            page_input="image",
+        ),
+    )
+
+    assert result.value == "SETTLED"
+    assert len(provider.infer_media_calls) == 2
+    assert result.sources["/"].scope == "page"
+    assert result.sources["/"].pages == (3,)
+    assert [
+        (evidence.path, evidence.value_preview, evidence.page_index) for evidence in result.evidence
+    ] == [
+        ("/", "SETTLED", 3),
+    ]
+
+
+def test_merge_hybrid_uses_whole_doc_value_for_missing_auto_root():
+    page_state = _DocumentState(
+        merged_value={"vendor": None},
+        doc_evidence=[
+            _vision_evidence("/vendor", value_preview="", page_index=1),
+        ],
+    )
+    whole_state = _DocumentState(
+        merged_value={"vendor": "ACME"},
+        doc_evidence=[
+            _vision_evidence("/vendor", value_preview="ACME", page_index=None),
+        ],
+    )
+
+    merged = _merge_hybrid_states(
+        page_state=page_state,
+        whole_state=whole_state,
+        field_scope=FieldScopePolicy(),
+    )
+
+    assert merged.merged_value == {"vendor": "ACME"}
+    assert [(ev.path, ev.value_preview, ev.page_index) for ev in merged.doc_evidence] == [
+        ("/vendor", "ACME", None),
+    ]
+
+
+def test_merge_hybrid_discards_metadata_from_filtered_out_branches():
+    page_state = _DocumentState(
+        merged_value={"total": 99.0},
+        raw_outputs=['{"total": 99.0}'],
+        all_flags={"page_flag"},
+        worst_score=1,
+    )
+    whole_state = _DocumentState(
+        merged_value={"total": 555.0},
+        raw_outputs=['{"total": 555.0}'],
+        all_flags={"whole_flag"},
+        worst_score=7,
+    )
+
+    merged = _merge_hybrid_states(
+        page_state=page_state,
+        whole_state=whole_state,
+        field_scope=FieldScopePolicy(by_path={"/total": "local"}),
+    )
+
+    assert merged.merged_value == {"total": 99.0}
+    assert merged.raw_outputs == ['{"total": 99.0}']
+    assert merged.all_flags == {"page_flag"}
+    assert merged.worst_score == 1
+
+
+def test_merge_hybrid_supports_nested_objects_and_repeated_arrays():
+    page_state = _DocumentState(
+        merged_value={
+            "patient": {"dob": "2000-01-01"},
+            "line_items": [
+                {"code": "A", "amount": 10},
+                {"code": "A", "amount": 10},
+            ],
+        },
+        doc_evidence=[
+            _vision_evidence("/patient/dob", value_preview="2000-01-01", page_index=1),
+            _vision_evidence("/line_items/0/code", value_preview="A", page_index=1),
+            _vision_evidence("/line_items/0/amount", value_preview="10", page_index=1),
+            _vision_evidence("/line_items/1/code", value_preview="A", page_index=2),
+            _vision_evidence("/line_items/1/amount", value_preview="10", page_index=2),
+        ],
+    )
+    whole_state = _DocumentState(
+        merged_value={
+            "patient": {"name": "Alice"},
+            "line_items": [
+                {"code": "A", "description": "Widget"},
+                {"code": "A", "description": "Widget"},
+            ],
+        },
+        doc_evidence=[
+            _vision_evidence("/patient/name", value_preview="Alice", page_index=None),
+            _vision_evidence("/line_items/0/code", value_preview="A", page_index=None),
+            _vision_evidence("/line_items/0/description", value_preview="Widget", page_index=None),
+            _vision_evidence("/line_items/1/code", value_preview="A", page_index=None),
+            _vision_evidence("/line_items/1/description", value_preview="Widget", page_index=None),
+        ],
+    )
+
+    merged = _merge_hybrid_states(
+        page_state=page_state,
+        whole_state=whole_state,
+        field_scope=FieldScopePolicy(
+            by_path={
+                "/patient": "global",
+                "/patient/dob": "local",
+                "/line_items/*/amount": "local",
+                "/line_items/*/description": "global",
+            }
+        ),
+    )
+
+    assert merged.merged_value == {
+        "patient": {"name": "Alice", "dob": "2000-01-01"},
+        "line_items": [
+            {"code": "A", "amount": 10, "description": "Widget"},
+            {"code": "A", "amount": 10, "description": "Widget"},
+        ],
+    }
+    evidence = {(ev.path, ev.value_preview, ev.page_index) for ev in merged.doc_evidence}
+    assert ("/patient/name", "Alice", None) in evidence
+    assert ("/patient/dob", "2000-01-01", 1) in evidence
+    assert ("/line_items/0/amount", "10", 1) in evidence
+    assert ("/line_items/0/description", "Widget", None) in evidence
+    assert ("/line_items/1/amount", "10", 2) in evidence
+    assert ("/line_items/1/description", "Widget", None) in evidence
+
+
+def test_merge_hybrid_backfills_exact_page_provenance_for_whole_selected_value():
+    doc = Document.from_pdf(Path("/Users/yaser/parsantic/examples/sample_invoice.pdf"))
+    page_state = _DocumentState(
+        merged_value={"total": 60.0},
+        doc_evidence=[
+            _vision_evidence("/total", value_preview="60.0", page_index=1),
+            _vision_evidence("/total", value_preview="0.0", page_index=2),
+        ],
+    )
+    whole_state = _DocumentState(
+        merged_value={"total": 85.0},
+        doc_evidence=[
+            _vision_evidence("/total", value_preview="85.0", page_index=None),
+        ],
+    )
+
+    merged = _merge_hybrid_states(
+        page_state=page_state,
+        whole_state=whole_state,
+        field_scope=FieldScopePolicy(),
+        doc=doc,
+    )
+
+    assert merged.merged_value == {"total": 85.0}
+    assert [(ev.path, ev.value_preview, ev.page_index) for ev in merged.doc_evidence] == [
+        ("/total", "85.0", 2),
+    ]
+
+
+def test_merge_hybrid_backfills_exact_page_provenance_for_root_array_leaf_value():
+    doc = Document.from_pdf(Path("/Users/yaser/parsantic/examples/sample_invoice.pdf"))
+    page_state = _DocumentState(
+        merged_value=[{"code": "TOTAL", "amount": 60.0}],
+        doc_evidence=[
+            _vision_evidence("/0/code", value_preview="TOTAL", page_index=1),
+            _vision_evidence("/0/amount", value_preview="60.0", page_index=1),
+        ],
+    )
+    whole_state = _DocumentState(
+        merged_value=[{"code": "TOTAL", "amount": 85.0}],
+        doc_evidence=[
+            _vision_evidence("/0/code", value_preview="TOTAL", page_index=None),
+            _vision_evidence("/0/amount", value_preview="85.0", page_index=None),
+        ],
+    )
+
+    merged = _merge_hybrid_states(
+        page_state=page_state,
+        whole_state=whole_state,
+        field_scope=FieldScopePolicy(by_path={"/*/amount": "global"}),
+        doc=doc,
+    )
+
+    assert merged.merged_value == [{"code": "TOTAL", "amount": 85.0}]
+    evidence = [(ev.path, ev.value_preview, ev.page_index) for ev in merged.doc_evidence]
+    assert ("/0/amount", "85.0", 2) in evidence
+    assert ("/0/code", "TOTAL", 1) in evidence
+
+
+def test_merge_hybrid_supports_scalar_root_values_with_page_backfill(tmp_path: Path):
+    doc = Document.from_pdf(_create_hybrid_fixture_pdf(tmp_path))
+    page_state = _DocumentState(
+        merged_value="PENDING",
+        doc_evidence=[
+            _vision_evidence("/", value_preview="PENDING", page_index=1),
+            _vision_evidence("/", value_preview="APPROVED", page_index=2),
+        ],
+    )
+    whole_state = _DocumentState(
+        merged_value="SETTLED",
+        doc_evidence=[
+            _vision_evidence("/", value_preview="SETTLED", page_index=None),
+        ],
+    )
+
+    merged = _merge_hybrid_states(
+        page_state=page_state,
+        whole_state=whole_state,
+        field_scope=FieldScopePolicy(),
+        doc=doc,
+    )
+
+    assert merged.merged_value == "SETTLED"
+    assert [(ev.path, ev.value_preview, ev.page_index) for ev in merged.doc_evidence] == [
+        ("/", "SETTLED", 3),
+    ]
+
+
 # -- Tests: async extract with media ------------------------------------------
 
 
@@ -171,6 +889,25 @@ def test_aextract_media_document_uses_ainfer_media():
         result = await aextract(doc, Invoice, model=provider)
         assert result.value.total == 99.0
         assert len(provider.ainfer_media_calls) == 1
+
+    asyncio.run(_run())
+
+
+def test_aextract_document_mode_native_pdf_rejects_provider_without_pdf_support():
+    import asyncio
+
+    from parsantic.extract import aextract
+
+    async def _run() -> None:
+        provider = _ImageOnlyMediaProvider()
+        doc = Document.from_pdf(b"%PDF")
+        with pytest.raises(TypeError, match="does not support native PDF input"):
+            await aextract(
+                doc,
+                Invoice,
+                model=provider,
+                options=ExtractOptions(mode="document", document_input="native"),
+            )
 
     asyncio.run(_run())
 
@@ -361,7 +1098,7 @@ def test_chunk_attachments_raster_mode_requires_vision_deps(monkeypatch: pytest.
 def test_provider_supports_native_pdf():
     from parsantic.extract.pipeline import _provider_supports_native_pdf
 
-    assert _provider_supports_native_pdf(_MediaProvider()) is False  # no attr
+    assert _provider_supports_native_pdf(_MediaProvider()) is True
 
     class _ImageOnly:
         model_id = "test:image-only"

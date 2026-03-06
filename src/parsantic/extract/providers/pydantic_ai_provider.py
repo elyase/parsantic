@@ -57,6 +57,11 @@ def _parse_model_spec(model_spec: str) -> tuple[str, str]:
     return "openai", model_spec
 
 
+def _requires_explicit_api_key(model_spec: str) -> bool:
+    provider_name, _ = _parse_model_spec(model_spec)
+    return provider_name == "gemini"
+
+
 def _build_model_with_credentials(
     model_spec: str,
     api_key: str | None = None,
@@ -235,6 +240,10 @@ class PydanticAIProvider:
             )
             self._agent = Agent(model, output_type=str)
         else:
+            if _requires_explicit_api_key(model_spec):
+                raise ValueError(
+                    "Gemini models require GEMINI_API_KEY or an explicit api_key provider kwarg"
+                )
             self._agent = Agent(model_spec, output_type=str)
 
         # Detect native structured output capability from model profile

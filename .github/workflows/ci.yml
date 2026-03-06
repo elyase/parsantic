@@ -25,7 +25,7 @@ jobs:
             sync_args: --no-install-project
           - task: test
             command: uv run --no-sync pytest
-            sync_args: ""
+            sync_args: --extra ai --extra vision
           - task: docs
             command: uv run --no-sync mkdocs build --strict
             sync_args: --group docs

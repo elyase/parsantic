@@ -173,6 +173,12 @@ class MergeConflict:
 
 
 @dataclass(slots=True)
+class SourceRef:
+    scope: Literal["document", "page"]
+    pages: tuple[int, ...] = ()
+
+
+@dataclass(slots=True)
 class ExtractResult[T]:
     value: T
     document_id: str | None
@@ -180,5 +186,6 @@ class ExtractResult[T]:
     flags: tuple[str, ...]
     score: int
     evidence: list[FieldEvidence]
+    sources: dict[str, SourceRef] = field(default_factory=dict)
     debug: ExtractDebug | None = None
     conflicts: list[MergeConflict] = field(default_factory=list)

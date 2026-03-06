@@ -52,4 +52,6 @@
 
 ::: parsantic.extract.options.ExtractOptions
 
+::: parsantic.extract.SourceRef
+
 ::: parsantic.extract.options.MediaOptions

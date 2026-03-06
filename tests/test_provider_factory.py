@@ -36,6 +36,20 @@ def test_factory_picks_provider_specific_api_key(monkeypatch: pytest.MonkeyPatch
     assert resolved["api_key"] == "openai-key"
 
 
+def test_factory_picks_gemini_api_key_for_gemini_models(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-key")
+    resolved = _kwargs_with_environment_defaults("gemini:gemini-2.5-flash", {})
+    assert resolved["api_key"] == "gemini-key"
+
+
+def test_factory_does_not_treat_google_api_key_as_gemini_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("GOOGLE_API_KEY", "google-key")
+    resolved = _kwargs_with_environment_defaults("gemini:gemini-2.5-flash", {})
+    assert "api_key" not in resolved
+
+
 @pytest.mark.parametrize(
     "env_var,env_val,model_spec",
     [

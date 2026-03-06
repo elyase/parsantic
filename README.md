@@ -222,7 +222,46 @@ result = extract(
 ```
 
 By default, PDFs with a text layer are extracted as text (no vision cost);
-otherwise pages are rasterized to images. Control this with `MediaOptions`:
+otherwise pages are rasterized to images.
+
+Use `mode` when you want to force a higher-level PDF strategy:
+
+```python
+from parsantic.extract import ExtractOptions
+
+# Whole document in one call.
+result = extract(
+    Document.from_pdf(pdf_bytes),
+    Invoice,
+    model="gemini:gemini-2.5-flash",
+    options=ExtractOptions(mode="document", document_input="native"),
+)
+
+# Page-by-page vision with page provenance.
+result = extract(
+    Document.from_pdf(pdf_bytes),
+    Invoice,
+    model="gemini:gemini-2.5-flash",
+    options=ExtractOptions(mode="page"),
+)
+
+# Hybrid: whole-document native PDF + page images for page-grounded fields.
+result = extract(
+    Document.from_pdf(pdf_bytes),
+    Invoice,
+    model="gemini:gemini-2.5-flash",
+    options=ExtractOptions(
+        mode="hybrid",
+        document_input="native",
+        page_input="image",
+    ),
+)
+
+print(result.sources["/total"])   # SourceRef(scope="page", pages=(1,))
+print(result.sources["/vendor"])  # SourceRef(scope="document", pages=())
+```
+
+For lower-level PDF/image control, `MediaOptions` is still available:
 
 ```python
 from parsantic.extract.options import ExtractOptions, MediaOptions
@@ -236,6 +275,26 @@ result = extract(
     ),
 )
 ```
+
+| `mode` | Behavior |
+| :--- | :--- |
+| `"auto"` | Use text extraction for text-layer PDFs, otherwise rasterize pages (default) |
+| `"document"` | Run one whole-document extraction |
+| `"page"` | Run page-by-page extraction |
+| `"hybrid"` | Run both a whole-document branch and a page branch, then merge |
+
+| `document_input` | Behavior |
+| :--- | :--- |
+| `"auto"` | Let parsantic choose the whole-document representation |
+| `"native"` | Send the raw PDF binary to the model |
+| `"image"` | Rasterize the PDF and bundle page images into one whole-document request |
+
+| `page_input` | Behavior |
+| :--- | :--- |
+| `"auto"` | Use the default page-grounded representation |
+| `"image"` | Rasterize each PDF page to an image |
+
+Advanced `MediaOptions`:
 
 | `pdf_mode` | Behavior |
 | :--- | :--- |
