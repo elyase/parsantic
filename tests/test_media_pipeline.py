@@ -34,6 +34,8 @@ from parsantic.extract.types import AlignmentStatus
 
 # -- Fixtures / helpers --------------------------------------------------------
 
+SAMPLE_INVOICE_PDF = Path(__file__).resolve().parents[1] / "examples" / "sample_invoice.pdf"
+
 
 class Invoice(BaseModel):
     total: float
@@ -468,7 +470,7 @@ def test_extract_pdf_document_with_auditable_strategy_uses_page_map_reduce(monke
 
 def test_extract_pdf_document_with_hybrid_strategy_routes_fields_by_scope(monkeypatch):
     provider = _HybridMediaProvider()
-    doc = Document.from_pdf(Path("/Users/yaser/parsantic/examples/sample_invoice.pdf"))
+    doc = Document.from_pdf(SAMPLE_INVOICE_PDF)
 
     from parsantic.extract.media import preprocessing as preprocessing_mod
 
@@ -515,7 +517,7 @@ def test_extract_pdf_document_with_hybrid_mode_uses_native_document_branch_and_p
     monkeypatch,
 ):
     provider = _SimpleModeHybridMediaProvider()
-    doc = Document.from_pdf(Path("/Users/yaser/parsantic/examples/sample_invoice.pdf"))
+    doc = Document.from_pdf(SAMPLE_INVOICE_PDF)
 
     from parsantic.extract.media import preprocessing as preprocessing_mod
 
@@ -559,7 +561,7 @@ def test_extract_pdf_document_with_hybrid_mode_uses_native_document_branch_and_p
 
 def test_extract_pdf_document_hybrid_mode_supports_root_array_targets(monkeypatch):
     provider = _RootArrayHybridMediaProvider()
-    doc = Document.from_pdf(Path("/Users/yaser/parsantic/examples/sample_invoice.pdf"))
+    doc = Document.from_pdf(SAMPLE_INVOICE_PDF)
 
     from parsantic.extract.media import preprocessing as preprocessing_mod
 
@@ -603,7 +605,7 @@ def test_extract_pdf_document_hybrid_mode_backfills_root_array_page_sources_for_
     monkeypatch,
 ):
     provider = _RootArrayBackfillMediaProvider()
-    doc = Document.from_pdf(Path("/Users/yaser/parsantic/examples/sample_invoice.pdf"))
+    doc = Document.from_pdf(SAMPLE_INVOICE_PDF)
 
     from parsantic.extract.media import preprocessing as preprocessing_mod
 
@@ -788,7 +790,7 @@ def test_merge_hybrid_supports_nested_objects_and_repeated_arrays():
 
 
 def test_merge_hybrid_backfills_exact_page_provenance_for_whole_selected_value():
-    doc = Document.from_pdf(Path("/Users/yaser/parsantic/examples/sample_invoice.pdf"))
+    doc = Document.from_pdf(SAMPLE_INVOICE_PDF)
     page_state = _DocumentState(
         merged_value={"total": 60.0},
         doc_evidence=[
@@ -817,7 +819,7 @@ def test_merge_hybrid_backfills_exact_page_provenance_for_whole_selected_value()
 
 
 def test_merge_hybrid_backfills_exact_page_provenance_for_root_array_leaf_value():
-    doc = Document.from_pdf(Path("/Users/yaser/parsantic/examples/sample_invoice.pdf"))
+    doc = Document.from_pdf(SAMPLE_INVOICE_PDF)
     page_state = _DocumentState(
         merged_value=[{"code": "TOTAL", "amount": 60.0}],
         doc_evidence=[
