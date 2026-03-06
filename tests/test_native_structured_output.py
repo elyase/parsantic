@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from unittest.mock import MagicMock
 
@@ -11,6 +12,7 @@ from pydantic import BaseModel
 pydantic_ai = pytest.importorskip("pydantic_ai")
 
 from parsantic.extract.options import ExtractOptions  # noqa: E402
+from parsantic.extract.providers.base import InferenceRequest  # noqa: E402
 from parsantic.extract.providers.pydantic_ai_provider import (  # noqa: E402
     PydanticAIProvider,
     _extract_raw_json_from_messages,
@@ -40,6 +42,68 @@ def _make_provider(*, supports_native: bool = False) -> PydanticAIProvider:
     provider._agent = MagicMock()
     provider._supports_native = supports_native
     return provider
+
+
+class _FakeSyncStreamResult:
+    def __init__(
+        self,
+        *,
+        outputs: list[object] | None = None,
+        texts: list[str] | None = None,
+        final_output: object | None = None,
+    ) -> None:
+        self._outputs = outputs or []
+        self._texts = texts or []
+        self._final_output = final_output
+
+    def stream_output(self, *, debounce_by: float | None = 0.1):
+        del debounce_by
+        yield from self._outputs
+
+    def stream_text(self, *, delta: bool = False, debounce_by: float | None = 0.1):
+        del delta, debounce_by
+        yield from self._texts
+
+    def get_output(self):
+        return self._final_output
+
+
+class _FakeAsyncStreamResult:
+    def __init__(
+        self,
+        *,
+        outputs: list[object] | None = None,
+        texts: list[str] | None = None,
+        final_output: object | None = None,
+    ) -> None:
+        self._outputs = outputs or []
+        self._texts = texts or []
+        self._final_output = final_output
+
+    async def stream_output(self, *, debounce_by: float | None = 0.1):
+        del debounce_by
+        for output in self._outputs:
+            yield output
+
+    async def stream_text(self, *, delta: bool = False, debounce_by: float | None = 0.1):
+        del delta, debounce_by
+        for text in self._texts:
+            yield text
+
+    async def get_output(self):
+        return self._final_output
+
+
+class _FakeAsyncStreamContext:
+    def __init__(self, result: _FakeAsyncStreamResult) -> None:
+        self._result = result
+
+    async def __aenter__(self) -> _FakeAsyncStreamResult:
+        return self._result
+
+    async def __aexit__(self, exc_type, exc, tb) -> bool:
+        del exc_type, exc, tb
+        return False
 
 
 # ── _parse_model_spec ────────────────────────────────────────────────────
@@ -300,3 +364,74 @@ def test_extract_options_structured_output():
     assert ExtractOptions().structured_output == "auto"
     for val in ("auto", "native", "prompt"):
         assert ExtractOptions(structured_output=val).structured_output == val
+
+
+# ── streaming inference ─────────────────────────────────────────────────
+
+
+class TestStreamingInfer:
+    def test_infer_stream_uses_stream_text_for_prompt_mode(self):
+        provider = _make_provider(supports_native=True)
+        provider._agent.run_stream_sync.return_value = _FakeSyncStreamResult(
+            texts=['{"name":"A"', '{"name":"Alice","age":30}'],
+            final_output='{"name":"Alice","age":30}',
+        )
+
+        snapshots = list(provider.infer_stream("extract name", structured_output="prompt"))
+
+        assert snapshots == ['{"name":"A"', '{"name":"Alice","age":30}']
+        provider._agent.run_stream_sync.assert_called_once()
+
+    def test_infer_media_stream_serializes_native_output_snapshots(self):
+        from parsantic.extract.media.attachments import Attachment, AttachmentKind
+
+        provider = _make_provider(supports_native=True)
+        provider._agent.run_stream_sync.return_value = _FakeSyncStreamResult(
+            outputs=[
+                {"name": "Ali"},
+                _SampleModel(name="Alice", age=30),
+            ],
+            final_output=_SampleModel(name="Alice", age=30),
+        )
+        request = InferenceRequest(
+            prompt="extract name",
+            attachments=(Attachment(kind=AttachmentKind.PDF, source=b"%PDF-1.7"),),
+        )
+
+        snapshots = list(
+            provider.infer_media_stream(
+                request,
+                target_type=_SampleModel,
+                structured_output="native",
+            )
+        )
+
+        assert json.loads(snapshots[0]) == {"name": "Ali"}
+        assert json.loads(snapshots[-1]) == {"name": "Alice", "age": 30}
+
+    def test_ainfer_stream_uses_async_streaming_api(self):
+        provider = _make_provider(supports_native=True)
+        provider._agent.run_stream.return_value = _FakeAsyncStreamContext(
+            _FakeAsyncStreamResult(
+                outputs=[
+                    {"name": "Ali"},
+                    _SampleModel(name="Alice", age=30),
+                ],
+                final_output=_SampleModel(name="Alice", age=30),
+            )
+        )
+
+        async def _run() -> list[str]:
+            return [
+                snapshot
+                async for snapshot in provider.ainfer_stream(
+                    "extract name",
+                    target_type=_SampleModel,
+                    structured_output="native",
+                )
+            ]
+
+        snapshots = asyncio.run(_run())
+
+        assert json.loads(snapshots[0]) == {"name": "Ali"}
+        assert json.loads(snapshots[-1]) == {"name": "Alice", "age": 30}

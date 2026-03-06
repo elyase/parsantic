@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Literal
 
@@ -362,6 +362,78 @@ class PydanticAIProvider:
         result = await self._agent.run(user_prompt, **kwargs)
         return result.output
 
+    def _iter_stream_with_native_fallback(
+        self,
+        user_prompt: Any,
+        *,
+        target_type: type[Any] | None,
+        structured_output: Literal["auto", "native", "prompt"],
+        **kwargs: Any,
+    ) -> Iterator[str]:
+        """Stream cumulative output snapshots for a single prompt."""
+        debounce_by = kwargs.pop("debounce_by", 0.1)
+        output_type_override = self._resolve_output_type(target_type, structured_output)
+        last_snapshot: str | None = None
+
+        if output_type_override is not None:
+            result = self._agent.run_stream_sync(
+                user_prompt, output_type=output_type_override, **kwargs
+            )
+            for output in result.stream_output(debounce_by=debounce_by):
+                snapshot = _result_to_json_string(output)
+                if snapshot != last_snapshot:
+                    last_snapshot = snapshot
+                    yield snapshot
+            final_snapshot = _result_to_json_string(result.get_output())
+            if final_snapshot != last_snapshot:
+                yield final_snapshot
+            return
+
+        result = self._agent.run_stream_sync(user_prompt, **kwargs)
+        for text in result.stream_text(delta=False, debounce_by=debounce_by):
+            if text != last_snapshot:
+                last_snapshot = text
+                yield text
+        final_snapshot = _result_to_json_string(result.get_output())
+        if final_snapshot != last_snapshot:
+            yield final_snapshot
+
+    async def _aiter_stream_with_native_fallback(
+        self,
+        user_prompt: Any,
+        *,
+        target_type: type[Any] | None,
+        structured_output: Literal["auto", "native", "prompt"],
+        **kwargs: Any,
+    ) -> AsyncIterator[str]:
+        """Async version of _iter_stream_with_native_fallback."""
+        debounce_by = kwargs.pop("debounce_by", 0.1)
+        output_type_override = self._resolve_output_type(target_type, structured_output)
+        last_snapshot: str | None = None
+
+        if output_type_override is not None:
+            async with self._agent.run_stream(
+                user_prompt, output_type=output_type_override, **kwargs
+            ) as result:
+                async for output in result.stream_output(debounce_by=debounce_by):
+                    snapshot = _result_to_json_string(output)
+                    if snapshot != last_snapshot:
+                        last_snapshot = snapshot
+                        yield snapshot
+                final_snapshot = _result_to_json_string(await result.get_output())
+                if final_snapshot != last_snapshot:
+                    yield final_snapshot
+            return
+
+        async with self._agent.run_stream(user_prompt, **kwargs) as result:
+            async for text in result.stream_text(delta=False, debounce_by=debounce_by):
+                if text != last_snapshot:
+                    last_snapshot = text
+                    yield text
+            final_snapshot = _result_to_json_string(await result.get_output())
+            if final_snapshot != last_snapshot:
+                yield final_snapshot
+
     def infer(
         self,
         batch_prompts: Sequence[str],
@@ -380,6 +452,21 @@ class PydanticAIProvider:
             )
             results.append(output)
         return results
+
+    def infer_stream(
+        self,
+        prompt: str,
+        *,
+        target_type: type[Any] | None = None,
+        structured_output: Literal["auto", "native", "prompt"] = "prompt",
+        **kwargs: Any,
+    ) -> Iterator[str]:
+        yield from self._iter_stream_with_native_fallback(
+            prompt,
+            target_type=target_type,
+            structured_output=structured_output,
+            **kwargs,
+        )
 
     def _build_message_parts(self, request: InferenceRequest) -> list[Any]:
         """Convert InferenceRequest to pydantic-ai message parts (text + BinaryContent)."""
@@ -432,6 +519,22 @@ class PydanticAIProvider:
         concurrency = kwargs.pop("max_concurrency", self.max_concurrency)
         return asyncio.Semaphore(max(1, int(concurrency)))
 
+    def infer_media_stream(
+        self,
+        request: InferenceRequest,
+        *,
+        target_type: type[Any] | None = None,
+        structured_output: Literal["auto", "native", "prompt"] = "prompt",
+        **kwargs: Any,
+    ) -> Iterator[str]:
+        parts = self._build_message_parts(request)
+        yield from self._iter_stream_with_native_fallback(
+            parts,
+            target_type=target_type,
+            structured_output=structured_output,
+            **kwargs,
+        )
+
     async def ainfer(
         self,
         batch_prompts: Sequence[str],
@@ -452,6 +555,22 @@ class PydanticAIProvider:
                 )
 
         return list(await asyncio.gather(*(_run_prompt(prompt) for prompt in batch_prompts)))
+
+    async def ainfer_stream(
+        self,
+        prompt: str,
+        *,
+        target_type: type[Any] | None = None,
+        structured_output: Literal["auto", "native", "prompt"] = "prompt",
+        **kwargs: Any,
+    ) -> AsyncIterator[str]:
+        async for snapshot in self._aiter_stream_with_native_fallback(
+            prompt,
+            target_type=target_type,
+            structured_output=structured_output,
+            **kwargs,
+        ):
+            yield snapshot
 
     async def ainfer_media(
         self,
@@ -474,3 +593,20 @@ class PydanticAIProvider:
                 )
 
         return list(await asyncio.gather(*(_run_request(request) for request in batch)))
+
+    async def ainfer_media_stream(
+        self,
+        request: InferenceRequest,
+        *,
+        target_type: type[Any] | None = None,
+        structured_output: Literal["auto", "native", "prompt"] = "prompt",
+        **kwargs: Any,
+    ) -> AsyncIterator[str]:
+        parts = self._build_message_parts(request)
+        async for snapshot in self._aiter_stream_with_native_fallback(
+            parts,
+            target_type=target_type,
+            structured_output=structured_output,
+            **kwargs,
+        ):
+            yield snapshot

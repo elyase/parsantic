@@ -10,10 +10,12 @@ from .coerce import CoerceOptions
 from .extract import (
     Extractor,
     aextract,
+    aextract_stream,
     extract,
     extract_aiter,
     extract_batch,
     extract_iter,
+    extract_stream,
     visualize,
 )
 from .jsonish import ParseOptions
@@ -63,6 +65,7 @@ __all__ = [
     "RetryPolicy",
     "UpdateResult",
     "aextract",
+    "aextract_stream",
     "apply_patch",
     "apply_patch_and_validate",
     "aupdate",
@@ -73,6 +76,7 @@ __all__ = [
     "extract_aiter",
     "extract_batch",
     "extract_iter",
+    "extract_stream",
     "normalize_patches",
     "parse",
     "parse_debug",

@@ -14,7 +14,15 @@ from .options import (
     Strategy,
     resolve_runtime_strategy,
 )
-from .pipeline import Extractor, aextract, extract, extract_aiter, extract_iter
+from .pipeline import (
+    Extractor,
+    aextract,
+    aextract_stream,
+    extract,
+    extract_aiter,
+    extract_iter,
+    extract_stream,
+)
 from .prompt import Example, Prompt, PromptValidationLevel
 from .providers.static import StaticProvider
 from .types import (
@@ -23,6 +31,7 @@ from .types import (
     Document,
     ExtractDebug,
     ExtractResult,
+    ExtractStreamEvent,
     FieldEvidence,
     MergeConflict,
     SourceRef,
@@ -42,6 +51,7 @@ __all__ = [
     "ExtractDebug",
     "ExtractOptions",
     "ExtractResult",
+    "ExtractStreamEvent",
     "Extractor",
     "FieldEvidence",
     "FieldScopePolicy",
@@ -60,11 +70,13 @@ __all__ = [
     "TextChunk",
     "TokenAlignmentResolver",
     "aextract",
+    "aextract_stream",
     "aextract_batch",
     "extract",
     "extract_aiter",
     "extract_batch",
     "extract_iter",
+    "extract_stream",
     "get_resolver",
     "resolve_runtime_strategy",
     "visualize",

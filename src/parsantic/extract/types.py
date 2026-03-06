@@ -205,3 +205,16 @@ class ExtractResult[T]:
     sources: dict[str, SourceRef] = field(default_factory=dict)
     debug: ExtractDebug | None = None
     conflicts: list[MergeConflict] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class ExtractStreamEvent[T]:
+    value: Any
+    document_id: str | None
+    raw_text: str | None
+    flags: tuple[str, ...]
+    score: int
+    is_final: bool = False
+    result: ExtractResult[T] | None = None
+    attachment_index: int | None = None
+    page_index: int | None = None

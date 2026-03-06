@@ -348,6 +348,44 @@ result = extract(
 If native mode fails validation, parsantic automatically recovers the raw
 JSON from the response and runs it through the local repair pipeline.
 
+## Streaming extraction
+
+When the provider can stream structured output, `parsantic` can surface
+typed partial objects during extraction, not just during low-level parsing.
+
+For PDFs, the current streaming path is intentionally narrow: use a
+single whole-document request (`pdf_mode="native"` or `page_strategy="single"`),
+not page map-reduce or hybrid mode.
+
+```python
+from pydantic import BaseModel
+
+from parsantic import extract_stream
+from parsantic.extract import Document, ExtractOptions, MediaOptions
+
+
+class Invoice(BaseModel):
+    vendor: str = ""
+    total: float
+
+
+events = extract_stream(
+    Document.from_pdf("invoice.pdf"),
+    Invoice,
+    model="gemini:gemini-2.5-flash",
+    options=ExtractOptions(
+        structured_output="native",
+        media=MediaOptions(pdf_mode="native", page_strategy="single"),
+    ),
+)
+
+for event in events:
+    if event.is_final:
+        print("final:", event.result.value)
+    else:
+        print("partial:", event.value)
+```
+
 ## Candidate scoring
 
 When the input is ambiguous, `parsantic` generates multiple candidate

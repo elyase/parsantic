@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
@@ -47,6 +47,28 @@ class SupportsAsyncMediaInfer(Protocol):
     async def ainfer_media(
         self, batch: Sequence[InferenceRequest], **kwargs: Any
     ) -> Sequence[str]: ...
+
+
+@runtime_checkable
+class SupportsInferStream(Protocol):
+    def infer_stream(self, prompt: str, **kwargs: Any) -> Iterator[str]: ...
+
+
+@runtime_checkable
+class SupportsAsyncInferStream(Protocol):
+    async def ainfer_stream(self, prompt: str, **kwargs: Any) -> AsyncIterator[str]: ...
+
+
+@runtime_checkable
+class SupportsMediaInferStream(Protocol):
+    def infer_media_stream(self, request: InferenceRequest, **kwargs: Any) -> Iterator[str]: ...
+
+
+@runtime_checkable
+class SupportsAsyncMediaInferStream(Protocol):
+    async def ainfer_media_stream(
+        self, request: InferenceRequest, **kwargs: Any
+    ) -> AsyncIterator[str]: ...
 
 
 @dataclass(slots=True)

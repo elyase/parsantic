@@ -9,6 +9,7 @@ import unicodedata
 from collections import Counter, defaultdict
 from collections.abc import (
     AsyncGenerator,
+    AsyncIterator,
     Awaitable,
     Callable,
     Iterable,
@@ -22,6 +23,7 @@ from pydantic import TypeAdapter, ValidationError
 from pydantic_core import to_jsonable_python
 
 from parsantic.api import ParseResult, parse
+from parsantic.api import parse_stream as make_stream_parser
 from parsantic.coerce import CoerceOptions
 from parsantic.config import resolve_model
 from parsantic.json_pointer import (
@@ -41,8 +43,12 @@ from .prompt import Example, Prompt, PromptValidationLevel
 from .providers.base import (
     InferenceRequest,
     ProviderConfig,
+    SupportsAsyncInferStream,
     SupportsAsyncMediaInfer,
+    SupportsAsyncMediaInferStream,
+    SupportsInferStream,
     SupportsMediaInfer,
+    SupportsMediaInferStream,
 )
 from .providers.factory import create_provider
 from .schema import PydanticSchemaAdapter
@@ -53,6 +59,7 @@ from .types import (
     Document,
     ExtractDebug,
     ExtractResult,
+    ExtractStreamEvent,
     FieldEvidence,
     MergeConflict,
     SourceRef,
@@ -709,6 +716,27 @@ class Extractor:
             debug=debug,
         )
 
+    def extract_stream[T](
+        self,
+        text_or_document: str | Document,
+        target: type[T] | TypeAdapter[T],
+        *,
+        parse_options: ParseOptions | None = None,
+        coerce_options: CoerceOptions | None = None,
+        debug: bool = False,
+    ) -> Iterator[ExtractStreamEvent[T]]:
+        return extract_stream(
+            text_or_document,
+            target,
+            model=self.model,
+            prompt=self.prompt,
+            options=self.options,
+            provider_kwargs=self.provider_kwargs,
+            parse_options=parse_options,
+            coerce_options=coerce_options,
+            debug=debug,
+        )
+
     async def aextract[T](
         self,
         text_or_documents: str | Document | Iterable[Document],
@@ -729,6 +757,28 @@ class Extractor:
             coerce_options=coerce_options,
             debug=debug,
         )
+
+    async def aextract_stream[T](
+        self,
+        text_or_document: str | Document,
+        target: type[T] | TypeAdapter[T],
+        *,
+        parse_options: ParseOptions | None = None,
+        coerce_options: CoerceOptions | None = None,
+        debug: bool = False,
+    ) -> AsyncIterator[ExtractStreamEvent[T]]:
+        async for event in aextract_stream(
+            text_or_document,
+            target,
+            model=self.model,
+            prompt=self.prompt,
+            options=self.options,
+            provider_kwargs=self.provider_kwargs,
+            parse_options=parse_options,
+            coerce_options=coerce_options,
+            debug=debug,
+        ):
+            yield event
 
 
 def extract[T](
@@ -865,22 +915,30 @@ def _check_media_capability(provider: Any, *, is_async: bool = False) -> None:
     accepted.  When True (async path), either protocol is fine.
     """
     if is_async:
-        if not isinstance(provider, (SupportsMediaInfer, SupportsAsyncMediaInfer)):
+        if not isinstance(
+            provider,
+            (
+                SupportsMediaInfer,
+                SupportsAsyncMediaInfer,
+                SupportsMediaInferStream,
+                SupportsAsyncMediaInferStream,
+            ),
+        ):
             provider_name = type(provider).__name__
             raise TypeError(
                 f"Provider {provider_name} does not support media inference. "
-                f"Use a provider that implements SupportsMediaInfer or "
-                f"SupportsAsyncMediaInfer."
+                f"Use a provider that implements one of the media inference "
+                f"protocols (sync, async, or streaming)."
             )
     else:
-        if not isinstance(provider, SupportsMediaInfer):
+        if not isinstance(provider, (SupportsMediaInfer, SupportsMediaInferStream)):
             provider_name = type(provider).__name__
-            if isinstance(provider, SupportsAsyncMediaInfer):
+            if isinstance(provider, (SupportsAsyncMediaInfer, SupportsAsyncMediaInferStream)):
                 raise TypeError(
                     f"Provider {provider_name} only supports async media inference "
-                    f"(ainfer_media). Use aextract() or extract_aiter() for async "
-                    f"extraction, or implement infer_media() on the provider for "
-                    f"sync support."
+                    f"(ainfer_media). Use aextract() / aextract_stream() for async "
+                    f"extraction, or implement a sync media inference method on "
+                    f"the provider."
                 )
             raise TypeError(
                 f"Provider {provider_name} does not support media inference. "
@@ -2647,6 +2705,521 @@ async def _arun_hybrid_text_extraction[T](
             output_kind=ctx.output_kind,
         ),
         rendered_prompt_preview,
+    )
+
+
+def _streaming_mode_error(detail: str) -> NotImplementedError:
+    return NotImplementedError(
+        "extract_stream currently supports only single-request extraction. " + detail
+    )
+
+
+def _make_stream_event[T](
+    *,
+    value: Any,
+    doc: Document,
+    raw_text: str | None,
+    flags: Sequence[str],
+    score: int,
+    is_final: bool,
+    result: ExtractResult[T] | None = None,
+    attachment_index: int | None = None,
+    page_index: int | None = None,
+) -> ExtractStreamEvent[T]:
+    return ExtractStreamEvent(
+        value=value,
+        document_id=doc.document_id,
+        raw_text=raw_text,
+        flags=tuple(sorted(flags)),
+        score=score,
+        is_final=is_final,
+        result=result,
+        attachment_index=attachment_index,
+        page_index=page_index,
+    )
+
+
+def _build_partial_stream_event[T](
+    *,
+    parser: Any,
+    doc: Document,
+    raw_text: str,
+    output_kind: _RootKind | None,
+    attachment_index: int | None = None,
+    page_index: int | None = None,
+) -> ExtractStreamEvent[T] | None:
+    try:
+        partial = parser.parse_partial()
+    except (ValidationError, ValueError, TypeError):
+        return None
+    if output_kind in {"object", "array"} and "partial_unvalidated" in partial.flags:
+        return None
+    return _make_stream_event(
+        value=partial.value,
+        doc=doc,
+        raw_text=raw_text,
+        flags=partial.flags,
+        score=partial.score,
+        is_final=False,
+        attachment_index=attachment_index,
+        page_index=page_index,
+    )
+
+
+def _append_stream_snapshot(
+    parser: Any,
+    *,
+    snapshot: str,
+    previous_snapshot: str,
+    target: type[Any] | TypeAdapter[Any],
+    parse_options: ParseOptions | None,
+    coerce_options: CoerceOptions | None,
+    max_buffer_chars: int | None,
+) -> tuple[Any, str, bool]:
+    if snapshot == previous_snapshot:
+        return parser, previous_snapshot, False
+    if previous_snapshot and snapshot.startswith(previous_snapshot):
+        parser.feed(snapshot[len(previous_snapshot) :])
+        return parser, snapshot, True
+    parser = make_stream_parser(
+        target,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        max_buffer_chars=max_buffer_chars,
+    )
+    parser.feed(snapshot)
+    return parser, snapshot, True
+
+
+def _finalize_text_stream_result[T](
+    *,
+    ctx: _ExtractionContext,
+    doc: Document,
+    target: type[T] | TypeAdapter[T],
+    chunk: TextChunk,
+    raw_output: str,
+    parse_options: ParseOptions | None,
+    coerce_options: CoerceOptions | None,
+    debug: bool,
+    rendered_prompt_preview: str | None,
+) -> ExtractResult[T]:
+    state = _DocumentState()
+    _accumulate_pass(
+        pass_index=0,
+        state=state,
+        chunks=[chunk],
+        inferred=[raw_output],
+        target=target,
+        ctx=ctx,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
+    )
+    return _build_extract_result(
+        ctx=ctx,
+        doc=doc,
+        merged_value=state.merged_value,
+        raw_outputs=state.raw_outputs,
+        all_flags=state.all_flags,
+        worst_score=state.worst_score,
+        doc_evidence=state.doc_evidence,
+        chunk_debug_entries=state.chunk_debug_entries,
+        rendered_prompt_preview=rendered_prompt_preview,
+        debug=debug,
+        conflicts=state.conflicts,
+    )
+
+
+def _finalize_media_stream_result[T](
+    *,
+    ctx: _ExtractionContext,
+    doc: Document,
+    target: type[T] | TypeAdapter[T],
+    request: InferenceRequest,
+    chunk: MediaChunk,
+    raw_output: str,
+    parse_options: ParseOptions | None,
+    coerce_options: CoerceOptions | None,
+    debug: bool,
+    rendered_prompt_preview: str | None,
+) -> ExtractResult[T]:
+    state = _DocumentState()
+    _accumulate_media_pass(
+        pass_index=0,
+        state=state,
+        media_requests=[request],
+        media_chunks=[chunk],
+        inferred=[raw_output],
+        target=target,
+        ctx=ctx,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
+    )
+    return _build_extract_result(
+        ctx=ctx,
+        doc=doc,
+        merged_value=state.merged_value,
+        raw_outputs=state.raw_outputs,
+        all_flags=state.all_flags,
+        worst_score=state.worst_score,
+        doc_evidence=state.doc_evidence,
+        chunk_debug_entries=state.chunk_debug_entries,
+        rendered_prompt_preview=rendered_prompt_preview,
+        debug=debug,
+        conflicts=state.conflicts,
+    )
+
+
+def extract_stream[T](
+    text_or_document: str | Document,
+    target: type[T] | TypeAdapter[T],
+    *,
+    model: str | Any | None = None,
+    prompt: Prompt | str | None = None,
+    options: ExtractOptions | None = None,
+    provider_kwargs: dict[str, Any] | None = None,
+    parse_options: ParseOptions | None = None,
+    coerce_options: CoerceOptions | None = None,
+    debug: bool = False,
+) -> Iterator[ExtractStreamEvent[T]]:
+    ctx = _build_extraction_context(
+        text_or_document,
+        target,
+        model=model,
+        prompt=prompt,
+        options=options,
+        provider_kwargs=provider_kwargs,
+    )
+    if ctx.opts.passes != 1:
+        raise _streaming_mode_error("Set passes=1 when streaming.")
+
+    doc = ctx.documents[0]
+    has_media = needs_media(doc.attachments)
+
+    if has_media and ctx.resolved_strategy.plan != "hybrid":
+        text_doc = _try_pdf_text_extraction(doc, ctx.opts.media)
+        if text_doc is not None:
+            doc = text_doc
+            has_media = False
+
+    native_kwargs: dict[str, Any] = {}
+    if ctx.use_native_schema and ctx.target_type is not None:
+        native_kwargs["target_type"] = ctx.target_type
+        native_kwargs["structured_output"] = ctx.opts.structured_output
+
+    parser = make_stream_parser(
+        target,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        max_buffer_chars=ctx.opts.max_char_buffer,
+    )
+    last_snapshot = ""
+
+    if has_media:
+        if ctx.resolved_strategy.plan == "hybrid":
+            raise _streaming_mode_error("Hybrid mode is not supported yet.")
+        if not isinstance(ctx.provider, SupportsMediaInferStream):
+            raise TypeError(
+                f"Provider {type(ctx.provider).__name__} does not support media streaming"
+            )
+        _check_media_capability(ctx.provider, is_async=False)
+        native_pdf = _provider_supports_native_pdf(ctx.provider)
+        _ensure_native_pdf_support(
+            ctx.provider,
+            doc.attachments,
+            media_options=ctx.opts.media,
+            branch_label="the current extraction mode",
+        )
+        media_chunks = chunk_attachments(
+            doc.attachments,
+            text=doc.text,
+            media_options=ctx.opts.media,
+            provider_supports_native_pdf=native_pdf,
+        )
+        strategy = _resolve_page_strategy(ctx.opts.media.page_strategy, media_chunks)
+        if strategy != "single":
+            raise _streaming_mode_error(
+                "Use whole-document mode or page_strategy='single' for streamed PDFs."
+            )
+        request = _build_single_inference_request(ctx, doc, media_chunks)
+        rendered_prompt_preview = request.prompt[:500] if debug else None
+        aggregate_chunk = MediaChunk(
+            attachment=media_chunks[0].attachment if media_chunks else media_chunks,
+            attachment_index=None,
+            page_index=None,
+            text=media_chunks[0].text if media_chunks else "",
+        )
+        for snapshot in ctx.provider.infer_media_stream(request, **native_kwargs):
+            parser, last_snapshot, changed = _append_stream_snapshot(
+                parser,
+                snapshot=snapshot,
+                previous_snapshot=last_snapshot,
+                target=target,
+                parse_options=parse_options,
+                coerce_options=coerce_options,
+                max_buffer_chars=ctx.opts.max_char_buffer,
+            )
+            if not changed:
+                continue
+            event = _build_partial_stream_event(
+                parser=parser,
+                doc=doc,
+                raw_text=snapshot,
+                output_kind=ctx.output_kind,
+                attachment_index=request.attachment_index,
+                page_index=request.page_index,
+            )
+            if event is not None:
+                yield event
+        final_result = _finalize_media_stream_result(
+            ctx=ctx,
+            doc=doc,
+            target=target,
+            request=request,
+            chunk=aggregate_chunk,
+            raw_output=last_snapshot,
+            parse_options=parse_options,
+            coerce_options=coerce_options,
+            debug=debug,
+            rendered_prompt_preview=rendered_prompt_preview,
+        )
+        yield _make_stream_event(
+            value=final_result.value,
+            doc=doc,
+            raw_text=final_result.raw_text,
+            flags=final_result.flags,
+            score=final_result.score,
+            is_final=True,
+            result=final_result,
+            attachment_index=request.attachment_index,
+            page_index=request.page_index,
+        )
+        return
+
+    if ctx.resolved_strategy.plan == "hybrid":
+        raise _streaming_mode_error("Hybrid mode is not supported yet.")
+    if not isinstance(ctx.provider, SupportsInferStream):
+        raise TypeError(f"Provider {type(ctx.provider).__name__} does not support streaming")
+    chunks, chunk_prompts = _prepare_document_chunks_and_prompts(ctx, doc)
+    if len(chunk_prompts) != 1:
+        raise _streaming_mode_error("Increase max_char_buffer so the document fits in one chunk.")
+    rendered_prompt_preview = chunk_prompts[0][:500] if debug else None
+    for snapshot in ctx.provider.infer_stream(chunk_prompts[0], **native_kwargs):
+        parser, last_snapshot, changed = _append_stream_snapshot(
+            parser,
+            snapshot=snapshot,
+            previous_snapshot=last_snapshot,
+            target=target,
+            parse_options=parse_options,
+            coerce_options=coerce_options,
+            max_buffer_chars=ctx.opts.max_char_buffer,
+        )
+        if not changed:
+            continue
+        event = _build_partial_stream_event(
+            parser=parser,
+            doc=doc,
+            raw_text=snapshot,
+            output_kind=ctx.output_kind,
+        )
+        if event is not None:
+            yield event
+    final_result = _finalize_text_stream_result(
+        ctx=ctx,
+        doc=doc,
+        target=target,
+        chunk=chunks[0],
+        raw_output=last_snapshot,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
+        rendered_prompt_preview=rendered_prompt_preview,
+    )
+    yield _make_stream_event(
+        value=final_result.value,
+        doc=doc,
+        raw_text=final_result.raw_text,
+        flags=final_result.flags,
+        score=final_result.score,
+        is_final=True,
+        result=final_result,
+    )
+
+
+async def aextract_stream[T](
+    text_or_document: str | Document,
+    target: type[T] | TypeAdapter[T],
+    *,
+    model: str | Any | None = None,
+    prompt: Prompt | str | None = None,
+    options: ExtractOptions | None = None,
+    provider_kwargs: dict[str, Any] | None = None,
+    parse_options: ParseOptions | None = None,
+    coerce_options: CoerceOptions | None = None,
+    debug: bool = False,
+) -> AsyncIterator[ExtractStreamEvent[T]]:
+    ctx = _build_extraction_context(
+        text_or_document,
+        target,
+        model=model,
+        prompt=prompt,
+        options=options,
+        provider_kwargs=provider_kwargs,
+    )
+    if ctx.opts.passes != 1:
+        raise _streaming_mode_error("Set passes=1 when streaming.")
+
+    doc = ctx.documents[0]
+    has_media = needs_media(doc.attachments)
+
+    if has_media and ctx.resolved_strategy.plan != "hybrid":
+        text_doc = _try_pdf_text_extraction(doc, ctx.opts.media)
+        if text_doc is not None:
+            doc = text_doc
+            has_media = False
+
+    native_kwargs: dict[str, Any] = {}
+    if ctx.use_native_schema and ctx.target_type is not None:
+        native_kwargs["target_type"] = ctx.target_type
+        native_kwargs["structured_output"] = ctx.opts.structured_output
+
+    parser = make_stream_parser(
+        target,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        max_buffer_chars=ctx.opts.max_char_buffer,
+    )
+    last_snapshot = ""
+
+    if has_media:
+        if ctx.resolved_strategy.plan == "hybrid":
+            raise _streaming_mode_error("Hybrid mode is not supported yet.")
+        if not isinstance(ctx.provider, SupportsAsyncMediaInferStream):
+            raise TypeError(
+                f"Provider {type(ctx.provider).__name__} does not support async media streaming"
+            )
+        _check_media_capability(ctx.provider, is_async=True)
+        native_pdf = _provider_supports_native_pdf(ctx.provider)
+        _ensure_native_pdf_support(
+            ctx.provider,
+            doc.attachments,
+            media_options=ctx.opts.media,
+            branch_label="the current extraction mode",
+        )
+        media_chunks = chunk_attachments(
+            doc.attachments,
+            text=doc.text,
+            media_options=ctx.opts.media,
+            provider_supports_native_pdf=native_pdf,
+        )
+        strategy = _resolve_page_strategy(ctx.opts.media.page_strategy, media_chunks)
+        if strategy != "single":
+            raise _streaming_mode_error(
+                "Use whole-document mode or page_strategy='single' for streamed PDFs."
+            )
+        request = _build_single_inference_request(ctx, doc, media_chunks)
+        rendered_prompt_preview = request.prompt[:500] if debug else None
+        aggregate_chunk = MediaChunk(
+            attachment=media_chunks[0].attachment if media_chunks else media_chunks,
+            attachment_index=None,
+            page_index=None,
+            text=media_chunks[0].text if media_chunks else "",
+        )
+        async for snapshot in ctx.provider.ainfer_media_stream(request, **native_kwargs):
+            parser, last_snapshot, changed = _append_stream_snapshot(
+                parser,
+                snapshot=snapshot,
+                previous_snapshot=last_snapshot,
+                target=target,
+                parse_options=parse_options,
+                coerce_options=coerce_options,
+                max_buffer_chars=ctx.opts.max_char_buffer,
+            )
+            if not changed:
+                continue
+            event = _build_partial_stream_event(
+                parser=parser,
+                doc=doc,
+                raw_text=snapshot,
+                output_kind=ctx.output_kind,
+                attachment_index=request.attachment_index,
+                page_index=request.page_index,
+            )
+            if event is not None:
+                yield event
+        final_result = _finalize_media_stream_result(
+            ctx=ctx,
+            doc=doc,
+            target=target,
+            request=request,
+            chunk=aggregate_chunk,
+            raw_output=last_snapshot,
+            parse_options=parse_options,
+            coerce_options=coerce_options,
+            debug=debug,
+            rendered_prompt_preview=rendered_prompt_preview,
+        )
+        yield _make_stream_event(
+            value=final_result.value,
+            doc=doc,
+            raw_text=final_result.raw_text,
+            flags=final_result.flags,
+            score=final_result.score,
+            is_final=True,
+            result=final_result,
+            attachment_index=request.attachment_index,
+            page_index=request.page_index,
+        )
+        return
+
+    if ctx.resolved_strategy.plan == "hybrid":
+        raise _streaming_mode_error("Hybrid mode is not supported yet.")
+    if not isinstance(ctx.provider, SupportsAsyncInferStream):
+        raise TypeError(f"Provider {type(ctx.provider).__name__} does not support async streaming")
+    chunks, chunk_prompts = _prepare_document_chunks_and_prompts(ctx, doc)
+    if len(chunk_prompts) != 1:
+        raise _streaming_mode_error("Increase max_char_buffer so the document fits in one chunk.")
+    rendered_prompt_preview = chunk_prompts[0][:500] if debug else None
+    async for snapshot in ctx.provider.ainfer_stream(chunk_prompts[0], **native_kwargs):
+        parser, last_snapshot, changed = _append_stream_snapshot(
+            parser,
+            snapshot=snapshot,
+            previous_snapshot=last_snapshot,
+            target=target,
+            parse_options=parse_options,
+            coerce_options=coerce_options,
+            max_buffer_chars=ctx.opts.max_char_buffer,
+        )
+        if not changed:
+            continue
+        event = _build_partial_stream_event(
+            parser=parser,
+            doc=doc,
+            raw_text=snapshot,
+            output_kind=ctx.output_kind,
+        )
+        if event is not None:
+            yield event
+    final_result = _finalize_text_stream_result(
+        ctx=ctx,
+        doc=doc,
+        target=target,
+        chunk=chunks[0],
+        raw_output=last_snapshot,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
+        rendered_prompt_preview=rendered_prompt_preview,
+    )
+    yield _make_stream_event(
+        value=final_result.value,
+        doc=doc,
+        raw_text=final_result.raw_text,
+        flags=final_result.flags,
+        score=final_result.score,
+        is_final=True,
+        result=final_result,
     )
 
 
