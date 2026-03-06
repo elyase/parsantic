@@ -199,7 +199,7 @@ class Invoice(BaseModel):
 result = extract(
     Document.from_pdf(Path("invoice.pdf")),
     Invoice,
-    model="gemini:gemini-2.5-flash",
+    model="gemini:gemini-3.1-flash-lite-preview",
 )
 result.value
 # Invoice(invoice_number='INV-2024-001', vendor='Acme Corp', total=1250.00)
@@ -218,6 +218,10 @@ result = extract(
 By default, PDFs with a text layer are extracted as text (no vision cost);
 otherwise pages are rasterized to images.
 
+For a richer end-to-end example, see:
+- `examples/demo_pdf.py` for a synthetic oncology summary extracted into a FHIR-shaped bundle with page provenance
+- `examples/demo_pdf_modes.py` for a side-by-side comparison of the PDF modes
+
 Use `mode` when you want to force a higher-level PDF strategy:
 
 ```python
@@ -227,7 +231,7 @@ from parsantic.extract import ExtractOptions
 result = extract(
     Document.from_pdf(pdf_bytes),
     Invoice,
-    model="gemini:gemini-2.5-flash",
+    model="gemini:gemini-3.1-flash-lite-preview",
     options=ExtractOptions(mode="document", document_input="native"),
 )
 
@@ -235,7 +239,7 @@ result = extract(
 result = extract(
     Document.from_pdf(pdf_bytes),
     Invoice,
-    model="gemini:gemini-2.5-flash",
+    model="gemini:gemini-3.1-flash-lite-preview",
     options=ExtractOptions(mode="page"),
 )
 
@@ -243,7 +247,7 @@ result = extract(
 result = extract(
     Document.from_pdf(pdf_bytes),
     Invoice,
-    model="gemini:gemini-2.5-flash",
+    model="gemini:gemini-3.1-flash-lite-preview",
     options=ExtractOptions(
         mode="hybrid",
         document_input="native",
@@ -324,7 +328,7 @@ transparently:
 result = extract(
     text,
     MySchema,
-    model="gemini:gemini-2.5-flash",
+    model="gemini:gemini-3.1-flash-lite-preview",
     options=ExtractOptions(structured_output="native"),  # or "auto" (default)
 )
 ```

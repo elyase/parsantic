@@ -5,8 +5,9 @@ import concurrent.futures
 import json
 import logging
 import re
+import unicodedata
 from collections import Counter, defaultdict
-from collections.abc import AsyncIterator, Iterable, Iterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
@@ -828,6 +829,11 @@ def _provider_supports_native_pdf(provider: Any) -> bool:
     return False
 
 
+def _provider_supports_async_text(provider: Any) -> bool:
+    """Duck-type check for providers that expose async text inference."""
+    return callable(getattr(provider, "ainfer", None))
+
+
 def _ensure_native_pdf_support(
     provider: Any,
     attachments: Sequence[Any],
@@ -1030,6 +1036,25 @@ async def _ainfer_media_batch_parallel(
     for batch_result in results:
         all_outputs.extend(batch_result)
     return all_outputs
+
+
+def _run_parallel_pair[T, U](
+    first: Callable[[], T],
+    second: Callable[[], U],
+) -> tuple[T, U]:
+    """Run two independent sync callables concurrently and preserve result order."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        first_future = executor.submit(first)
+        second_future = executor.submit(second)
+        return first_future.result(), second_future.result()
+
+
+async def _arun_parallel_pair[T, U](
+    first: Callable[[], Awaitable[T]],
+    second: Callable[[], Awaitable[U]],
+) -> tuple[T, U]:
+    """Run two independent async callables concurrently and preserve result order."""
+    return await asyncio.gather(first(), second())
 
 
 def _build_single_inference_request(
@@ -1730,6 +1755,19 @@ def _relative_leaf_map(value: Any) -> dict[str, str]:
     return {path or "/": preview for path, preview in _iter_leaf_values(value)}
 
 
+def _normalize_leaf_preview(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized.casefold()
+
+
+def _normalized_relative_leaf_map(value: Any) -> dict[str, str]:
+    return {
+        path: _normalize_leaf_preview(preview)
+        for path, preview in _relative_leaf_map(value).items()
+    }
+
+
 def _join_relative_pointer(base_path: str, relative_path: str) -> str:
     if relative_path in {"", "/"}:
         return _pointer_path(base_path)
@@ -1747,8 +1785,8 @@ def _item_match_score(
         return 1.0 if page_item == whole_item else 0.0
     if type(page_item) is not type(whole_item):
         return 0.0
-    page_leaves = _relative_leaf_map(page_item)
-    whole_leaves = _relative_leaf_map(whole_item)
+    page_leaves = _normalized_relative_leaf_map(page_item)
+    whole_leaves = _normalized_relative_leaf_map(whole_item)
     if not page_leaves and not whole_leaves:
         return 1.0 if page_item == whole_item else 0.0
     common_paths = set(page_leaves) & set(whole_leaves)
@@ -1768,6 +1806,26 @@ def _item_match_score(
 
 def _add_alias(aliases: list[tuple[str, str]], source_path: str, final_path: str) -> None:
     aliases.append((_pointer_path(source_path), _pointer_path(final_path)))
+
+
+def _remap_trace(
+    trace: _HybridMergeTrace,
+    aliases: Sequence[tuple[str, str]],
+) -> _HybridMergeTrace:
+    if not aliases:
+        return trace
+    return _HybridMergeTrace(
+        page_paths={_apply_path_alias(path, aliases) for path in trace.page_paths},
+        whole_paths={_apply_path_alias(path, aliases) for path in trace.whole_paths},
+        page_aliases=[
+            (_apply_path_alias(source_path, aliases), _apply_path_alias(target_path, aliases))
+            for source_path, target_path in trace.page_aliases
+        ],
+        whole_aliases=[
+            (_apply_path_alias(source_path, aliases), _apply_path_alias(target_path, aliases))
+            for source_path, target_path in trace.whole_aliases
+        ],
+    )
 
 
 def _apply_path_alias(path: str, aliases: Sequence[tuple[str, str]]) -> str:
@@ -1941,6 +1999,47 @@ def _reconcile_hybrid_list(
 
     used_secondary: set[int] = set()
     merged_items: list[Any] = []
+
+    def _leaf_map_is_subset(subset_map: dict[str, str], superset_map: dict[str, str]) -> bool:
+        return bool(subset_map) and all(
+            superset_map.get(path) == value for path, value in subset_map.items()
+        )
+
+    def _duplicate_relation(
+        existing_item: Any, candidate_item: Any
+    ) -> Literal["equal", "existing_superset", "candidate_superset"] | None:
+        if type(existing_item) is not type(candidate_item):
+            return None
+        if isinstance(existing_item, (str, int, float, bool)) or existing_item is None:
+            return (
+                "equal"
+                if _normalize_leaf_preview(str(existing_item))
+                == _normalize_leaf_preview(str(candidate_item))
+                else None
+            )
+        existing_leaves = _normalized_relative_leaf_map(existing_item)
+        candidate_leaves = _normalized_relative_leaf_map(candidate_item)
+        if existing_leaves == candidate_leaves:
+            return "equal"
+        if isinstance(existing_item, dict) and isinstance(candidate_item, dict):
+            if _leaf_map_is_subset(candidate_leaves, existing_leaves):
+                return "existing_superset"
+            if _leaf_map_is_subset(existing_leaves, candidate_leaves):
+                return "candidate_superset"
+        return None
+
+    def _find_safe_duplicate(
+        candidate_item: Any,
+    ) -> tuple[int, Literal["equal", "existing_superset", "candidate_superset"]] | None:
+        matches: list[tuple[int, Literal["equal", "existing_superset", "candidate_superset"]]] = []
+        for idx, existing_item in enumerate(merged_items):
+            relation = _duplicate_relation(existing_item, candidate_item)
+            if relation is not None:
+                matches.append((idx, relation))
+        if len(matches) != 1:
+            return None
+        return matches[0]
+
     for primary_index, primary_item in enumerate(primary_items):
         best_secondary_index: int | None = None
         best_score = 0.0
@@ -1964,14 +2063,15 @@ def _reconcile_hybrid_list(
         final_index = len(merged_items)
         final_item_path = _pointer_with_child(path, final_index)
         primary_item_path = _pointer_with_child(path, primary_index)
+        item_trace = _HybridMergeTrace()
         if primary_branch == "page":
-            _add_alias(trace.page_aliases, primary_item_path, final_item_path)
+            _add_alias(item_trace.page_aliases, primary_item_path, final_item_path)
         else:
-            _add_alias(trace.whole_aliases, primary_item_path, final_item_path)
+            _add_alias(item_trace.whole_aliases, primary_item_path, final_item_path)
 
         if best_secondary_index is None or best_score <= 0.0:
             if primary_branch == "page":
-                item_value, item_trace = _reconcile_hybrid_value(
+                item_value, value_trace = _reconcile_hybrid_value(
                     page_value=primary_item,
                     whole_value=None,
                     path=final_item_path,
@@ -1980,7 +2080,7 @@ def _reconcile_hybrid_list(
                     page_conflicts_by_path=page_conflicts_by_path,
                 )
             else:
-                item_value, item_trace = _reconcile_hybrid_value(
+                item_value, value_trace = _reconcile_hybrid_value(
                     page_value=None,
                     whole_value=primary_item,
                     path=final_item_path,
@@ -1993,8 +2093,8 @@ def _reconcile_hybrid_list(
             secondary_item = secondary_items[best_secondary_index]
             secondary_item_path = _pointer_with_child(path, best_secondary_index)
             if primary_branch == "page":
-                _add_alias(trace.whole_aliases, secondary_item_path, final_item_path)
-                item_value, item_trace = _reconcile_hybrid_value(
+                _add_alias(item_trace.whole_aliases, secondary_item_path, final_item_path)
+                item_value, value_trace = _reconcile_hybrid_value(
                     page_value=primary_item,
                     whole_value=secondary_item,
                     path=final_item_path,
@@ -2003,8 +2103,8 @@ def _reconcile_hybrid_list(
                     page_conflicts_by_path=page_conflicts_by_path,
                 )
             else:
-                _add_alias(trace.page_aliases, secondary_item_path, final_item_path)
-                item_value, item_trace = _reconcile_hybrid_value(
+                _add_alias(item_trace.page_aliases, secondary_item_path, final_item_path)
+                item_value, value_trace = _reconcile_hybrid_value(
                     page_value=secondary_item,
                     whole_value=primary_item,
                     path=final_item_path,
@@ -2013,6 +2113,7 @@ def _reconcile_hybrid_list(
                     page_conflicts_by_path=page_conflicts_by_path,
                 )
         merged_items.append(item_value)
+        item_trace.merge(value_trace)
         trace.merge(item_trace)
 
     for secondary_index, secondary_item in enumerate(secondary_items):
@@ -2021,9 +2122,10 @@ def _reconcile_hybrid_list(
         final_index = len(merged_items)
         final_item_path = _pointer_with_child(path, final_index)
         secondary_item_path = _pointer_with_child(path, secondary_index)
+        item_trace = _HybridMergeTrace()
         if primary_branch == "page":
-            _add_alias(trace.whole_aliases, secondary_item_path, final_item_path)
-            item_value, item_trace = _reconcile_hybrid_value(
+            _add_alias(item_trace.whole_aliases, secondary_item_path, final_item_path)
+            item_value, value_trace = _reconcile_hybrid_value(
                 page_value=None,
                 whole_value=secondary_item,
                 path=final_item_path,
@@ -2032,8 +2134,8 @@ def _reconcile_hybrid_list(
                 page_conflicts_by_path=page_conflicts_by_path,
             )
         else:
-            _add_alias(trace.page_aliases, secondary_item_path, final_item_path)
-            item_value, item_trace = _reconcile_hybrid_value(
+            _add_alias(item_trace.page_aliases, secondary_item_path, final_item_path)
+            item_value, value_trace = _reconcile_hybrid_value(
                 page_value=secondary_item,
                 whole_value=None,
                 path=final_item_path,
@@ -2041,6 +2143,17 @@ def _reconcile_hybrid_list(
                 page_values_by_path=page_values_by_path,
                 page_conflicts_by_path=page_conflicts_by_path,
             )
+        item_trace.merge(value_trace)
+        duplicate = _find_safe_duplicate(item_value)
+        if duplicate is not None:
+            duplicate_index, relation = duplicate
+            duplicate_path = _pointer_with_child(path, duplicate_index)
+            item_trace = _remap_trace(item_trace, [(final_item_path, duplicate_path)])
+            if relation == "candidate_superset":
+                merged_items[duplicate_index] = item_value
+            trace.merge(item_trace)
+            continue
+
         merged_items.append(item_value)
         trace.merge(item_trace)
 
@@ -2341,9 +2454,28 @@ def _run_hybrid_media_extraction[T](
     )
 
     for pass_index in range(max(1, ctx.opts.passes)):
-        whole_inferred = _infer_media_batch(
-            ctx.provider, [single_req], batch_length, **native_kwargs
-        )
+
+        def _run_whole_branch() -> list[str]:
+            return _infer_media_batch(ctx.provider, [single_req], batch_length, **native_kwargs)
+
+        def _run_page_branch() -> list[str]:
+            if max_workers <= 1:
+                return _infer_media_batch(
+                    ctx.provider, media_requests, batch_length, **native_kwargs
+                )
+            return _infer_media_batch_parallel(
+                ctx.provider,
+                media_requests,
+                batch_length,
+                max_workers,
+                **native_kwargs,
+            )
+
+        if isinstance(ctx.provider, SupportsAsyncMediaInfer):
+            whole_inferred = _run_whole_branch()
+            page_inferred = _run_page_branch()
+        else:
+            whole_inferred, page_inferred = _run_parallel_pair(_run_whole_branch, _run_page_branch)
         whole_state = _accumulate_media_pass(
             pass_index=pass_index,
             state=whole_state,
@@ -2357,18 +2489,6 @@ def _run_hybrid_media_extraction[T](
             debug=debug,
         )
 
-        if max_workers <= 1:
-            page_inferred = _infer_media_batch(
-                ctx.provider, media_requests, batch_length, **native_kwargs
-            )
-        else:
-            page_inferred = _infer_media_batch_parallel(
-                ctx.provider,
-                media_requests,
-                batch_length,
-                max_workers,
-                **native_kwargs,
-            )
         page_state = _accumulate_media_pass(
             pass_index=pass_index,
             state=page_state,
@@ -2423,8 +2543,26 @@ async def _arun_hybrid_media_extraction[T](
     )
 
     for pass_index in range(max(1, ctx.opts.passes)):
-        whole_inferred = await _ainfer_media_batch(
-            ctx.provider, [single_req], batch_length, **native_kwargs
+
+        def _run_whole_branch() -> Any:
+            return _ainfer_media_batch(ctx.provider, [single_req], batch_length, **native_kwargs)
+
+        def _run_page_branch() -> Any:
+            if max_workers <= 1:
+                return _ainfer_media_batch(
+                    ctx.provider, media_requests, batch_length, **native_kwargs
+                )
+            return _ainfer_media_batch_parallel(
+                ctx.provider,
+                media_requests,
+                batch_length,
+                max_workers,
+                **native_kwargs,
+            )
+
+        whole_inferred, page_inferred = await _arun_parallel_pair(
+            _run_whole_branch,
+            _run_page_branch,
         )
         whole_state = _accumulate_media_pass(
             pass_index=pass_index,
@@ -2439,18 +2577,6 @@ async def _arun_hybrid_media_extraction[T](
             debug=debug,
         )
 
-        if max_workers <= 1:
-            page_inferred = await _ainfer_media_batch(
-                ctx.provider, media_requests, batch_length, **native_kwargs
-            )
-        else:
-            page_inferred = await _ainfer_media_batch_parallel(
-                ctx.provider,
-                media_requests,
-                batch_length,
-                max_workers,
-                **native_kwargs,
-            )
         page_state = _accumulate_media_pass(
             pass_index=pass_index,
             state=page_state,
@@ -2498,7 +2624,26 @@ def _run_hybrid_text_extraction[T](
     aggregate_chunk = TextChunk(text=doc.text, start=0, end=len(doc.text))
 
     for pass_index in range(max(1, ctx.opts.passes)):
-        whole_inferred = _infer_batch(ctx.provider, [whole_prompt], batch_length, **native_kwargs)
+
+        def _run_whole_branch() -> list[str]:
+            return _infer_batch(ctx.provider, [whole_prompt], batch_length, **native_kwargs)
+
+        def _run_page_branch() -> list[str]:
+            if max_workers <= 1:
+                return _infer_batch(ctx.provider, chunk_prompts, batch_length, **native_kwargs)
+            return _infer_batch_parallel(
+                ctx.provider,
+                chunk_prompts,
+                batch_length,
+                max_workers,
+                **native_kwargs,
+            )
+
+        if _provider_supports_async_text(ctx.provider):
+            whole_inferred = _run_whole_branch()
+            page_inferred = _run_page_branch()
+        else:
+            whole_inferred, page_inferred = _run_parallel_pair(_run_whole_branch, _run_page_branch)
         _accumulate_pass(
             pass_index=pass_index,
             state=whole_state,
@@ -2511,16 +2656,6 @@ def _run_hybrid_text_extraction[T](
             debug=debug,
         )
 
-        if max_workers <= 1:
-            page_inferred = _infer_batch(ctx.provider, chunk_prompts, batch_length, **native_kwargs)
-        else:
-            page_inferred = _infer_batch_parallel(
-                ctx.provider,
-                chunk_prompts,
-                batch_length,
-                max_workers,
-                **native_kwargs,
-            )
         _accumulate_pass(
             pass_index=pass_index,
             state=page_state,
@@ -2567,8 +2702,24 @@ async def _arun_hybrid_text_extraction[T](
     aggregate_chunk = TextChunk(text=doc.text, start=0, end=len(doc.text))
 
     for pass_index in range(max(1, ctx.opts.passes)):
-        whole_inferred = await _ainfer_batch(
-            ctx.provider, [whole_prompt], batch_length, **native_kwargs
+
+        def _run_whole_branch() -> Any:
+            return _ainfer_batch(ctx.provider, [whole_prompt], batch_length, **native_kwargs)
+
+        def _run_page_branch() -> Any:
+            if max_workers <= 1:
+                return _ainfer_batch(ctx.provider, chunk_prompts, batch_length, **native_kwargs)
+            return _ainfer_batch_parallel(
+                ctx.provider,
+                chunk_prompts,
+                batch_length,
+                max_workers,
+                **native_kwargs,
+            )
+
+        whole_inferred, page_inferred = await _arun_parallel_pair(
+            _run_whole_branch,
+            _run_page_branch,
         )
         _accumulate_pass(
             pass_index=pass_index,
@@ -2582,18 +2733,6 @@ async def _arun_hybrid_text_extraction[T](
             debug=debug,
         )
 
-        if max_workers <= 1:
-            page_inferred = await _ainfer_batch(
-                ctx.provider, chunk_prompts, batch_length, **native_kwargs
-            )
-        else:
-            page_inferred = await _ainfer_batch_parallel(
-                ctx.provider,
-                chunk_prompts,
-                batch_length,
-                max_workers,
-                **native_kwargs,
-            )
         _accumulate_pass(
             pass_index=pass_index,
             state=page_state,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -276,6 +278,81 @@ class _ScalarHybridMediaProvider:
                 outputs.append('"APPROVED"')
             else:
                 outputs.append('"PENDING"')
+        return outputs
+
+
+@dataclass(slots=True)
+class _ConcurrentHybridMediaProvider:
+    """Provider that exposes whether whole-doc and page hybrid branches overlap."""
+
+    model_id: str | None = "test:concurrent-hybrid-media"
+    supported_attachment_kinds = frozenset({"image", "pdf"})
+    infer_media_calls: list[list[InferenceRequest]] = field(default_factory=list)
+    started_branches: set[str] = field(default_factory=set)
+    ready: threading.Event = field(default_factory=threading.Event)
+    overlap_detected: bool = False
+    lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
+        return ['{"total": 1.0, "vendor": "text-path"}'] * len(batch_prompts)
+
+    def infer_media(self, batch: Sequence[InferenceRequest], **kwargs: Any) -> Sequence[str]:
+        self.infer_media_calls.append(list(batch))
+        branch = "whole" if batch and batch[0].page_index is None else "page"
+        with self.lock:
+            self.started_branches.add(branch)
+            if len(self.started_branches) == 2:
+                self.ready.set()
+
+        if self.ready.wait(timeout=0.25):
+            self.overlap_detected = True
+
+        outputs: list[str] = []
+        for request in batch:
+            if request.page_index is None:
+                outputs.append('{"total": 555.0, "vendor": "global-vendor"}')
+            elif request.page_index == 1:
+                outputs.append('{"total": 99.0}')
+            else:
+                outputs.append("{}")
+        return outputs
+
+
+@dataclass(slots=True)
+class _AsyncConcurrentHybridMediaProvider:
+    """Async provider that exposes whether whole-doc and page branches overlap."""
+
+    model_id: str | None = "test:async-concurrent-hybrid-media"
+    supported_attachment_kinds = frozenset({"image", "pdf"})
+    ainfer_media_calls: list[list[InferenceRequest]] = field(default_factory=list)
+    started_branches: set[str] = field(default_factory=set)
+    ready: asyncio.Event = field(default_factory=asyncio.Event)
+    overlap_detected: bool = False
+
+    def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
+        return ['{"total": 1.0, "vendor": "text-path"}'] * len(batch_prompts)
+
+    async def ainfer_media(self, batch: Sequence[InferenceRequest], **kwargs: Any) -> Sequence[str]:
+        self.ainfer_media_calls.append(list(batch))
+        branch = "whole" if batch and batch[0].page_index is None else "page"
+        self.started_branches.add(branch)
+        if len(self.started_branches) == 2:
+            self.ready.set()
+
+        try:
+            await asyncio.wait_for(self.ready.wait(), timeout=0.25)
+            self.overlap_detected = True
+        except TimeoutError:
+            pass
+
+        outputs: list[str] = []
+        for request in batch:
+            if request.page_index is None:
+                outputs.append('{"total": 555.0, "vendor": "global-vendor"}')
+            elif request.page_index == 1:
+                outputs.append('{"total": 99.0}')
+            else:
+                outputs.append("{}")
         return outputs
 
 
@@ -559,6 +636,81 @@ def test_extract_pdf_document_with_hybrid_mode_uses_native_document_branch_and_p
     assert result.sources["/vendor"].pages == ()
 
 
+def test_extract_pdf_document_hybrid_mode_runs_whole_and_page_branches_concurrently(monkeypatch):
+    provider = _ConcurrentHybridMediaProvider()
+    doc = Document.from_pdf(SAMPLE_INVOICE_PDF)
+
+    from parsantic.extract.media import preprocessing as preprocessing_mod
+
+    monkeypatch.setattr(preprocessing_mod, "has_text_layer", lambda source: True)
+
+    def _fake_rasterize_pdf(
+        source, *, dpi=200, page_indices=None, raster_format="jpeg", jpeg_quality=85
+    ):
+        assert page_indices is None
+        return [(0, b"page-1"), (1, b"page-2")]
+
+    monkeypatch.setattr(preprocessing_mod, "rasterize_pdf", _fake_rasterize_pdf)
+
+    result = extract(
+        doc,
+        Invoice,
+        model=provider,
+        options=ExtractOptions(
+            mode="hybrid",
+            document_input="native",
+            page_input="image",
+            max_workers=1,
+        ),
+    )
+
+    assert result.value.total == 99.0
+    assert result.value.vendor == "global-vendor"
+    assert len(provider.infer_media_calls) == 2
+    assert provider.overlap_detected is True
+
+
+def test_extract_pdf_document_hybrid_mode_avoids_threaded_branch_overlap_for_async_media_providers(
+    monkeypatch,
+):
+    provider = _AsyncMediaProvider()
+    doc = Document.from_pdf(SAMPLE_INVOICE_PDF)
+
+    from parsantic.extract import pipeline as pipeline_mod
+    from parsantic.extract.media import preprocessing as preprocessing_mod
+
+    monkeypatch.setattr(preprocessing_mod, "has_text_layer", lambda source: True)
+
+    def _fake_rasterize_pdf(
+        source, *, dpi=200, page_indices=None, raster_format="jpeg", jpeg_quality=85
+    ):
+        assert page_indices is None
+        return [(0, b"page-1"), (1, b"page-2")]
+
+    monkeypatch.setattr(preprocessing_mod, "rasterize_pdf", _fake_rasterize_pdf)
+
+    def _unexpected_parallel(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("sync hybrid should not use threaded branch overlap")
+
+    monkeypatch.setattr(pipeline_mod, "_run_parallel_pair", _unexpected_parallel)
+
+    result = extract(
+        doc,
+        Invoice,
+        model=provider,
+        options=ExtractOptions(
+            mode="hybrid",
+            document_input="native",
+            page_input="image",
+            max_workers=1,
+        ),
+    )
+
+    assert result.value.total == 99.0
+    assert result.value.vendor == "vision-corp"
+    assert provider.ainfer_media_calls == []
+
+
 def test_extract_pdf_document_hybrid_mode_supports_root_array_targets(monkeypatch):
     provider = _RootArrayHybridMediaProvider()
     doc = Document.from_pdf(SAMPLE_INVOICE_PDF)
@@ -789,6 +941,126 @@ def test_merge_hybrid_supports_nested_objects_and_repeated_arrays():
     assert ("/line_items/1/description", "Widget", None) in evidence
 
 
+def test_merge_hybrid_dedupes_unambiguous_richer_repeated_array_items():
+    page_state = _DocumentState(
+        merged_value={
+            "medications": [
+                {
+                    "medicationCodeableConcept": {"text": "Capecitabine"},
+                }
+            ]
+        },
+        doc_evidence=[
+            _vision_evidence(
+                "/medications/0/medicationCodeableConcept/text",
+                value_preview="Capecitabine",
+                page_index=4,
+            )
+        ],
+    )
+    whole_state = _DocumentState(
+        merged_value={
+            "medications": [
+                {
+                    "medicationCodeableConcept": {"text": "Capecitabine"},
+                    "dosageInstruction": "1500 mg orally twice daily",
+                    "route": "oral",
+                },
+                {
+                    "medicationCodeableConcept": {"text": "  capecitabine  "},
+                },
+            ]
+        },
+        doc_evidence=[
+            _vision_evidence(
+                "/medications/0/medicationCodeableConcept/text",
+                value_preview="Capecitabine",
+                page_index=None,
+            ),
+            _vision_evidence(
+                "/medications/0/dosageInstruction",
+                value_preview="1500 mg orally twice daily",
+                page_index=None,
+            ),
+            _vision_evidence("/medications/0/route", value_preview="oral", page_index=None),
+            _vision_evidence(
+                "/medications/1/medicationCodeableConcept/text",
+                value_preview="  capecitabine  ",
+                page_index=None,
+            ),
+        ],
+    )
+
+    merged = _merge_hybrid_states(
+        page_state=page_state,
+        whole_state=whole_state,
+        field_scope=FieldScopePolicy(),
+    )
+
+    assert merged.merged_value == {
+        "medications": [
+            {
+                "medicationCodeableConcept": {"text": "Capecitabine"},
+                "dosageInstruction": "1500 mg orally twice daily",
+                "route": "oral",
+            }
+        ]
+    }
+    evidence_paths = {ev.path for ev in merged.doc_evidence}
+    assert "/medications/0/medicationCodeableConcept/text" in evidence_paths
+    assert "/medications/0/dosageInstruction" in evidence_paths
+    assert "/medications/0/route" in evidence_paths
+    assert all(not path.startswith("/medications/1") for path in evidence_paths)
+
+
+def test_merge_hybrid_keeps_ambiguous_repeated_array_duplicates():
+    page_state = _DocumentState(
+        merged_value={
+            "medications": [
+                {
+                    "medicationCodeableConcept": {"text": "Capecitabine"},
+                    "route": "oral",
+                },
+                {
+                    "medicationCodeableConcept": {"text": "Capecitabine"},
+                    "route": "intravenous",
+                },
+            ]
+        },
+    )
+    whole_state = _DocumentState(
+        merged_value={
+            "medications": [
+                {"medicationCodeableConcept": {"text": "capecitabine"}},
+                {"medicationCodeableConcept": {"text": "CAPECITABINE"}},
+                {"medicationCodeableConcept": {"text": " Capecitabine "}},
+            ]
+        },
+    )
+
+    merged = _merge_hybrid_states(
+        page_state=page_state,
+        whole_state=whole_state,
+        field_scope=FieldScopePolicy(),
+    )
+
+    assert merged.merged_value == {
+        "medications": [
+            {
+                "medicationCodeableConcept": {"text": "Capecitabine"},
+                "route": "oral",
+            },
+            {
+                "medicationCodeableConcept": {"text": "Capecitabine"},
+                "route": "intravenous",
+            },
+            {
+                "medicationCodeableConcept": {"text": " Capecitabine "},
+            },
+        ]
+    }
+
+
 def test_merge_hybrid_backfills_exact_page_provenance_for_whole_selected_value():
     doc = Document.from_pdf(SAMPLE_INVOICE_PDF)
     page_state = _DocumentState(
@@ -896,8 +1168,6 @@ def test_aextract_media_document_uses_ainfer_media():
 
 
 def test_aextract_document_mode_native_pdf_rejects_provider_without_pdf_support():
-    import asyncio
-
     from parsantic.extract import aextract
 
     async def _run() -> None:
@@ -910,6 +1180,47 @@ def test_aextract_document_mode_native_pdf_rejects_provider_without_pdf_support(
                 model=provider,
                 options=ExtractOptions(mode="document", document_input="native"),
             )
+
+    asyncio.run(_run())
+
+
+def test_aextract_pdf_document_hybrid_mode_runs_whole_and_page_branches_concurrently(
+    monkeypatch,
+):
+    from parsantic.extract import aextract
+
+    async def _run() -> None:
+        provider = _AsyncConcurrentHybridMediaProvider()
+        doc = Document.from_pdf(SAMPLE_INVOICE_PDF)
+
+        from parsantic.extract.media import preprocessing as preprocessing_mod
+
+        monkeypatch.setattr(preprocessing_mod, "has_text_layer", lambda source: True)
+
+        def _fake_rasterize_pdf(
+            source, *, dpi=200, page_indices=None, raster_format="jpeg", jpeg_quality=85
+        ):
+            assert page_indices is None
+            return [(0, b"page-1"), (1, b"page-2")]
+
+        monkeypatch.setattr(preprocessing_mod, "rasterize_pdf", _fake_rasterize_pdf)
+
+        result = await aextract(
+            doc,
+            Invoice,
+            model=provider,
+            options=ExtractOptions(
+                mode="hybrid",
+                document_input="native",
+                page_input="image",
+                max_workers=1,
+            ),
+        )
+
+        assert result.value.total == 99.0
+        assert result.value.vendor == "global-vendor"
+        assert len(provider.ainfer_media_calls) == 2
+        assert provider.overlap_detected is True
 
     asyncio.run(_run())
 

@@ -7,7 +7,7 @@ or set PARSANTIC_MODEL to use another provider/model.
 
 import os
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import parsantic as sap
 from parsantic.extract import Prompt
@@ -18,7 +18,10 @@ from parsantic.extract import Prompt
 class Person(BaseModel):
     name: str
     role: str
-    years_experience: int | None = None
+    total_years_experience: int | None = Field(
+        default=None,
+        description="Total professional experience in years across all roles mentioned.",
+    )
 
 
 # ── Unstructured text (imagine a resume, bio, or article) ────────────
@@ -27,13 +30,14 @@ text = """
 Dr. Sarah Chen is a principal machine learning engineer at Anthropic,
 where she has worked for the past 3 years. Before that, she spent 5 years
 at Google Brain working on large language models. She holds a PhD in
-computer science from Stanford University. In her spare time, she
+computer science from Stanford University. She has 8 years of professional
+experience in total. In her spare time, she
 mentors junior engineers and contributes to open-source projects.
 """
 
 # ── One line: text + schema → typed object ───────────────────────────
 
-model = os.getenv("PARSANTIC_MODEL", "gemini:gemini-2.5-flash")
+model = os.getenv("PARSANTIC_MODEL", "gemini:gemini-3.1-flash-lite-preview")
 
 result = sap.extract(text, Person, model=model)
 print("extract() result:")

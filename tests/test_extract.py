@@ -152,6 +152,35 @@ class ThreadRecordingProvider:
         return [self.output for _ in batch_prompts]
 
 
+@dataclass
+class ConcurrentHybridTextProvider:
+    """Exposes whether whole-doc and chunk hybrid branches overlap."""
+
+    started_calls: int = 0
+    ready: threading.Event = field(default_factory=threading.Event)
+    overlap_detected: bool = False
+    lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def infer(self, batch_prompts: Sequence[str]) -> Sequence[str]:
+        with self.lock:
+            self.started_calls += 1
+            if self.started_calls == 2:
+                self.ready.set()
+
+        if self.ready.wait(timeout=0.25):
+            self.overlap_detected = True
+
+        outputs: list[str] = []
+        for prompt in batch_prompts:
+            if "Alpha.\nBeta." in prompt:
+                outputs.append('"SETTLED"')
+            elif "Alpha" in prompt:
+                outputs.append('"PENDING"')
+            else:
+                outputs.append('"APPROVED"')
+        return outputs
+
+
 # ===========================================================================
 # Smoke tests (from test_extract_smoke.py)
 # ===========================================================================
@@ -386,6 +415,25 @@ def test_hybrid_text_supports_scalar_root_scope_rules():
 
     assert result.value == "SETTLED"
     assert result.sources["/"].scope == "document"
+
+
+def test_hybrid_text_runs_whole_and_chunk_branches_concurrently():
+    provider = ConcurrentHybridTextProvider()
+
+    result = extract(
+        "Alpha.\nBeta.",
+        str,
+        model=provider,
+        options=ExtractOptions(
+            mode="hybrid",
+            max_char_buffer=7,
+            max_workers=1,
+        ),
+    )
+
+    assert result.value == "SETTLED"
+    assert result.sources["/"].scope == "document"
+    assert provider.overlap_detected is True
 
 
 def test_chunk_parsing_allows_partial_then_final_validates():
