@@ -20,7 +20,10 @@ def normalize_text_outputs(
     elif isinstance(outputs, Sequence):
         normalized = list(outputs)
     else:
-        normalized = list(outputs)
+        raise TypeError(
+            f"{context} returned an unexpected type {type(outputs).__name__}, "
+            "expected a list of strings"
+        )
 
     for idx, item in enumerate(normalized):
         if not isinstance(item, str):

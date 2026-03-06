@@ -336,7 +336,7 @@ def _coerce_to_type(
     if isinstance(value, float) and target_type is int:
         if abs(value - round(value)) < 1e-9:
             return ScoredValue(
-                value=int(round(value)),
+                value=round(value),
                 flags=("float_to_int",),
                 score=score_flags(("float_to_int",)),
             )
@@ -396,18 +396,19 @@ def _coerce_dict(
 ) -> ScoredValue:
     """Coerce dict values (and keys if K is not str)."""
     if not isinstance(value, dict):
-        raise ValueError(f"Cannot coerce {type(value).__name__} to dict")
+        raise TypeError(f"Cannot coerce {type(value).__name__} to dict")
     out: dict[Any, Any] = {}
     all_flags: list[str] = []
     total_score = 0
-    for k, v in value.items():
+    for raw_k, v in value.items():
+        coerced_k = raw_k
         if key_type is not str:
-            sk = _coerce_to_type(k, key_type, options, _depth=_depth)
-            k = sk.value
+            sk = _coerce_to_type(raw_k, key_type, options, _depth=_depth)
+            coerced_k = sk.value
             all_flags.extend(sk.flags)
             total_score += sk.score
         sv = _coerce_to_type(v, val_type, options, _depth=_depth)
-        out[k] = sv.value
+        out[coerced_k] = sv.value
         all_flags.extend(sv.flags)
         total_score += sv.score
     return ScoredValue(value=out, flags=tuple(all_flags), score=total_score)
@@ -418,7 +419,7 @@ def _coerce_tuple(
 ) -> ScoredValue:
     """Coerce tuple elements."""
     if not isinstance(value, (list, tuple)):
-        raise ValueError(f"Cannot coerce {type(value).__name__} to tuple")
+        raise TypeError(f"Cannot coerce {type(value).__name__} to tuple")
     # Handle Tuple[T, ...] (homogeneous)
     if len(args) == 2 and args[1] is Ellipsis:
         elem_type = args[0]
@@ -582,7 +583,7 @@ def _try_int(s: str) -> int | None:
     try:
         fval = float(s)
         if abs(fval - round(fval)) < 1e-9:
-            return int(round(fval))
+            return round(fval)
         # NOT safe to round -- return None
         return None
     except (ValueError, TypeError):
@@ -701,10 +702,13 @@ def _partial_model_dict(
             continue
         raw_val = mapped[field_name]
         try:
+            if field.annotation is None:
+                continue
             coerced = coerce_jsonish_to_python(
                 JsonishValue(value=raw_val, completion=CompletionState.COMPLETE, raw=str(raw_val)),
                 _type_adapter_for(field.annotation),
                 options=options,
+                allow_partial=True,
             )
             out[field_name] = coerced.value
             flags.extend(coerced.flags)
@@ -750,7 +754,7 @@ def _coerce_model_values(
         flags.extend(coerced.flags)
 
     if out == value:
-        return value, flags if flags else []
+        return value, flags
     return out, flags
 
 
@@ -856,7 +860,7 @@ def _coerce_model_keys(
         out[mapped] = v
 
     if out == value:
-        return value, flags if flags else []
+        return value, flags
     return out, flags
 
 

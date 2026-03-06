@@ -19,27 +19,26 @@ def _kwargs_with_environment_defaults(
     lowered = model_id.lower() if model_id else ""
 
     if "api_key" not in resolved:
-        env_sources = []
-        for env_var in ("PARSANTIC_API_KEY",):
-            if os.getenv(env_var):
-                env_sources.append((env_var, os.getenv(env_var)))
+        env_sources: list[tuple[str, str]] = []
+        if value := os.getenv("PARSANTIC_API_KEY"):
+            env_sources.append(("PARSANTIC_API_KEY", value))
 
         if model_id:
             if "openai" in lowered or "gpt" in lowered:
-                if os.getenv("OPENAI_API_KEY"):
-                    env_sources.insert(0, ("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY")))
+                if value := os.getenv("OPENAI_API_KEY"):
+                    env_sources.insert(0, ("OPENAI_API_KEY", value))
             if "anthropic" in lowered or "claude" in lowered:
-                if os.getenv("ANTHROPIC_API_KEY"):
-                    env_sources.insert(0, ("ANTHROPIC_API_KEY", os.getenv("ANTHROPIC_API_KEY")))
+                if value := os.getenv("ANTHROPIC_API_KEY"):
+                    env_sources.insert(0, ("ANTHROPIC_API_KEY", value))
             if "gemini" in lowered:
-                if os.getenv("GEMINI_API_KEY"):
-                    env_sources.insert(0, ("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY")))
+                if value := os.getenv("GEMINI_API_KEY"):
+                    env_sources.insert(0, ("GEMINI_API_KEY", value))
             if "mistral" in lowered:
-                if os.getenv("MISTRAL_API_KEY"):
-                    env_sources.insert(0, ("MISTRAL_API_KEY", os.getenv("MISTRAL_API_KEY")))
+                if value := os.getenv("MISTRAL_API_KEY"):
+                    env_sources.insert(0, ("MISTRAL_API_KEY", value))
             if "groq" in lowered:
-                if os.getenv("GROQ_API_KEY"):
-                    env_sources.insert(0, ("GROQ_API_KEY", os.getenv("GROQ_API_KEY")))
+                if value := os.getenv("GROQ_API_KEY"):
+                    env_sources.insert(0, ("GROQ_API_KEY", value))
 
         if env_sources:
             resolved["api_key"] = env_sources[0][1]
@@ -56,29 +55,31 @@ def _kwargs_with_environment_defaults(
                 )
 
     if "vertex" in lowered:
-        if "project_id" not in resolved and os.getenv("VERTEX_PROJECT_ID"):
-            resolved["project_id"] = os.getenv("VERTEX_PROJECT_ID")
-        if "region" not in resolved and os.getenv("VERTEX_REGION"):
-            resolved["region"] = os.getenv("VERTEX_REGION")
-        if "service_account_file" not in resolved and os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-            resolved["service_account_file"] = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        if "project_id" not in resolved and (value := os.getenv("VERTEX_PROJECT_ID")):
+            resolved["project_id"] = value
+        if "region" not in resolved and (value := os.getenv("VERTEX_REGION")):
+            resolved["region"] = value
+        if "service_account_file" not in resolved and (
+            value := os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        ):
+            resolved["service_account_file"] = value
 
-    if model_id and "ollama" in model_id.lower() and "base_url" not in resolved:
+    if model_id and "ollama" in lowered and "base_url" not in resolved:
         resolved["base_url"] = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     if "base_url" not in resolved:
-        if "openai" in lowered and os.getenv("OPENAI_BASE_URL"):
-            resolved["base_url"] = os.getenv("OPENAI_BASE_URL")
-        elif "anthropic" in lowered and os.getenv("ANTHROPIC_BASE_URL"):
-            resolved["base_url"] = os.getenv("ANTHROPIC_BASE_URL")
-        elif "mistral" in lowered and os.getenv("MISTRAL_BASE_URL"):
-            resolved["base_url"] = os.getenv("MISTRAL_BASE_URL")
-        elif "groq" in lowered and os.getenv("GROQ_BASE_URL"):
-            resolved["base_url"] = os.getenv("GROQ_BASE_URL")
+        if "openai" in lowered and (value := os.getenv("OPENAI_BASE_URL")):
+            resolved["base_url"] = value
+        elif "anthropic" in lowered and (value := os.getenv("ANTHROPIC_BASE_URL")):
+            resolved["base_url"] = value
+        elif "mistral" in lowered and (value := os.getenv("MISTRAL_BASE_URL")):
+            resolved["base_url"] = value
+        elif "groq" in lowered and (value := os.getenv("GROQ_BASE_URL")):
+            resolved["base_url"] = value
 
     return resolved
 
 
-def create_provider(config: ProviderConfig) -> Any:
+def create_provider(config: ProviderConfig) -> Any:  # returns BaseProvider at runtime
     if not config.model_id and not config.provider:
         raise ValueError("Either model_id or provider must be specified")
 

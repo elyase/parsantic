@@ -369,12 +369,12 @@ class FixingParser:
                 return ch
         return None
 
-    def _should_close_string(self, look: str, *, closing: str) -> bool:
+    def _should_close_string(self, look: str, *, closing: str) -> bool:  # noqa: ARG002
         nxt = self._peek_next_non_ws(look)
         if nxt is None:
             return True
         ls = look.lstrip()
-        if ls.startswith("//") or ls.startswith("/*") or ls.startswith("#"):
+        if ls.startswith(("//", "/*", "#")):
             return True
         ctx = self._parent_context()
         if ctx == "object_key":
@@ -443,7 +443,7 @@ class FixingParser:
             # likely start of a new key or a comment
             if nxt == "/":
                 ls = look.lstrip()
-                if ls.startswith("//") or ls.startswith("/*"):
+                if ls.startswith(("//", "/*")):
                     return True
                 if is_numeric and ls.startswith("/"):
                     rest = ls[1:].lstrip()
@@ -468,7 +468,7 @@ class FixingParser:
         if ctx == "array":
             if nxt == "/":
                 ls = look.lstrip()
-                if ls.startswith("//") or ls.startswith("/*"):
+                if ls.startswith(("//", "/*")):
                     return True
                 if is_numeric and ls.startswith("/"):
                     rest = ls[1:].lstrip()
@@ -491,12 +491,12 @@ class FixingParser:
         col = frame.col
 
         kind: str
-        value: Any | None
+        value: Any
 
         if isinstance(col, _Object):
             kind = "object"
             col.completion = completion
-            value = {k: v for k, v in zip(col.keys, col.values, strict=False)}
+            value = dict(zip(col.keys, col.values, strict=False))
         elif isinstance(col, _Array):
             kind = "array"
             col.completion = completion
@@ -525,7 +525,7 @@ class FixingParser:
             # classify "string-ness" for inferred-array behavior
             if isinstance(value, str):
                 kind = "string"
-        elif isinstance(col, _LineComment) or isinstance(col, _BlockComment):
+        elif isinstance(col, (_LineComment, _BlockComment)):
             # Comments are discarded.
             return
         else:
@@ -581,12 +581,12 @@ def _coerce_unquoted(raw: str) -> Any:
     # ints
     try:
         return int(s)
-    except Exception:
+    except (ValueError, OverflowError):
         pass
     # floats
     try:
         return float(s)
-    except Exception:
+    except (ValueError, OverflowError):
         return s
 
 
@@ -597,5 +597,5 @@ def _looks_like_number(s: str) -> bool:
     try:
         float(s)
         return True
-    except Exception:
+    except (ValueError, OverflowError):
         return False

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import random
 import time
 from dataclasses import dataclass
@@ -38,7 +39,7 @@ class RetryPolicy:
             raise ValueError(f"base_delay must be >= 0, got {self.base_delay}")
         if self.max_delay < 0:
             raise ValueError(f"max_delay must be >= 0, got {self.max_delay}")
-        if not (self.backoff_factor > 0 and self.backoff_factor == self.backoff_factor):
+        if not (self.backoff_factor > 0 and math.isfinite(self.backoff_factor)):
             raise ValueError(f"backoff_factor must be > 0 and finite, got {self.backoff_factor}")
 
     def delay_for_attempt(self, attempt: int) -> float:
@@ -56,7 +57,7 @@ class RetryPolicy:
         if delay > 0:
             time.sleep(delay)
 
-    async def await_delay(self, attempt: int) -> None:
+    async def async_wait(self, attempt: int) -> None:
         """Sleep for the computed delay (async)."""
         import asyncio
 

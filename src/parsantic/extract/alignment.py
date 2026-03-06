@@ -124,10 +124,15 @@ def _longest_common_block(
     return (best.a, best.b, best.size)
 
 
+_FUZZY_MAX_SOURCE_TOKENS = 50_000
+
+
 def _fuzzy_align_window(
     source_tokens: list[str], target_tokens: list[str], threshold: float
 ) -> tuple[int, int, float] | None:
     if not target_tokens:
+        return None
+    if len(source_tokens) > _FUZZY_MAX_SOURCE_TOKENS:
         return None
     t_len = len(target_tokens)
     best_ratio = 0.0
@@ -137,7 +142,7 @@ def _fuzzy_align_window(
         window = source_tokens[start : start + t_len]
         matcher.set_seq1(window)
         matches = sum(size for _, _, size in matcher.get_matching_blocks())
-        ratio = matches / t_len if t_len else 0.0
+        ratio = matches / t_len
         if ratio > best_ratio:
             best_ratio = ratio
             best_span = (start, start + t_len)

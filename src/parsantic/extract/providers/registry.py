@@ -34,10 +34,9 @@ def resolve(model_id: str) -> type[Any]:
 
 
 def resolve_provider(name: str) -> type[Any]:
+    """Resolve a provider class by exact name (case-insensitive)."""
     lname = name.lower()
     for entry in _REGISTRY:
         if entry.provider.__name__.lower() == lname:
-            return entry.provider
-        if lname in entry.provider.__name__.lower():
             return entry.provider
     raise ValueError(f"No provider registered with name={name!r}")

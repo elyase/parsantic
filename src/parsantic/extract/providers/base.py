@@ -8,23 +8,32 @@ if TYPE_CHECKING:
     from parsantic.extract.media.attachments import Attachment
 
 
+@runtime_checkable
 class BaseProvider(Protocol):
     model_id: str | None
 
     def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]: ...
 
 
-JsonScalar = str | int | float | bool | None
+type JsonScalar = str | int | float | bool | None
 
 
 @dataclass(frozen=True, slots=True)
 class InferenceRequest:
+    """A single inference request for a provider.
+
+    Attributes
+    ----------
+    page_index
+        1-based page number within the attachment; ``None`` if not applicable.
+    """
+
     prompt: str
     attachments: tuple[Attachment, ...] = ()
     document_id: str | None = None
     document_index: int | None = None
     attachment_index: int | None = None
-    page_index: int | None = None  # 1-based
+    page_index: int | None = None
     meta: Mapping[str, JsonScalar] = field(default_factory=dict)
 
 

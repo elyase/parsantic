@@ -24,6 +24,7 @@ Example::
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import logging
 from dataclasses import dataclass, field
@@ -83,7 +84,7 @@ class UpdateResult[T]:
 # ---------------------------------------------------------------------------
 
 
-def _create_provider(model: str | Any | None, provider_kwargs: dict[str, Any] | None):
+def _create_provider(model: str | Any | None, provider_kwargs: dict[str, Any] | None) -> Any:
     """Create or pass through a provider."""
     resolved = resolve_model(model)
     if not isinstance(resolved, str):
@@ -97,8 +98,6 @@ def _create_provider(model: str | Any | None, provider_kwargs: dict[str, Any] | 
 def _existing_to_dict(existing: dict[str, Any] | BaseModel) -> dict[str, Any]:
     if isinstance(existing, BaseModel):
         return existing.model_dump(mode="json")
-    import copy
-
     return copy.deepcopy(existing)
 
 
@@ -139,6 +138,7 @@ def _schema_text_for_target[T](target: type[T] | TypeAdapter[T]) -> str:
     try:
         return json.dumps(adapter.json_schema(), indent=2)
     except Exception:
+        logger.debug("Failed to generate schema text for target %r", target, exc_info=True)
         return "{}"
 
 
@@ -157,18 +157,18 @@ def _process_update_attempt[T](
         patches = normalize_patches(raw)
     except Exception as exc:
         state.last_errors = [{"loc": (), "msg": f"Failed to normalize patches: {exc}"}]
-        if attempt < max_retries:
-            return None
-        raise
+        if attempt >= max_retries:
+            raise
+        return None
 
     try:
         patched = apply_patch(state.current_doc, patches, policy=policy)
         logger.debug("Applied %d patches", len(patches))
     except Exception as exc:
         state.last_errors = [{"loc": (), "msg": f"Patch application failed: {exc}"}]
-        if attempt < max_retries:
-            return None
-        raise
+        if attempt >= max_retries:
+            raise
+        return None
 
     state.all_patches.extend(patches)
 
@@ -226,7 +226,7 @@ def _run_update[T](
     policy_retry: RetryPolicy,
 ) -> UpdateResult[T]:
     """Synchronous update loop."""
-    state = _UpdateState(current_doc=doc, last_errors=[])
+    state = _UpdateState(current_doc=doc)
 
     for attempt in range(1 + policy_retry.max_retries):
         logger.debug("Update attempt %d/%d", attempt + 1, policy_retry.max_retries + 1)
@@ -272,11 +272,11 @@ async def _arun_update[T](
     policy_retry: RetryPolicy,
 ) -> UpdateResult[T]:
     """Async update loop."""
-    state = _UpdateState(current_doc=doc, last_errors=[])
+    state = _UpdateState(current_doc=doc)
 
     for attempt in range(1 + policy_retry.max_retries):
         if attempt > 0:
-            await policy_retry.await_delay(attempt - 1)
+            await policy_retry.async_wait(attempt - 1)
         prompt = _build_attempt_prompt(
             attempt=attempt,
             state=state,

@@ -7,11 +7,12 @@ Inspired by ``engine/baml-lib/jsonish/src/deserializer/score.rs``.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Final
 
 from .types import ScoredValue
 
 # Flag weights (lower is better).
-FLAG_WEIGHTS: dict[str, int] = {
+FLAG_WEIGHTS: Final[dict[str, int]] = {
     "fixed_json": 0,
     "fixed_array": 1,
     "markdown": 0,
@@ -44,7 +45,7 @@ FLAG_WEIGHTS: dict[str, int] = {
     "max_depth_exceeded": 50,
 }
 
-_UNKNOWN_FLAG_PENALTY = 5
+_UNKNOWN_FLAG_PENALTY: Final = 5
 
 
 def score_flags(flags: Iterable[str]) -> int:
@@ -53,7 +54,12 @@ def score_flags(flags: Iterable[str]) -> int:
 
 
 def pick_best(scored: list[ScoredValue]) -> ScoredValue:
-    """Select the best candidate by (score, flag count, generation order)."""
+    """Select the best candidate by (score, flag count, generation order).
+
+    Raises ``ValueError`` if *scored* is empty.
+    """
+    if not scored:
+        raise ValueError("pick_best requires at least one candidate")
     return min(
         enumerate(scored),
         key=lambda pair: (pair[1].score, len(pair[1].flags), pair[0]),

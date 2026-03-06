@@ -263,7 +263,7 @@ def _parse_markdown_blocks(
                     value=cand.value,
                     completion=cand.completion,
                     raw=text,
-                    fixes=("markdown",) + cand.fixes,
+                    fixes=("markdown", *cand.fixes),
                 )
                 values.append(jv)
                 block_candidates.append(jv)
@@ -272,7 +272,7 @@ def _parse_markdown_blocks(
                 value=parsed.value,
                 completion=parsed.completion,
                 raw=text,
-                fixes=("markdown",) + parsed.fixes,
+                fixes=("markdown", *parsed.fixes),
             )
             values.append(jv)
             block_candidates.append(jv)
@@ -303,7 +303,10 @@ def _parse_markdown_blocks(
 
 
 def _parse_all_json_objects(
-    text: str, *, options: ParseOptions, is_done: bool
+    text: str,
+    *,
+    options: ParseOptions,
+    is_done: bool,  # noqa: ARG001
 ) -> list[JsonishValue]:
     """
     Grep balanced {...} and [...] regions, then strict-parse each region.
@@ -376,9 +379,8 @@ def _balanced_json_substrings(text: str) -> Iterator[tuple[str, bool]]:
         yield text[start_idx:], False
 
 
-def _fixing_parse(text: str, *, is_done: bool) -> list[JsonishValue]:
-    # Full state-machine JSON-ish fixer, ported from BAML.
-    raw = text
+def _fixing_parse(text: str, *, is_done: bool) -> list[JsonishValue]:  # noqa: ARG001
+    """Full state-machine JSON-ish fixer, ported from BAML."""
     try:
         candidates = parse_fixing(text)
     # Keep broad behavior for fixer failures; return empty candidate list.
@@ -394,7 +396,7 @@ def _fixing_parse(text: str, *, is_done: bool) -> list[JsonishValue]:
             JsonishValue(
                 value=cand.value,
                 completion=cand.completion,
-                raw=raw,
+                raw=text,
                 fixes=fixes,
             )
         )
@@ -403,7 +405,7 @@ def _fixing_parse(text: str, *, is_done: bool) -> list[JsonishValue]:
             JsonishValue(
                 value=[c.value for c in out],
                 completion=CompletionState.INCOMPLETE,
-                raw=raw,
+                raw=text,
                 fixes=("fixed_array",),
             )
         )

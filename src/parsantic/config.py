@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import os
-from typing import Any
 
 DEFAULT_MODEL = "openai:gpt-4o-mini"
 """Default model used when none is specified and PARSANTIC_MODEL is not set."""
 
 
-def resolve_model(model: str | Any | None = None) -> str | Any:
+def resolve_model(model: str | object | None = None) -> str | object:
     """Return an explicit model or provider, falling back to env var or built-in default.
 
     When *model* is a non-string object (e.g. a provider instance), it is
@@ -20,3 +19,6 @@ def resolve_model(model: str | Any | None = None) -> str | Any:
         return model
     env = os.environ.get("PARSANTIC_MODEL", "").strip()
     return env or DEFAULT_MODEL
+
+
+__all__ = ["DEFAULT_MODEL", "resolve_model"]

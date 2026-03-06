@@ -12,6 +12,7 @@ Pure utility functions (:func:`validation_error_paths`, :func:`slice_schema_for_
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -25,18 +26,23 @@ from .jsonish import ParseOptions
 from .patch import PatchPolicy, apply_patch, normalize_patches
 from .prompts import render_policy_lines
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
 # Import guard for pydantic-ai
 # ---------------------------------------------------------------------------
 
 try:
     import pydantic_ai  # noqa: F401
-    from pydantic_ai import RunContext  # noqa: F401
-    from pydantic_ai.exceptions import ModelRetry  # noqa: F401
+    from pydantic_ai import RunContext
+    from pydantic_ai.exceptions import (
+        ModelRetry,  # noqa: F401 — re-imported lazily in _get_model_retry
+    )
 
     _HAS_PYDANTIC_AI = True
 except ImportError:
     _HAS_PYDANTIC_AI = False
+    RunContext = None  # type: ignore[assignment]
 
 
 @dataclass(slots=True)
@@ -145,12 +151,11 @@ def slice_schema_for_paths(schema_text: str, paths: list[str]) -> str:
     except (json.JSONDecodeError, ValueError, TypeError):
         pass
 
-    # Fallback: line-based filtering
+    # Fallback: line-based filtering (case-sensitive — JSON keys are case-sensitive)
     lines = schema_text.splitlines()
     relevant: list[str] = []
     for line in lines:
-        line_lower = line.lower()
-        if any(kw.lower() in line_lower for kw in keywords):
+        if any(kw in line for kw in keywords):
             relevant.append(line)
 
     return "\n".join(relevant) if relevant else schema_text
@@ -329,13 +334,13 @@ def build_patch_prompt(
     str
         A prompt string suitable for sending to an LLM.
     """
-    # Derive error paths for slicing
-    error_paths: list[str] = []
-    for err in validation_errors:
-        loc = err.get("loc", ())
-        pointer = build_json_pointer([str(part) for part in loc])
-        if pointer not in error_paths:
-            error_paths.append(pointer)
+    # Derive error paths for slicing (deduplicated, order-preserving)
+    error_paths = list(
+        dict.fromkeys(
+            build_json_pointer([str(part) for part in err.get("loc", ())])
+            for err in validation_errors
+        )
+    )
 
     # Prepare document fragment
     if doc_slicing and error_paths:
@@ -517,6 +522,9 @@ def patch_repair_output[T](
     try:
         schema_text = json.dumps(adapter.json_schema(), indent=2)
     except Exception:
+        logger.warning(
+            "Failed to generate JSON schema for %s; retries will lack schema context", target
+        )
         schema_text = None
 
     def _get_model_retry() -> type:
@@ -589,7 +597,7 @@ def patch_repair_output[T](
                 self._prev_doc = None
             self._current_run_id = run_id
 
-        _MAX_RUN_STATES = 64
+        _MAX_RUN_STATES: int = 64  # class var, intentionally not in __slots__
 
         def _save_run_state(self) -> None:
             """Persist working slots back to per-run storage."""
@@ -627,15 +635,14 @@ def patch_repair_output[T](
                     self._load_run_state(run_id)
                 result = self._process(actual_text)
                 return result
-            except BaseException as exc:
+            except Exception as exc:
                 # ModelRetry means pydantic-ai will call us again within the
                 # same run, so state must persist for the next retry.
-                if isinstance(exc, Exception):
-                    try:
-                        MR = _get_model_retry()
-                        keep_state = isinstance(exc, MR)
-                    except ImportError:
-                        pass
+                try:
+                    MR = _get_model_retry()
+                    keep_state = isinstance(exc, MR)
+                except ImportError:
+                    pass
                 raise
             finally:
                 if keep_state:

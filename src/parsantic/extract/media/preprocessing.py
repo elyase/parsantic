@@ -3,10 +3,6 @@ from __future__ import annotations
 import hashlib
 import io
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    pass
 
 
 def _check_pymupdf() -> None:
@@ -130,5 +126,5 @@ def normalize_image(
 
 
 def file_hash(data: bytes) -> str:
-    """Return hex SHA-256 of data, useful for caching."""
+    """Return hex SHA-256 of *data*, useful for caching."""
     return hashlib.sha256(data).hexdigest()

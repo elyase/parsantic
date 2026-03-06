@@ -7,7 +7,14 @@ import logging
 import re
 import unicodedata
 from collections import Counter, defaultdict
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Iterator, Sequence
+from collections.abc import (
+    AsyncGenerator,
+    Awaitable,
+    Callable,
+    Iterable,
+    Iterator,
+    Sequence,
+)
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
@@ -114,7 +121,7 @@ def _collect_leaf_path_map(
             )
         return mapping
     if isinstance(value, list):
-        mapping: dict[str, str] = {}
+        mapping = {}
         for idx, child in enumerate(value):
             mapping.update(
                 _collect_leaf_path_map(
@@ -175,9 +182,10 @@ def _merge_branch_values(
         return base, {}
 
     if isinstance(base, list) and isinstance(incoming, list):
+        leaf_map: dict[str, str]
         if not _is_record_like_list([*base, *incoming]):
             merged = list(base)
-            leaf_map: dict[str, str] = {}
+            leaf_map = {}
             seen: Counter[str] = Counter()
             for item in merged:
                 try:
@@ -204,7 +212,7 @@ def _merge_branch_values(
             return merged, leaf_map
 
         merged = list(base)
-        leaf_map: dict[str, str] = {}
+        leaf_map = {}
         offset = len(base)
         for idx, item in enumerate(incoming):
             merged.append(item)
@@ -221,7 +229,7 @@ def _merge_branch_values(
 
     if isinstance(base, dict) and isinstance(incoming, dict):
         merged = dict(base)
-        leaf_map: dict[str, str] = {}
+        leaf_map = {}
         for key, val in incoming.items():
             child_path = _child_pointer(path, key)
             if key in merged:
@@ -271,15 +279,6 @@ def _merge_branch_values(
         _collect_leaf_path_map(incoming, source_path=path, target_path=path) if use_incoming else {}
     )
     return chosen, leaf_map
-
-
-@dataclass(slots=True)
-class _HybridResolution:
-    value: Any
-    page_leaf_map: dict[str, str] = field(default_factory=dict)
-    whole_leaf_map: dict[str, str] = field(default_factory=dict)
-    chosen_page_paths: set[str] = field(default_factory=set)
-    chosen_whole_paths: set[str] = field(default_factory=set)
 
 
 def _normalize_prompt(prompt: Prompt | str | None) -> Prompt:
@@ -336,8 +335,7 @@ def _validate_examples(
         try:
             validated = adapter.validate(ex.output)
             dumped = adapter.dump(validated)
-        # Keep broad behavior to continue collecting prompt validation issues.
-        except Exception as exc:  # pragma: no cover - surfaced in tests
+        except (ValidationError, ValueError) as exc:  # pragma: no cover - surfaced in tests
             errors.append(f"example#{idx} failed schema validation: {exc}")
             continue
         tokenized_source = tok.tokenize(ex.text)
@@ -1152,7 +1150,7 @@ def _extract_pdf_page_texts(doc: Document) -> list[_PdfPageText]:
         return texts
     except ImportError:
         return []
-    except Exception:
+    except (OSError, ValueError, RuntimeError):
         logger.debug("PDF text extraction failed, falling back to media path", exc_info=True)
         return []
 
@@ -1223,103 +1221,6 @@ def _is_unusable_partial(
     if output_kind not in {"object", "array"}:
         return False
     return "partial_unvalidated" in parsed.flags
-
-
-def _process_inferred_chunks[T](
-    *,
-    chunks: Sequence[TextChunk],
-    inferred: Sequence[str],
-    target: type[T] | TypeAdapter[T],
-    opts: ExtractOptions,
-    output_kind: _RootKind | None,
-    parse_options: ParseOptions | None,
-    coerce_options: CoerceOptions | None,
-    debug: bool,
-) -> tuple[list[Any], list[FieldEvidence], list[str], set[str], int, list[ChunkDebug]]:
-    chunk_values: list[Any] = []
-    chunk_evidence: list[FieldEvidence] = []
-    chunk_outputs: list[str] = []
-    pass_flags: set[str] = set()
-    pass_worst_score: int = 0
-    debug_entries: list[ChunkDebug] = []
-    logger.debug("Processing %d chunks", len(chunks))
-
-    for chunk_idx, (chunk, raw) in enumerate(zip(chunks, inferred, strict=True)):
-        if not raw:
-            if debug:
-                debug_entries.append(
-                    ChunkDebug(
-                        chunk_index=chunk_idx,
-                        chunk_text_preview=chunk.text[:100],
-                        raw_output="",
-                        flags=(),
-                        score=0,
-                        error="empty output",
-                    )
-                )
-            continue
-        chunk_outputs.append(raw)
-
-        parse_error: str | None = None
-        parsed: ParseResult[T] | None = None
-        chunk_value: Any | None = None
-        try:
-            parsed = _parse_with_repair(
-                raw,
-                target,
-                parse_options=parse_options,
-                coerce_options=coerce_options,
-                repair=opts.repair,
-                allow_partial=True,
-            )
-            if _is_unusable_partial(parsed, output_kind):
-                raise ValueError(
-                    "Chunk parse produced unvalidated partial output "
-                    "that does not match the target root kind"
-                )
-            chunk_value = to_jsonable_python(parsed.value)
-            chunk_values.append(chunk_value)
-            pass_flags.update(parsed.flags)
-            pass_worst_score = max(pass_worst_score, parsed.score)
-        except (ValidationError, ValueError, TypeError) as exc:
-            logger.debug("Chunk parse failed: %s", exc)
-            parse_error = str(exc)
-            parsed = None
-            chunk_value = None
-            if opts.chunk_error == "raise":
-                raise
-
-        if chunk_value is not None:
-            chunk_evidence.extend(
-                _align_evidence(
-                    chunk.text,
-                    chunk_value,
-                    tokenizer=opts.tokenizer,
-                    alignment=opts.alignment,
-                    offset=chunk.start,
-                )
-            )
-
-        if debug:
-            debug_entries.append(
-                ChunkDebug(
-                    chunk_index=chunk_idx,
-                    chunk_text_preview=chunk.text[:100],
-                    raw_output=raw,
-                    flags=parsed.flags if parsed is not None else (),
-                    score=parsed.score if parsed is not None else 0,
-                    error=parse_error,
-                )
-            )
-
-    return (
-        chunk_values,
-        chunk_evidence,
-        chunk_outputs,
-        pass_flags,
-        pass_worst_score,
-        debug_entries,
-    )
 
 
 def _prepare_document_chunks_and_prompts(
@@ -1561,7 +1462,7 @@ def _accumulate_media_pass[T](
     parse_options: ParseOptions | None,
     coerce_options: CoerceOptions | None,
     debug: bool,
-) -> _DocumentState:
+) -> None:
     """Process one media inference pass — parse outputs, skip text alignment,
     and produce vision-sourced FieldEvidence instead."""
     pass_value: Any = None
@@ -1654,8 +1555,6 @@ def _accumulate_media_pass[T](
     else:
         state.doc_evidence = _dedupe_field_evidence([*state.doc_evidence, *pass_evidence])
 
-    return state
-
 
 def _dedupe_field_evidence(evidence: Sequence[FieldEvidence]) -> list[FieldEvidence]:
     seen: set[tuple[Any, ...]] = set()
@@ -1702,12 +1601,6 @@ class _HybridMergeTrace:
         self.whole_paths.update(other.whole_paths)
         self.page_aliases.extend(other.page_aliases)
         self.whole_aliases.extend(other.whole_aliases)
-
-
-def _pointer_tokens(path: str) -> tuple[str, ...]:
-    if path in {"", "/"}:
-        return ()
-    return tuple(parse_json_pointer(path))
 
 
 def _pointer_path(path: str) -> str:
@@ -2476,7 +2369,7 @@ def _run_hybrid_media_extraction[T](
             page_inferred = _run_page_branch()
         else:
             whole_inferred, page_inferred = _run_parallel_pair(_run_whole_branch, _run_page_branch)
-        whole_state = _accumulate_media_pass(
+        _accumulate_media_pass(
             pass_index=pass_index,
             state=whole_state,
             media_requests=[single_req],
@@ -2489,7 +2382,7 @@ def _run_hybrid_media_extraction[T](
             debug=debug,
         )
 
-        page_state = _accumulate_media_pass(
+        _accumulate_media_pass(
             pass_index=pass_index,
             state=page_state,
             media_requests=media_requests,
@@ -2564,7 +2457,7 @@ async def _arun_hybrid_media_extraction[T](
             _run_whole_branch,
             _run_page_branch,
         )
-        whole_state = _accumulate_media_pass(
+        _accumulate_media_pass(
             pass_index=pass_index,
             state=whole_state,
             media_requests=[single_req],
@@ -2577,7 +2470,7 @@ async def _arun_hybrid_media_extraction[T](
             debug=debug,
         )
 
-        page_state = _accumulate_media_pass(
+        _accumulate_media_pass(
             pass_index=pass_index,
             state=page_state,
             media_requests=media_requests,
@@ -2858,12 +2751,12 @@ def extract_iter[T](
                         # For "single" mode, use a synthetic aggregate chunk with None
                         # indices to avoid misattributing evidence to the first attachment.
                         aggregate_chunk = MediaChunk(
-                            attachment=media_chunks[0].attachment if media_chunks else media_chunks,
+                            attachment=media_chunks[0].attachment,
                             attachment_index=None,
                             page_index=None,
-                            text=media_chunks[0].text if media_chunks else "",
+                            text=media_chunks[0].text,
                         )
-                        state = _accumulate_media_pass(
+                        _accumulate_media_pass(
                             pass_index=_pass,
                             state=state,
                             media_requests=[single_req],
@@ -2893,7 +2786,7 @@ def extract_iter[T](
                                 max_workers,
                                 **_native_kwargs,
                             )
-                        state = _accumulate_media_pass(
+                        _accumulate_media_pass(
                             pass_index=_pass,
                             state=state,
                             media_requests=media_requests,
@@ -3034,7 +2927,7 @@ async def extract_aiter[T](
     parse_options: ParseOptions | None = None,
     coerce_options: CoerceOptions | None = None,
     debug: bool = False,
-) -> AsyncIterator[ExtractResult[T]]:
+) -> AsyncGenerator[ExtractResult[T], None]:
     ctx = _build_extraction_context(
         text_or_documents,
         target,
@@ -3121,12 +3014,12 @@ async def extract_aiter[T](
                             ctx.provider, [single_req], batch_length, **_native_kwargs
                         )
                         aggregate_chunk = MediaChunk(
-                            attachment=media_chunks[0].attachment if media_chunks else media_chunks,
+                            attachment=media_chunks[0].attachment,
                             attachment_index=None,
                             page_index=None,
-                            text=media_chunks[0].text if media_chunks else "",
+                            text=media_chunks[0].text,
                         )
-                        state = _accumulate_media_pass(
+                        _accumulate_media_pass(
                             pass_index=_pass,
                             state=state,
                             media_requests=[single_req],
@@ -3156,7 +3049,7 @@ async def extract_aiter[T](
                                 max_workers,
                                 **_native_kwargs,
                             )
-                        state = _accumulate_media_pass(
+                        _accumulate_media_pass(
                             pass_index=_pass,
                             state=state,
                             media_requests=media_requests,

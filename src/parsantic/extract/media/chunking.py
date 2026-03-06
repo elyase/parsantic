@@ -98,7 +98,7 @@ def _native_pdf_chunks(
     text: str,
 ) -> list[MediaChunk]:
     """Create a single chunk for a PDF sent natively (no rasterization)."""
-    hint_text = text
+    hint_text: str = text
     if attachment.page_indices is not None:
         pages_display = ", ".join(str(p + 1) for p in attachment.page_indices)
         hint_text = (

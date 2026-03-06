@@ -35,14 +35,11 @@ def parse[T](
     """
     adapter: TypeAdapter[T] = target if isinstance(target, TypeAdapter) else TypeAdapter(target)
     if is_done:
-        _missing = object()
         try:
             validated = adapter.validate_json(text)
+            return ParseResult(value=validated, flags=(), score=0)
         except (ValidationError, ValueError):
             logger.debug("Direct JSON validation failed, falling back to jsonish pipeline")
-            validated = _missing
-        if validated is not _missing:
-            return ParseResult(value=validated, flags=(), score=0)
     jsonish_value = parse_jsonish(text, options=parse_options or ParseOptions(), is_done=is_done)
     coerced = coerce_jsonish_to_python(
         jsonish_value,
@@ -155,7 +152,7 @@ def parse_debug[T](
                     )
                 )
             # If a candidate fails to coerce, keep the raw representation for debugging.
-            except Exception as e:
+            except (ValidationError, ValueError, TypeError) as e:
                 candidates_debug.append(
                     CandidateDebug(
                         value_preview=cand.value,
@@ -227,8 +224,7 @@ def coerce_debug[T](
             chosen=chosen,
             value=validated,
         )
-    # Keep broad behavior for direct validation failures while preserving debug detail.
-    except Exception as e:
+    except (ValidationError, ValueError, TypeError) as e:
         candidates_debug.append(
             CandidateDebug(
                 value_preview=value,
@@ -253,8 +249,7 @@ def coerce_debug[T](
             chosen=chosen,
             value=result.value,
         )
-    # Keep broad behavior for adapter-specific failures during fallback coercion.
-    except Exception as e:
+    except (ValidationError, ValueError, TypeError) as e:
         candidates_debug.append(
             CandidateDebug(
                 value_preview=value,

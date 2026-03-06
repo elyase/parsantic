@@ -14,12 +14,12 @@ from .patch import PatchPolicy
 def render_policy_lines(policy: PatchPolicy) -> str:
     """Render patch policy as bullet points for prompt inclusion."""
     return "\n".join(
-        [
+        (
             f"- remove operations allowed: {'yes' if policy.allow_remove else 'no'}",
             f"- max operations: {policy.max_ops}",
             f"- max path depth: {policy.max_path_depth}",
             f"- append (/-) allowed: {'yes' if policy.allow_append else 'no'}",
-        ]
+        )
     )
 
 
@@ -98,3 +98,6 @@ def build_retry_prompt(
 {policy_lines}
 
 Return ONLY a JSON array of additional RFC 6902 JSON Patch operations to fix these errors:"""
+
+
+__all__ = ["build_retry_prompt", "build_update_prompt", "render_policy_lines"]

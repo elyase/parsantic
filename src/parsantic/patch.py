@@ -34,7 +34,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
 from .api import ParseResult
 from .json_pointer import parse_json_pointer
@@ -458,7 +458,7 @@ def apply_patch(
             _apply_replace(result, tokens, patch.value, max_depth=policy.max_path_depth)
         elif patch.op == "remove":
             _apply_remove(result, tokens, max_depth=policy.max_path_depth)
-        else:
+        else:  # pragma: no cover
             raise PatchError(f"Unsupported operation: {patch.op!r}")
     return result
 
@@ -578,7 +578,10 @@ def _parse_json_string(text: str) -> Any:
     # Attempt SAP parse as a fallback for "JSON-ish" strings.
     try:
         from .jsonish import ParseOptions, parse_jsonish
+    except ImportError:
+        raise PatchError(f"Cannot parse patch string as JSON: {text!r}") from None
 
+    try:
         jv = parse_jsonish(
             text,
             options=ParseOptions(
@@ -604,11 +607,11 @@ def _parse_json_string(text: str) -> Any:
                     try:
                         patch_adapter.validate_python(candidate_value)
                         return candidate_value
-                    except Exception:
+                    except (ValidationError, ValueError):
                         pass
                 try:
                     size = len(json.dumps(candidate_value, ensure_ascii=False, default=str))
-                except Exception:
+                except (TypeError, ValueError):
                     size = 0
                 if size > best_size:
                     best_size = size
@@ -616,6 +619,8 @@ def _parse_json_string(text: str) -> Any:
             if best_candidate is not None:
                 return best_candidate
         return jv.value
+    except PatchError:
+        raise
     except Exception:
         pass
 

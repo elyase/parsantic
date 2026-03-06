@@ -32,7 +32,7 @@ from .registry import register
 logger = logging.getLogger(__name__)
 
 # Match any "provider:model" string for common providers, plus bare model names.
-_PATTERNS = (
+_PATTERNS: tuple[str, ...] = (
     r"^(openai|anthropic|gemini|ollama|vertex|mistral|groq|bedrock|deepseek):",
     r"^gpt-",
     r"^claude-",
@@ -150,8 +150,12 @@ def _build_model_with_credentials(
                 provider = GoogleVertexProvider(**vertex_kwargs)
 
             return GoogleModel(model_name, provider=provider)
-    except (ImportError, TypeError):
-        pass
+    except (ImportError, TypeError) as exc:
+        logger.debug(
+            "Could not build model object for %r (%s), falling back to string spec",
+            model_spec,
+            exc,
+        )
 
     # Unknown provider or import failure — let pydantic-ai resolve via env vars.
     return model_spec
@@ -250,7 +254,7 @@ class PydanticAIProvider:
         try:
             profile = self._agent.model.profile
             self._supports_native = getattr(profile, "supports_json_schema_output", False)
-        except Exception:
+        except AttributeError:
             self._supports_native = False
 
     def supports_native_structured_output(self) -> bool:
@@ -278,7 +282,7 @@ class PydanticAIProvider:
 
         try:
             return NativeOutput(target_type)
-        except Exception:
+        except (TypeError, ValueError):
             logger.debug("Failed to build NativeOutput for %s, falling back to str", target_type)
             return None
 
@@ -424,6 +428,10 @@ class PydanticAIProvider:
             results.append(output)
         return results
 
+    def _make_semaphore(self, kwargs: dict[str, Any]) -> asyncio.Semaphore:
+        concurrency = kwargs.pop("max_concurrency", self.max_concurrency)
+        return asyncio.Semaphore(max(1, int(concurrency)))
+
     async def ainfer(
         self,
         batch_prompts: Sequence[str],
@@ -432,8 +440,7 @@ class PydanticAIProvider:
         structured_output: Literal["auto", "native", "prompt"] = "prompt",
         **kwargs: Any,
     ) -> Sequence[str]:
-        concurrency = kwargs.pop("max_concurrency", self.max_concurrency)
-        semaphore = asyncio.Semaphore(max(1, int(concurrency)))
+        semaphore = self._make_semaphore(kwargs)
 
         async def _run_prompt(prompt: str) -> str:
             async with semaphore:
@@ -454,8 +461,7 @@ class PydanticAIProvider:
         structured_output: Literal["auto", "native", "prompt"] = "prompt",
         **kwargs: Any,
     ) -> Sequence[str]:
-        concurrency = kwargs.pop("max_concurrency", self.max_concurrency)
-        semaphore = asyncio.Semaphore(max(1, int(concurrency)))
+        semaphore = self._make_semaphore(kwargs)
 
         async def _run_request(request: InferenceRequest) -> str:
             async with semaphore:

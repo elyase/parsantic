@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any
 
@@ -10,40 +10,35 @@ from .coerce import CoerceOptions, _adapter_target_type, coerce_jsonish_to_pytho
 from .jsonish import ParseOptions, parse_jsonish
 from .types import ScoredValue
 
+_MISSING = object()
+
 
 @lru_cache(maxsize=128)
 def _partial_model_for(model_type: type[BaseModel]) -> type[BaseModel]:
     fields: dict[str, tuple[Any, Any]] = {}
-    for field_name, field in model_type.model_fields.items():
-        annotation = field.annotation if field.annotation is not None else Any
+    for field_name, fld in model_type.model_fields.items():
+        annotation = fld.annotation if fld.annotation is not None else Any
         fields[field_name] = (annotation | None, None)
     return create_model(f"{model_type.__name__}Partial", __base__=BaseModel, **fields)
 
 
 @dataclass(slots=True)
 class StreamParser[T]:
-    """
-    Incremental SAP parser.
+    """Incremental SAP parser.
 
-    This is a pragmatic streaming interface:
-    - callers feed chunks (as strings)
-    - parser maintains a buffer
-    - `parse_partial()` attempts to coerce the *current buffer* (is_done=False)
-    - `finish()` validates final result (is_done=True)
-
-    This mirrors the Rust approach where `raw_string_is_done` controls completion state.
+    Callers feed chunks (as strings), the parser maintains a buffer.
+    ``parse_partial()`` coerces the current buffer (is_done=False);
+    ``finish()`` validates the final result (is_done=True).
     """
 
     adapter: TypeAdapter[T]
     parse_options: ParseOptions
     coerce_options: CoerceOptions
     max_buffer_chars: int | None = None
-    _partial_adapter: TypeAdapter[Any] | None = None
-    _buffer: str = ""
+    _partial_adapter: TypeAdapter[Any] | None = field(default=None, init=False)
+    _buffer: str = field(default="", init=False)
 
     def __post_init__(self) -> None:
-        if self._partial_adapter is not None:
-            return
         model_type = _adapter_target_type(self.adapter)
         if (
             model_type is None
@@ -87,12 +82,11 @@ class StreamParser[T]:
         return ScoredValue(value=partial, flags=sv.flags, score=sv.score)
 
     def finish(self) -> ScoredValue:
-        _missing = object()
         try:
             validated = self.adapter.validate_json(self._buffer)
         except (ValidationError, ValueError, TypeError):
-            validated = _missing
-        if validated is not _missing:
+            validated = _MISSING
+        if validated is not _MISSING:
             return ScoredValue(value=validated, flags=(), score=0)
         jsonish_value = parse_jsonish(self._buffer, options=self.parse_options, is_done=True)
         coerced = coerce_jsonish_to_python(jsonish_value, self.adapter, options=self.coerce_options)

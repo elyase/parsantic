@@ -4,13 +4,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from .media.attachments import Attachment
 
 
-def _import_httpx():  # type: ignore[no-untyped-def]
+def _import_httpx() -> Any:
     try:
         import httpx
 
@@ -96,6 +96,14 @@ class Document:
         httpx = _import_httpx()
         response = httpx.get(url, timeout=timeout, headers=headers or {}, follow_redirects=True)
         response.raise_for_status()
+        content_type = response.headers.get("content-type", "")
+        if content_type and not content_type.startswith(
+            ("text/", "application/json", "application/xml")
+        ):
+            raise ValueError(
+                f"URL {url!r} returned content-type {content_type!r}; "
+                "use Attachment for binary content like PDFs or images"
+            )
         return cls(
             text=response.text,
             document_id=document_id or url,
@@ -122,6 +130,14 @@ class Document:
                 follow_redirects=True,
             )
             response.raise_for_status()
+            content_type = response.headers.get("content-type", "")
+            if content_type and not content_type.startswith(
+                ("text/", "application/json", "application/xml")
+            ):
+                raise ValueError(
+                    f"URL {url!r} returned content-type {content_type!r}; "
+                    "use Attachment for binary content like PDFs or images"
+                )
             text = response.text
         return cls(
             text=text,

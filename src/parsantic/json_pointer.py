@@ -2,12 +2,18 @@ from __future__ import annotations
 
 
 def escape_json_pointer_token(token: str) -> str:
-    """Escape a single JSON Pointer token (RFC 6901)."""
+    """Escape a single JSON Pointer token per RFC 6901 Section 3.
+
+    Order matters: ``~`` must be escaped before ``/``.
+    """
     return token.replace("~", "~0").replace("/", "~1")
 
 
 def unescape_json_pointer_token(token: str) -> str:
-    """Unescape a single JSON Pointer token (RFC 6901)."""
+    """Unescape a single JSON Pointer token per RFC 6901 Section 3.
+
+    Order matters: ``~1`` must be unescaped before ``~0``.
+    """
     return token.replace("~1", "/").replace("~0", "~")
 
 
@@ -28,3 +34,11 @@ def build_json_pointer(tokens: list[str]) -> str:
     if not tokens:
         return ""
     return "/" + "/".join(escape_json_pointer_token(token) for token in tokens)
+
+
+__all__ = [
+    "build_json_pointer",
+    "escape_json_pointer_token",
+    "parse_json_pointer",
+    "unescape_json_pointer_token",
+]

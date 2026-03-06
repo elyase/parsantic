@@ -39,3 +39,12 @@ class ParseDebug[T]:
 
 def is_scalar(value: Any) -> bool:
     return value is None or isinstance(value, (str, int, float, bool))
+
+
+__all__ = [
+    "CandidateDebug",
+    "CompletionState",
+    "ParseDebug",
+    "ScoredValue",
+    "is_scalar",
+]
