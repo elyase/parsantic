@@ -11,6 +11,8 @@ def test_extract_options_media_defaults():
     assert options.media.page_strategy == "auto"
     assert options.media.raster_format == "jpeg"
     assert options.media.jpeg_quality == 85
+    assert options.repair == "targeted"
+    assert options.max_repair_attempts == 2
 
 
 def test_media_options_accepts_native_pdf_mode_with_custom_dpi():

@@ -1,0 +1,11 @@
+{
+  "patient_name": "Maya Hernandez",
+  "patient_identifier": "ONC-2026-0142",
+  "diagnosis": "Metastatic breast carcinoma",
+  "stage": "Stage IV",
+  "oncologist": "Dr. Priya Shah",
+  "cancer_center": "North Valley Cancer Center",
+  "hemoglobin_g_dl": 11.2,
+  "creatinine_mg_dl": 0.9,
+  "primary_medication": "Capecitabine"
+}

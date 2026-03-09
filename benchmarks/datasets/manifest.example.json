@@ -1,0 +1,19 @@
+{
+  "name": "example-pdf-suite",
+  "root": ".",
+  "cases": [
+    {
+      "name": "replace-me",
+      "document": "replace-me.pdf",
+      "schema": "replace_me.module:ReplaceMeModel",
+      "expected": "replace-me.expected.json",
+      "prompt": "Extract the target schema from this document.",
+      "tags": [
+        "example"
+      ],
+      "expected_api_calls": 1,
+      "expected_tokens": 1200,
+      "expected_cost_usd": 0.0
+    }
+  ]
+}

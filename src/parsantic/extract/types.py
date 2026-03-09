@@ -6,6 +6,8 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from .diagnostics import FieldDiagnostic
+
 if TYPE_CHECKING:
     from .media.attachments import Attachment
 
@@ -203,6 +205,7 @@ class ExtractResult[T]:
     score: int
     evidence: list[FieldEvidence]
     sources: dict[str, SourceRef] = field(default_factory=dict)
+    diagnostics: dict[str, FieldDiagnostic] = field(default_factory=dict)
     debug: ExtractDebug | None = None
     conflicts: list[MergeConflict] = field(default_factory=list)
 

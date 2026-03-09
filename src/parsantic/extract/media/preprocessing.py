@@ -25,24 +25,57 @@ def _check_pillow() -> None:
         ) from None
 
 
-def has_text_layer(source: Path | bytes) -> bool:
-    """Check if a PDF has a usable text layer.
+def score_text_quality(text: str) -> float:
+    """Return a coarse 0-1 score for extracted page text."""
+    stripped = text.strip()
+    if not stripped:
+        return 0.0
+    total = len(stripped)
+    alpha_ratio = sum(char.isalpha() for char in stripped) / total
+    whitespace_ratio = sum(char.isspace() for char in stripped) / total
+    char_count_score = min(total / 500.0, 1.0)
+    score = (char_count_score * 0.45) + (alpha_ratio * 0.35) + (whitespace_ratio * 0.20)
+    return max(0.0, min(score, 1.0))
 
-    Returns True if any page has extractable text (>10 chars after strip).
-    """
+
+def extract_pdf_page_texts(
+    source: Path | bytes,
+    *,
+    page_indices: tuple[int, ...] | None = None,
+) -> list[tuple[int, str]]:
     _check_pymupdf()
     import fitz
 
     data = source if isinstance(source, bytes) else source.read_bytes()
     doc = fitz.open(stream=data, filetype="pdf")
     try:
-        for page in doc:
-            text = page.get_text().strip()
-            if len(text) > 10:
-                return True
-        return False
+        selected_pages = list(page_indices) if page_indices is not None else list(range(len(doc)))
+        page_texts: list[tuple[int, str]] = []
+        for page_index in selected_pages:
+            if page_index < 0 or page_index >= len(doc):
+                raise ValueError(
+                    f"Page index {page_index} out of range (document has {len(doc)} pages)"
+                )
+            page_texts.append((page_index, doc[page_index].get_text().strip()))
+        return page_texts
     finally:
         doc.close()
+
+
+def score_pdf_text_quality(
+    source: Path | bytes,
+    *,
+    page_indices: tuple[int, ...] | None = None,
+) -> float:
+    page_texts = extract_pdf_page_texts(source, page_indices=page_indices)
+    if not page_texts:
+        return 0.0
+    return sum(score_text_quality(text) for _, text in page_texts) / len(page_texts)
+
+
+def has_text_layer(source: Path | bytes) -> bool:
+    """Check if a PDF has a usable text layer."""
+    return score_pdf_text_quality(source) > 0.1
 
 
 def rasterize_pdf(
@@ -75,10 +108,8 @@ def rasterize_pdf(
             page = doc[page_idx]
             pix = page.get_pixmap(matrix=matrix)
             if raster_format == "jpeg":
-                # Convert pixmap to PIL Image for JPEG.
                 from PIL import Image
 
-                # Handle alpha channel: drop it before creating RGB image.
                 if pix.alpha:
                     pix = fitz.Pixmap(fitz.csRGB, pix)
                 img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
@@ -105,14 +136,10 @@ def normalize_image(
     from PIL import Image, ImageOps
 
     with Image.open(io.BytesIO(data)) as img:
-        # Fix EXIF orientation.
         img = ImageOps.exif_transpose(img)
-
-        # Convert to RGB (handles CMYK, RGBA, palette, etc.).
         if img.mode not in ("RGB", "L"):
             img = img.convert("RGB")
 
-        # Resize if largest dimension exceeds max_dim.
         w, h = img.size
         if max(w, h) > max_dim:
             scale = max_dim / max(w, h)

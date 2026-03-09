@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-DEFAULT_MODEL = "openai:gpt-4o-mini"
+DEFAULT_MODEL = "gemini:gemini-2.5-flash-lite"
 """Default model used when none is specified and PARSANTIC_MODEL is not set."""
 
 

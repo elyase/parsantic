@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Literal
 from parsantic.json_pointer import parse_json_pointer
 
 from .alignment import AlignmentOptions
+from .concurrency import ConcurrencyConfig
 from .formatting import FormatOptions
 from .prompt import PromptValidationLevel
 from .tokenizer import Tokenizer, TokenizerName
@@ -35,6 +36,7 @@ type ExecutionPlan = Literal[
     "page_windows",
     "retrieve_then_extract",
     "hybrid",
+    "fused",
 ]
 type ProvenanceMode = Literal["none", "sidecar"]
 type CitationKind = Literal["none", "structural", "chunk_id", "offset", "quote", "model"]
@@ -124,7 +126,7 @@ class Strategy:
 @dataclass(frozen=True, slots=True)
 class ResolvedStrategy:
     represent: Literal["auto", "native", "raster"]
-    plan: Literal["auto", "whole_document", "page_map_reduce", "hybrid"]
+    plan: Literal["auto", "whole_document", "page_map_reduce", "hybrid", "fused"]
     media: MediaOptions
     provenance: ProvenancePolicy
     field_scope: FieldScopePolicy
@@ -259,7 +261,7 @@ def _strategy_from_preset(preset: StrategyPreset) -> Strategy:
 
 
 def _plan_to_page_strategy(
-    plan: Literal["auto", "whole_document", "page_map_reduce", "hybrid"],
+    plan: Literal["auto", "whole_document", "page_map_reduce", "hybrid", "fused"],
 ) -> Literal["auto", "single", "map_reduce"]:
     if plan == "auto":
         return "auto"
@@ -270,7 +272,7 @@ def _plan_to_page_strategy(
 
 def _supports_structural_provenance(
     represent: Literal["auto", "native", "raster"],
-    plan: Literal["auto", "whole_document", "page_map_reduce", "hybrid"],
+    plan: Literal["auto", "whole_document", "page_map_reduce", "hybrid", "fused"],
 ) -> bool:
     # The current strategy runtime can preserve page-level media metadata, but it
     # does not yet produce grounded spans/bboxes for media-side extraction.
@@ -296,7 +298,7 @@ def _resolve_representation(
             continue
         if first_supported is None:
             first_supported = candidate
-        if not (plan == "hybrid" and candidate == "native"):
+        if not (plan in {"hybrid", "fused"} and candidate == "native"):
             return candidate, skipped
         skipped.append(candidate)
 
@@ -314,7 +316,7 @@ def _resolve_provenance(
     provenance: ProvenancePolicy,
     *,
     represent: Literal["auto", "native", "raster"],
-    plan: Literal["auto", "whole_document", "page_map_reduce", "hybrid"],
+    plan: Literal["auto", "whole_document", "page_map_reduce", "hybrid", "fused"],
 ) -> ProvenancePolicy:
     if provenance.mode == "none":
         return ProvenancePolicy(mode="none", cite_by="none", strict=provenance.strict)
@@ -384,11 +386,11 @@ def resolve_runtime_strategy(
             )
 
     resolved_plan = declared.plan
-    if resolved_plan == "hybrid" and resolved_represent == "auto":
+    if resolved_plan in {"hybrid", "fused"} and resolved_represent == "auto":
         resolved_represent = "raster"
-    if resolved_plan == "hybrid" and resolved_represent == "native":
+    if resolved_plan in {"hybrid", "fused"} and resolved_represent == "native":
         raise NotImplementedError(
-            "strategy.plan='hybrid' requires a page-aware representation; "
+            f"strategy.plan={resolved_plan!r} requires a page-aware representation; "
             "native PDF input is not supported by the current runtime"
         )
     media = MediaOptions(
@@ -418,7 +420,7 @@ def resolve_runtime_strategy(
             "document"
             if resolved_plan == "whole_document"
             else "page"
-            if resolved_plan == "page_map_reduce"
+            if resolved_plan in {"page_map_reduce", "fused"}
             else "hybrid"
             if resolved_plan == "hybrid"
             else "auto"
@@ -430,9 +432,9 @@ def resolve_runtime_strategy(
             if media.pdf_mode == "raster"
             else "auto"
         ),
-        page_input="image" if resolved_plan in {"page_map_reduce", "hybrid"} else "auto",
+        page_input="image" if resolved_plan in {"page_map_reduce", "hybrid", "fused"} else "auto",
         document_media=media if resolved_plan in {"whole_document", "hybrid"} else None,
-        page_media=media if resolved_plan in {"page_map_reduce", "hybrid"} else None,
+        page_media=media if resolved_plan in {"page_map_reduce", "hybrid", "fused"} else None,
         preset=preset,
     )
 
@@ -443,9 +445,16 @@ class ExtractOptions:
     document_input: DocumentInput = "auto"
     page_input: PageInput = "auto"
     passes: int = 1
+    max_repair_attempts: int = 2
     max_char_buffer: int | None = None
     batch_length: int = 4
     max_workers: int = 1
+    concurrency: ConcurrencyConfig = field(default_factory=ConcurrencyConfig)
+    max_pages: int | None = None
+    max_pdf_bytes: int | None = None
+    max_api_calls: int | None = None
+    per_call_timeout_s: float | None = None
+    per_document_timeout_s: float | None = None
     overlap_chars: int = 0
     tokenizer: TokenizerName | Tokenizer | None = None
     alignment: AlignmentOptions = field(default_factory=AlignmentOptions)
@@ -454,7 +463,7 @@ class ExtractOptions:
     prompt_validation: PromptValidationLevel = PromptValidationLevel.WARNING
     schema_mode: Literal["compact", "pretty"] = "compact"
     structured_output: Literal["auto", "native", "prompt"] = "auto"
-    repair: Literal["none", "local"] = "none"
+    repair: Literal["none", "local", "targeted"] = "targeted"
     chunk_error: Literal["raise", "skip"] = "skip"
     merge_strategy: Literal["first_wins", "last_wins", "prefer_non_null"] = "first_wins"
     resolver: Resolver | None = None
@@ -463,12 +472,30 @@ class ExtractOptions:
     def __post_init__(self) -> None:
         if self.passes < 1:
             raise ValueError("passes must be >= 1")
+        if self.max_repair_attempts < 0:
+            raise ValueError("max_repair_attempts must be >= 0")
         if self.batch_length < 1:
             raise ValueError("batch_length must be >= 1")
         if self.max_workers < 1:
             raise ValueError("max_workers must be >= 1")
+        if self.concurrency.network_workers < 1:
+            raise ValueError("concurrency.network_workers must be >= 1")
+        if self.concurrency.cpu_workers < 1:
+            raise ValueError("concurrency.cpu_workers must be >= 1")
+        if self.concurrency.max_inflight_image_bytes < 1:
+            raise ValueError("concurrency.max_inflight_image_bytes must be >= 1")
         if self.overlap_chars < 0:
             raise ValueError("overlap_chars must be >= 0")
+        if self.max_pages is not None and self.max_pages < 1:
+            raise ValueError("max_pages must be >= 1")
+        if self.max_pdf_bytes is not None and self.max_pdf_bytes < 1:
+            raise ValueError("max_pdf_bytes must be >= 1")
+        if self.max_api_calls is not None and self.max_api_calls < 1:
+            raise ValueError("max_api_calls must be >= 1")
+        if self.per_call_timeout_s is not None and self.per_call_timeout_s <= 0:
+            raise ValueError("per_call_timeout_s must be > 0")
+        if self.per_document_timeout_s is not None and self.per_document_timeout_s <= 0:
+            raise ValueError("per_document_timeout_s must be > 0")
         uses_simple_mode = (
             self.mode is not None or self.document_input != "auto" or self.page_input != "auto"
         )
@@ -497,6 +524,13 @@ class ExtractOptions:
             raise ValueError(
                 "mode/document_input/page_input cannot be combined with custom media "
                 "options for pdf_mode, page_strategy, or grounding"
+            )
+        if self.passes > 1:
+            warnings.warn(
+                "ExtractOptions.passes>1 is deprecated; use repair='targeted' and "
+                "max_repair_attempts instead",
+                DeprecationWarning,
+                stacklevel=2,
             )
 
     def resolve_runtime_strategy(self) -> ResolvedStrategy:

@@ -5,6 +5,7 @@ import concurrent.futures
 import json
 import logging
 import re
+import time
 import unicodedata
 from collections import Counter, defaultdict
 from collections.abc import (
@@ -36,8 +37,10 @@ from parsantic.provider_output import normalize_text_outputs
 
 from .alignment import AlignmentOptions, align_value_to_text
 from .chunking import TextChunk, iter_chunks
+from .diagnostics import FieldDiagnostic, FieldState
 from .formatting import FormatHandler
 from .media.chunking import MediaChunk, chunk_attachments, needs_media
+from .media.preflight import PreflightResult, analyze_pdf_source
 from .options import ExtractOptions, ResolvedStrategy
 from .prompt import Example, Prompt, PromptValidationLevel
 from .providers.base import (
@@ -51,6 +54,12 @@ from .providers.base import (
     SupportsMediaInferStream,
 )
 from .providers.factory import create_provider
+from .repair import (
+    RepairContext,
+    build_repair_prompt,
+    collect_validation_errors,
+    format_broken_output,
+)
 from .schema import PydanticSchemaAdapter
 from .tokenizer import Tokenizer, TokenizerName, get_tokenizer
 from .types import (
@@ -557,8 +566,84 @@ class _ExtractionContext:
     normalized_examples: list[Example]
     provider: Any
     resolved_strategy: ResolvedStrategy
+    budget: _BudgetState
     target_type: type[Any] | None = None
     use_native_schema: bool = False
+
+
+@dataclass(slots=True)
+class _BudgetState:
+    opts: ExtractOptions
+    network_workers: int
+    api_calls_used: int = 0
+    consecutive_server_errors: int = 0
+    document_deadline: float | None = None
+
+    def ensure_api_budget(self, calls: int) -> None:
+        if self.opts.max_api_calls is None:
+            return
+        if self.api_calls_used + calls > self.opts.max_api_calls:
+            raise RuntimeError(
+                f"LLM call budget exceeded: {self.api_calls_used + calls} > {self.opts.max_api_calls}"
+            )
+        self.api_calls_used += calls
+
+    def apply_rate_limit_backoff(self) -> None:
+        self.network_workers = max(1, self.network_workers // 2)
+
+    def record_server_error(self) -> None:
+        self.consecutive_server_errors += 1
+
+    def reset_server_errors(self) -> None:
+        self.consecutive_server_errors = 0
+
+
+def _check_document_deadline(ctx: _ExtractionContext) -> None:
+    deadline = ctx.budget.document_deadline
+    if deadline is not None and time.monotonic() > deadline:
+        raise TimeoutError("Document timeout exceeded before dispatching the next request")
+
+
+def _run_sync_call_with_timeout(
+    call: Callable[[], Any],
+    *,
+    timeout_s: float | None,
+) -> Any:
+    if timeout_s is None:
+        return call()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(call)
+        return future.result(timeout=timeout_s)
+
+
+async def _run_async_call_with_timeout(
+    call: Callable[[], Awaitable[Any]],
+    *,
+    timeout_s: float | None,
+) -> Any:
+    if timeout_s is None:
+        return await call()
+    return await asyncio.wait_for(call(), timeout=timeout_s)
+
+
+def _record_inference_success(ctx: _ExtractionContext) -> None:
+    ctx.budget.reset_server_errors()
+
+
+def _maybe_handle_provider_error(ctx: _ExtractionContext, exc: Exception) -> None:
+    message = str(exc)
+    if "429" in message:
+        ctx.budget.apply_rate_limit_backoff()
+        logger.warning(
+            "Provider rate limited; lowering network workers to %d", ctx.budget.network_workers
+        )
+        return
+    if re.search(r"\b5\d\d\b", message):
+        ctx.budget.record_server_error()
+        if ctx.budget.consecutive_server_errors >= 2:
+            logger.warning(
+                "Repeated provider 5xx responses; future PDF work may fall back to text-only"
+            )
 
 
 def _build_extraction_context(
@@ -671,6 +756,10 @@ def _build_extraction_context(
         normalized_examples=normalized_examples,
         provider=provider,
         resolved_strategy=resolved_strategy,
+        budget=_BudgetState(
+            opts=opts,
+            network_workers=max(1, opts.concurrency.network_workers or opts.max_workers),
+        ),
         target_type=target_type,
         use_native_schema=use_native,
     )
@@ -812,33 +901,84 @@ def extract[T](
 
 
 def _infer_batch(
-    provider: Any,
-    prompts: Sequence[str],
-    batch_length: int,
+    ctx_or_provider: _ExtractionContext | Any,
+    provider_or_prompts: Any,
+    prompts_or_batch_length: Sequence[str] | int,
+    batch_length: int | None = None,
     **infer_kwargs: Any,
 ) -> list[str]:
     """Call provider.infer in batches of *batch_length* and concatenate results."""
+    if isinstance(ctx_or_provider, _ExtractionContext):
+        ctx = ctx_or_provider
+        provider = provider_or_prompts
+        prompts = prompts_or_batch_length
+        batch_length = batch_length if batch_length is not None else 1
+    else:
+        ctx = None
+        provider = ctx_or_provider
+        prompts = provider_or_prompts
+        batch_length = (
+            prompts_or_batch_length
+            if isinstance(prompts_or_batch_length, int)
+            else batch_length
+            if batch_length is not None
+            else 1
+        )
     logger.debug("Batched inference: %d prompts, batch_length=%d", len(prompts), batch_length)
     all_outputs: list[str] = []
     for i in range(0, len(prompts), batch_length):
         batch = prompts[i : i + batch_length]
-        outputs = normalize_text_outputs(
-            provider.infer(batch, **infer_kwargs),
-            expected_count=len(batch),
-            context="provider.infer",
-        )
+        if ctx is None:
+            outputs = normalize_text_outputs(
+                provider.infer(batch, **infer_kwargs),
+                expected_count=len(batch),
+                context="provider.infer",
+            )
+        else:
+            _check_document_deadline(ctx)
+            ctx.budget.ensure_api_budget(1)
+            try:
+                outputs = normalize_text_outputs(
+                    _run_sync_call_with_timeout(
+                        lambda batch=batch: provider.infer(batch, **infer_kwargs),
+                        timeout_s=ctx.opts.per_call_timeout_s,
+                    ),
+                    expected_count=len(batch),
+                    context="provider.infer",
+                )
+                _record_inference_success(ctx)
+            except Exception as exc:
+                _maybe_handle_provider_error(ctx, exc)
+                raise
         all_outputs.extend(outputs)
     return all_outputs
 
 
 def _infer_batch_parallel(
-    provider: Any,
-    prompts: Sequence[str],
-    batch_length: int,
-    max_workers: int,
+    ctx_or_provider: _ExtractionContext | Any,
+    provider_or_prompts: Any,
+    prompts_or_batch_length: Sequence[str] | int,
+    batch_length_or_workers: int,
+    max_workers: int | None = None,
     **infer_kwargs: Any,
 ) -> list[str]:
     """Call provider.infer in batches of *batch_length* with ThreadPoolExecutor."""
+    if isinstance(ctx_or_provider, _ExtractionContext):
+        ctx = ctx_or_provider
+        provider = provider_or_prompts
+        prompts = prompts_or_batch_length
+        batch_length = batch_length_or_workers
+        max_workers = max_workers if max_workers is not None else 1
+    else:
+        ctx = None
+        provider = ctx_or_provider
+        prompts = provider_or_prompts
+        batch_length = (
+            prompts_or_batch_length
+            if isinstance(prompts_or_batch_length, int)
+            else batch_length_or_workers
+        )
+        max_workers = batch_length_or_workers if max_workers is None else max_workers
     batches: list[Sequence[str]] = []
     batch_length = max(1, batch_length)
     for i in range(0, len(prompts), batch_length):
@@ -848,19 +988,40 @@ def _infer_batch_parallel(
     )
 
     batch_results: dict[int, list[str]] = {}
-    max_workers = max(1, max_workers)
+    if ctx is not None:
+        max_workers = max(1, min(max_workers, ctx.budget.network_workers))
+    else:
+        max_workers = max(1, max_workers)
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_idx = {
-            executor.submit(provider.infer, batch, **infer_kwargs): idx
+            executor.submit(
+                _run_sync_call_with_timeout,
+                lambda batch=batch: provider.infer(batch, **infer_kwargs),
+                timeout_s=ctx.opts.per_call_timeout_s if ctx is not None else None,
+            ): idx
             for idx, batch in enumerate(batches)
         }
+        if ctx is not None:
+            ctx.budget.ensure_api_budget(len(batches))
         for future in concurrent.futures.as_completed(future_to_idx):
             idx = future_to_idx[future]
-            batch_result = normalize_text_outputs(
-                future.result(),
-                expected_count=len(batches[idx]),
-                context="provider.infer",
-            )
+            if ctx is None:
+                batch_result = normalize_text_outputs(
+                    future.result(),
+                    expected_count=len(batches[idx]),
+                    context="provider.infer",
+                )
+            else:
+                try:
+                    batch_result = normalize_text_outputs(
+                        future.result(),
+                        expected_count=len(batches[idx]),
+                        context="provider.infer",
+                    )
+                    _record_inference_success(ctx)
+                except Exception as exc:
+                    _maybe_handle_provider_error(ctx, exc)
+                    raise
             batch_results[idx] = batch_result
 
     all_outputs: list[str] = []
@@ -960,7 +1121,7 @@ def _build_media_inference_requests(
             ctx.prompt_obj,
             schema_text=ctx.schema_text,
             examples=ctx.normalized_examples,
-            question=chunk.text or doc.text or "Extract structured data from this document.",
+            question=_media_chunk_question(doc, chunk),
             format_handler=ctx.format_handler,
             additional_context=doc.additional_context,
             output_kind=ctx.output_kind,
@@ -979,53 +1140,133 @@ def _build_media_inference_requests(
 
 
 def _infer_media_batch(
-    provider: Any,
-    requests: Sequence[InferenceRequest],
-    batch_length: int,
+    ctx_or_provider: _ExtractionContext | Any,
+    provider_or_requests: Any = None,
+    requests_or_batch_length: Sequence[InferenceRequest] | int | None = None,
+    batch_length: int | None = None,
     **infer_kwargs: Any,
 ) -> list[str]:
     """Call provider.infer_media in batches."""
+    if isinstance(ctx_or_provider, _ExtractionContext):
+        ctx = ctx_or_provider
+        provider = provider_or_requests
+        requests = requests_or_batch_length
+        batch_length = batch_length if batch_length is not None else 1
+    else:
+        ctx = None
+        provider = ctx_or_provider
+        requests = provider_or_requests
+        batch_length = (
+            requests_or_batch_length
+            if isinstance(requests_or_batch_length, int)
+            else batch_length
+            if batch_length is not None
+            else 1
+        )
     logger.debug(
         "Media batched inference: %d requests, batch_length=%d", len(requests), batch_length
     )
     all_outputs: list[str] = []
     for i in range(0, len(requests), batch_length):
         batch = requests[i : i + batch_length]
-        outputs = normalize_text_outputs(
-            provider.infer_media(batch, **infer_kwargs),
-            expected_count=len(batch),
-            context="provider.infer_media",
-        )
+        if ctx is None:
+            outputs = normalize_text_outputs(
+                provider.infer_media(batch, **infer_kwargs),
+                expected_count=len(batch),
+                context="provider.infer_media",
+            )
+        else:
+            _check_document_deadline(ctx)
+            ctx.budget.ensure_api_budget(1)
+            try:
+                outputs = normalize_text_outputs(
+                    _run_sync_call_with_timeout(
+                        lambda batch=batch: provider.infer_media(batch, **infer_kwargs),
+                        timeout_s=ctx.opts.per_call_timeout_s,
+                    ),
+                    expected_count=len(batch),
+                    context="provider.infer_media",
+                )
+                _record_inference_success(ctx)
+            except Exception as exc:
+                _maybe_handle_provider_error(ctx, exc)
+                raise
         all_outputs.extend(outputs)
     return all_outputs
 
 
 async def _ainfer_media_batch(
-    provider: Any,
-    requests: Sequence[InferenceRequest],
-    batch_length: int,
+    ctx_or_provider: _ExtractionContext | Any,
+    provider_or_requests: Any = None,
+    requests_or_batch_length: Sequence[InferenceRequest] | int | None = None,
+    batch_length: int | None = None,
     **infer_kwargs: Any,
 ) -> list[str]:
     """Async version of media batched inference."""
+    if isinstance(ctx_or_provider, _ExtractionContext):
+        ctx = ctx_or_provider
+        provider = provider_or_requests
+        requests = requests_or_batch_length
+        batch_length = batch_length if batch_length is not None else 1
+    else:
+        ctx = None
+        provider = ctx_or_provider
+        requests = provider_or_requests
+        batch_length = (
+            requests_or_batch_length
+            if isinstance(requests_or_batch_length, int)
+            else batch_length
+            if batch_length is not None
+            else 1
+        )
     all_outputs: list[str] = []
     for i in range(0, len(requests), batch_length):
         batch = requests[i : i + batch_length]
-        if isinstance(provider, SupportsAsyncMediaInfer):
-            outputs = await provider.ainfer_media(batch, **infer_kwargs)
+        if ctx is None:
+            if isinstance(provider, SupportsAsyncMediaInfer):
+                outputs = await provider.ainfer_media(batch, **infer_kwargs)
+            else:
+                outputs = await asyncio.to_thread(provider.infer_media, batch, **infer_kwargs)
+            outputs = normalize_text_outputs(
+                outputs,
+                expected_count=len(batch),
+                context="provider.ainfer_media"
+                if isinstance(provider, SupportsAsyncMediaInfer)
+                else "provider.infer_media",
+            )
         else:
-            outputs = await asyncio.to_thread(provider.infer_media, batch, **infer_kwargs)
-        outputs = normalize_text_outputs(
-            outputs,
-            expected_count=len(batch),
-            context="provider.ainfer_media"
-            if isinstance(provider, SupportsAsyncMediaInfer)
-            else "provider.infer_media",
-        )
+            _check_document_deadline(ctx)
+            ctx.budget.ensure_api_budget(1)
+            try:
+                if isinstance(provider, SupportsAsyncMediaInfer):
+                    outputs = await _run_async_call_with_timeout(
+                        lambda batch=batch: provider.ainfer_media(batch, **infer_kwargs),
+                        timeout_s=ctx.opts.per_call_timeout_s,
+                    )
+                else:
+                    outputs = await asyncio.to_thread(
+                        lambda batch=batch: _run_sync_call_with_timeout(
+                            lambda: provider.infer_media(batch, **infer_kwargs),
+                            timeout_s=ctx.opts.per_call_timeout_s,
+                        )
+                    )
+                outputs = normalize_text_outputs(
+                    outputs,
+                    expected_count=len(batch),
+                    context="provider.ainfer_media"
+                    if isinstance(provider, SupportsAsyncMediaInfer)
+                    else "provider.infer_media",
+                )
+                _record_inference_success(ctx)
+            except Exception as exc:
+                _maybe_handle_provider_error(ctx, exc)
+                raise
         all_outputs.extend(outputs)
     return all_outputs
 
 
 def _infer_media_batch_parallel(
+    ctx: _ExtractionContext,
     provider: Any,
     requests: Sequence[InferenceRequest],
     batch_length: int,
@@ -1037,21 +1278,31 @@ def _infer_media_batch_parallel(
     batches: list[Sequence[InferenceRequest]] = []
     for i in range(0, len(requests), batch_length):
         batches.append(requests[i : i + batch_length])
-    max_workers = max(1, max_workers)
+    max_workers = max(1, min(max_workers, ctx.budget.network_workers))
     logger.debug("Parallel media inference: %d batches, max_workers=%d", len(batches), max_workers)
     batch_results: dict[int, list[str]] = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_idx = {
-            executor.submit(provider.infer_media, batch, **infer_kwargs): idx
+            executor.submit(
+                _run_sync_call_with_timeout,
+                lambda batch=batch: provider.infer_media(batch, **infer_kwargs),
+                timeout_s=ctx.opts.per_call_timeout_s,
+            ): idx
             for idx, batch in enumerate(batches)
         }
+        ctx.budget.ensure_api_budget(len(batches))
         for future in concurrent.futures.as_completed(future_to_idx):
             idx = future_to_idx[future]
-            batch_results[idx] = normalize_text_outputs(
-                future.result(),
-                expected_count=len(batches[idx]),
-                context="provider.infer_media",
-            )
+            try:
+                batch_results[idx] = normalize_text_outputs(
+                    future.result(),
+                    expected_count=len(batches[idx]),
+                    context="provider.infer_media",
+                )
+                _record_inference_success(ctx)
+            except Exception as exc:
+                _maybe_handle_provider_error(ctx, exc)
+                raise
     all_outputs: list[str] = []
     for idx in range(len(batches)):
         all_outputs.extend(batch_results[idx])
@@ -1059,6 +1310,7 @@ def _infer_media_batch_parallel(
 
 
 async def _ainfer_media_batch_parallel(
+    ctx: _ExtractionContext,
     provider: Any,
     requests: Sequence[InferenceRequest],
     batch_length: int,
@@ -1070,23 +1322,39 @@ async def _ainfer_media_batch_parallel(
     batches: list[Sequence[InferenceRequest]] = []
     for i in range(0, len(requests), batch_length):
         batches.append(requests[i : i + batch_length])
-    max_workers = max(1, max_workers)
+    max_workers = max(1, min(max_workers, ctx.budget.network_workers))
     sem = asyncio.Semaphore(max_workers)
 
     async def _run_batch(batch: Sequence[InferenceRequest]) -> list[str]:
         async with sem:
-            if isinstance(provider, SupportsAsyncMediaInfer):
-                raw = await provider.ainfer_media(batch, **infer_kwargs)
-            else:
-                raw = await asyncio.to_thread(provider.infer_media, batch, **infer_kwargs)
-            return normalize_text_outputs(
-                raw,
-                expected_count=len(batch),
-                context="provider.ainfer_media"
-                if isinstance(provider, SupportsAsyncMediaInfer)
-                else "provider.infer_media",
-            )
+            _check_document_deadline(ctx)
+            try:
+                if isinstance(provider, SupportsAsyncMediaInfer):
+                    raw = await _run_async_call_with_timeout(
+                        lambda: provider.ainfer_media(batch, **infer_kwargs),
+                        timeout_s=ctx.opts.per_call_timeout_s,
+                    )
+                else:
+                    raw = await asyncio.to_thread(
+                        lambda: _run_sync_call_with_timeout(
+                            lambda: provider.infer_media(batch, **infer_kwargs),
+                            timeout_s=ctx.opts.per_call_timeout_s,
+                        )
+                    )
+                normalized = normalize_text_outputs(
+                    raw,
+                    expected_count=len(batch),
+                    context="provider.ainfer_media"
+                    if isinstance(provider, SupportsAsyncMediaInfer)
+                    else "provider.infer_media",
+                )
+                _record_inference_success(ctx)
+                return normalized
+            except Exception as exc:
+                _maybe_handle_provider_error(ctx, exc)
+                raise
 
+    ctx.budget.ensure_api_budget(len(batches))
     results = await asyncio.gather(*[_run_batch(b) for b in batches])
     all_outputs: list[str] = []
     for batch_result in results:
@@ -1120,13 +1388,15 @@ def _build_single_inference_request(
 ) -> InferenceRequest:
     """Build a single InferenceRequest bundling all media chunks."""
     all_attachments = tuple(chunk.attachment for chunk in media_chunks)
-    # Collect unique text hints from all chunks (e.g. "Focus on pages: ...").
-    base_question = doc.text or "Extract structured data from this document."
-    extra_hints: list[str] = []
-    for chunk in media_chunks:
-        if chunk.text and chunk.text != doc.text and chunk.text not in extra_hints:
-            extra_hints.append(chunk.text)
-    question = "\n\n".join(extra_hints) if extra_hints else base_question
+    page_local_texts = [
+        chunk.text for chunk in media_chunks if chunk.text and chunk.text != doc.text
+    ]
+    if page_local_texts:
+        question = (
+            _caller_hints_text(doc) + "\n\nPage-local text:\n" + "\n\n".join(page_local_texts)
+        )
+    else:
+        question = _caller_hints_text(doc)
     prompt_text = _render_prompt(
         ctx.prompt_obj,
         schema_text=ctx.schema_text,
@@ -1230,6 +1500,93 @@ def _try_pdf_text_extraction(doc: Document, media_options: Any) -> Document | No
     )
 
 
+def _estimate_media_request_count(
+    *,
+    plan: str,
+    media_chunks: Sequence[MediaChunk],
+) -> int:
+    if plan in {"whole_document", "single"}:
+        return 1 if media_chunks else 0
+    return len(media_chunks)
+
+
+def _remaining_api_budget(ctx: _ExtractionContext) -> int | None:
+    if ctx.opts.max_api_calls is None:
+        return None
+    return ctx.opts.max_api_calls - ctx.budget.api_calls_used
+
+
+def _extract_preflight(doc: Document) -> dict[int, PreflightResult]:
+    if not doc.attachments:
+        return {}
+    from .media.attachments import AttachmentKind
+
+    preflights: dict[int, PreflightResult] = {}
+    for attachment_index, attachment in enumerate(doc.attachments):
+        if attachment.kind is not AttachmentKind.PDF:
+            continue
+        try:
+            preflights[attachment_index] = analyze_pdf_source(
+                attachment.source, page_indices=attachment.page_indices
+            )
+        except Exception:
+            logger.debug("PDF preflight failed; continuing without preflight data", exc_info=True)
+    return preflights
+
+
+def _preflight_mode_by_chunk(
+    doc: Document,
+    media_chunks: Sequence[MediaChunk],
+) -> dict[tuple[int | None, int | None], Literal["text_only", "image_only", "fused"]]:
+    preflights = _extract_preflight(doc)
+    mode_by_chunk: dict[
+        tuple[int | None, int | None], Literal["text_only", "image_only", "fused"]
+    ] = {}
+    for attachment_index, preflight in preflights.items():
+        for page in preflight.pages:
+            mode_by_chunk[(attachment_index, page.page_index)] = page.recommended_mode
+    return mode_by_chunk
+
+
+def _resolve_fused_media_chunks(
+    doc: Document,
+    media_chunks: list[MediaChunk],
+) -> list[MediaChunk]:
+    mode_by_chunk = _preflight_mode_by_chunk(doc, media_chunks)
+    resolved: list[MediaChunk] = []
+    for chunk in media_chunks:
+        if chunk.page_index is None:
+            resolved.append(chunk)
+            continue
+        mode = mode_by_chunk.get((chunk.attachment_index, chunk.page_index), chunk.mode)
+        resolved.append(replace(chunk, mode=mode))
+    return resolved
+
+
+def _enforce_document_limits(
+    ctx: _ExtractionContext,
+    doc: Document,
+) -> dict[int, PreflightResult]:
+    preflights = _extract_preflight(doc)
+    if ctx.opts.max_pdf_bytes is not None:
+        total_pdf_bytes = 0
+        for attachment in doc.attachments:
+            source = attachment.source
+            if isinstance(source, bytes):
+                total_pdf_bytes += len(source)
+            else:
+                total_pdf_bytes += source.stat().st_size
+        if total_pdf_bytes > ctx.opts.max_pdf_bytes:
+            raise RuntimeError(
+                f"PDF size limit exceeded: {total_pdf_bytes} > {ctx.opts.max_pdf_bytes}"
+            )
+    if ctx.opts.max_pages is not None:
+        total_pages = sum(preflight.page_count for preflight in preflights)
+        if total_pages > ctx.opts.max_pages:
+            raise RuntimeError(f"Page limit exceeded: {total_pages} > {ctx.opts.max_pages}")
+    return preflights
+
+
 def _parse_with_repair[T](
     raw: str,
     target: type[T] | TypeAdapter[T],
@@ -1262,6 +1619,50 @@ def _parse_with_repair[T](
             is_done=True,
             allow_partial=allow_partial,
         )
+
+
+def _effective_repair_mode(opts: ExtractOptions) -> Literal["none", "local", "targeted"]:
+    if opts.repair == "targeted":
+        return "targeted"
+    if opts.passes > 1:
+        return "targeted"
+    return opts.repair
+
+
+def _validation_errors_for_state(
+    ctx: _ExtractionContext,
+    state: _DocumentState,
+) -> list[str]:
+    try:
+        ctx.adapter.validate(state.merged_value)
+    except ValidationError as exc:
+        return collect_validation_errors(exc)
+    except ValueError as exc:
+        return [str(exc)]
+    return []
+
+
+def _build_targeted_repair_prompt(
+    *,
+    ctx: _ExtractionContext,
+    doc: Document,
+    state: _DocumentState,
+    original_prompt: str,
+) -> str:
+    errors = _validation_errors_for_state(ctx, state)
+    raw_output = (
+        state.raw_outputs[-1] if state.raw_outputs else format_broken_output(state.merged_value)
+    )
+    return build_repair_prompt(
+        original_question=original_prompt or _caller_hints_text(doc),
+        additional_context=doc.additional_context,
+        schema_text=ctx.schema_text,
+        repair_context=RepairContext(
+            attempt_index=max(len(state.raw_outputs) - 1, 0),
+            prior_output=raw_output,
+            validation_errors=errors,
+        ),
+    )
 
 
 def _default_merged_value(output_kind: _RootKind | None) -> Any:
@@ -1346,6 +1747,280 @@ def _build_sources(doc_evidence: Sequence[FieldEvidence]) -> dict[str, SourceRef
     return sources
 
 
+def _caller_hints_text(doc: Document) -> str:
+    return doc.text or "Extract structured data from this document."
+
+
+def _media_chunk_question(doc: Document, chunk: MediaChunk) -> str:
+    if chunk.text and doc.text:
+        return f"{doc.text}\n\nPage-local text:\n{chunk.text}"
+    return chunk.text or doc.text or "Extract structured data from this document."
+
+
+def _repair_attempt_limit(ctx: _ExtractionContext) -> int:
+    legacy_attempts = max(ctx.opts.passes - 1, 0)
+    configured_attempts = ctx.opts.max_repair_attempts
+    if ctx.opts.repair == "targeted":
+        return max(configured_attempts, legacy_attempts)
+    if legacy_attempts:
+        return legacy_attempts
+    return 0
+
+
+def _should_attempt_targeted_repair(ctx: _ExtractionContext) -> bool:
+    return ctx.opts.repair == "targeted" or ctx.opts.passes > 1
+
+
+def _repair_prompt_for_document(
+    *,
+    ctx: _ExtractionContext,
+    doc: Document,
+    repair_context: RepairContext,
+) -> str:
+    return build_repair_prompt(
+        original_question=_caller_hints_text(doc),
+        additional_context=doc.additional_context,
+        schema_text=ctx.schema_text,
+        repair_context=repair_context,
+    )
+
+
+def _finalize_result_with_targeted_repair[T](
+    *,
+    ctx: _ExtractionContext,
+    doc: Document,
+    target: type[T] | TypeAdapter[T],
+    state: _DocumentState,
+    parse_options: ParseOptions | None,
+    coerce_options: CoerceOptions | None,
+    debug: bool,
+    rendered_prompt_preview: str | None,
+    media_attachments: tuple[Any, ...] = (),
+) -> ExtractResult[T]:
+    merged_value = state.merged_value
+    diagnostics = state.diagnostics
+    try:
+        ctx.adapter.validate(merged_value)
+    except ValidationError as error:
+        if not _should_attempt_targeted_repair(ctx) or _repair_attempt_limit(ctx) <= 0:
+            raise
+        broken_output = format_broken_output(merged_value)
+        validation_errors = collect_validation_errors(error)
+        for attempt_index in range(_repair_attempt_limit(ctx)):
+            repair_prompt = _repair_prompt_for_document(
+                ctx=ctx,
+                doc=doc,
+                repair_context=RepairContext(
+                    attempt_index=attempt_index,
+                    prior_output=broken_output,
+                    validation_errors=validation_errors,
+                ),
+            )
+            try:
+                _check_document_deadline(ctx)
+                ctx.budget.ensure_api_budget(1)
+                if media_attachments:
+                    raw = normalize_text_outputs(
+                        _run_sync_call_with_timeout(
+                            lambda repair_prompt=repair_prompt: ctx.provider.infer_media(
+                                [
+                                    InferenceRequest(
+                                        prompt=repair_prompt,
+                                        attachments=media_attachments,
+                                        document_id=doc.document_id,
+                                    )
+                                ]
+                            ),
+                            timeout_s=ctx.opts.per_call_timeout_s,
+                        ),
+                        expected_count=1,
+                        context="provider.infer_media",
+                    )[0]
+                else:
+                    raw = normalize_text_outputs(
+                        _run_sync_call_with_timeout(
+                            lambda repair_prompt=repair_prompt: ctx.provider.infer([repair_prompt]),
+                            timeout_s=ctx.opts.per_call_timeout_s,
+                        ),
+                        expected_count=1,
+                        context="provider.infer",
+                    )[0]
+                _record_inference_success(ctx)
+            except Exception as exc:
+                _maybe_handle_provider_error(ctx, exc)
+                raise
+
+            state.raw_outputs.append(raw)
+            parsed = _parse_with_repair(
+                raw,
+                target,
+                parse_options=parse_options,
+                coerce_options=coerce_options,
+                repair="local" if ctx.opts.repair in {"local", "targeted"} else "none",
+                allow_partial=False,
+            )
+            merged_value = to_jsonable_python(parsed.value)
+            diagnostics = _build_field_diagnostics(
+                merged_value, state.doc_evidence, source="repair"
+            )
+            state.all_flags.update(parsed.flags)
+            state.worst_score = max(state.worst_score, parsed.score)
+            try:
+                ctx.adapter.validate(merged_value)
+                break
+            except ValidationError as next_error:
+                broken_output = format_broken_output(merged_value)
+                validation_errors = collect_validation_errors(next_error)
+        else:
+            raise ValidationError.from_exception_data("repair", error.errors())
+
+    return _build_extract_result(
+        ctx=ctx,
+        doc=doc,
+        merged_value=merged_value,
+        raw_outputs=state.raw_outputs,
+        all_flags=state.all_flags,
+        worst_score=state.worst_score,
+        doc_evidence=state.doc_evidence,
+        chunk_debug_entries=state.chunk_debug_entries,
+        rendered_prompt_preview=rendered_prompt_preview,
+        debug=debug,
+        conflicts=state.conflicts,
+        diagnostics=diagnostics,
+    )
+
+
+async def _afinalize_result_with_targeted_repair[T](
+    *,
+    ctx: _ExtractionContext,
+    doc: Document,
+    target: type[T] | TypeAdapter[T],
+    state: _DocumentState,
+    parse_options: ParseOptions | None,
+    coerce_options: CoerceOptions | None,
+    debug: bool,
+    rendered_prompt_preview: str | None,
+    media_attachments: tuple[Any, ...] = (),
+) -> ExtractResult[T]:
+    merged_value = state.merged_value
+    diagnostics = state.diagnostics
+    try:
+        ctx.adapter.validate(merged_value)
+    except ValidationError as error:
+        if not _should_attempt_targeted_repair(ctx) or _repair_attempt_limit(ctx) <= 0:
+            raise
+        broken_output = format_broken_output(merged_value)
+        validation_errors = collect_validation_errors(error)
+        for attempt_index in range(_repair_attempt_limit(ctx)):
+            repair_prompt = _repair_prompt_for_document(
+                ctx=ctx,
+                doc=doc,
+                repair_context=RepairContext(
+                    attempt_index=attempt_index,
+                    prior_output=broken_output,
+                    validation_errors=validation_errors,
+                ),
+            )
+            try:
+                _check_document_deadline(ctx)
+                ctx.budget.ensure_api_budget(1)
+                if media_attachments:
+                    if isinstance(ctx.provider, SupportsAsyncMediaInfer):
+                        raw_result = await _run_async_call_with_timeout(
+                            lambda repair_prompt=repair_prompt: ctx.provider.ainfer_media(
+                                [
+                                    InferenceRequest(
+                                        prompt=repair_prompt,
+                                        attachments=media_attachments,
+                                        document_id=doc.document_id,
+                                    )
+                                ]
+                            ),
+                            timeout_s=ctx.opts.per_call_timeout_s,
+                        )
+                    else:
+                        raw_result = await asyncio.to_thread(
+                            lambda repair_prompt=repair_prompt: _run_sync_call_with_timeout(
+                                lambda: ctx.provider.infer_media(
+                                    [
+                                        InferenceRequest(
+                                            prompt=repair_prompt,
+                                            attachments=media_attachments,
+                                            document_id=doc.document_id,
+                                        )
+                                    ]
+                                ),
+                                timeout_s=ctx.opts.per_call_timeout_s,
+                            )
+                        )
+                    raw = normalize_text_outputs(
+                        raw_result,
+                        expected_count=1,
+                        context="provider.ainfer_media",
+                    )[0]
+                else:
+                    if hasattr(ctx.provider, "ainfer"):
+                        raw_result = await _run_async_call_with_timeout(
+                            lambda repair_prompt=repair_prompt: ctx.provider.ainfer(
+                                [repair_prompt]
+                            ),
+                            timeout_s=ctx.opts.per_call_timeout_s,
+                        )
+                    else:
+                        raw_result = await asyncio.to_thread(
+                            lambda repair_prompt=repair_prompt: _run_sync_call_with_timeout(
+                                lambda: ctx.provider.infer([repair_prompt]),
+                                timeout_s=ctx.opts.per_call_timeout_s,
+                            )
+                        )
+                    raw = normalize_text_outputs(
+                        raw_result, expected_count=1, context="provider.ainfer"
+                    )[0]
+                _record_inference_success(ctx)
+            except Exception as exc:
+                _maybe_handle_provider_error(ctx, exc)
+                raise
+
+            state.raw_outputs.append(raw)
+            parsed = _parse_with_repair(
+                raw,
+                target,
+                parse_options=parse_options,
+                coerce_options=coerce_options,
+                repair="local" if ctx.opts.repair in {"local", "targeted"} else "none",
+                allow_partial=False,
+            )
+            merged_value = to_jsonable_python(parsed.value)
+            diagnostics = _build_field_diagnostics(
+                merged_value, state.doc_evidence, source="repair"
+            )
+            state.all_flags.update(parsed.flags)
+            state.worst_score = max(state.worst_score, parsed.score)
+            try:
+                ctx.adapter.validate(merged_value)
+                break
+            except ValidationError as next_error:
+                broken_output = format_broken_output(merged_value)
+                validation_errors = collect_validation_errors(next_error)
+        else:
+            raise ValidationError.from_exception_data("repair", error.errors())
+
+    return _build_extract_result(
+        ctx=ctx,
+        doc=doc,
+        merged_value=merged_value,
+        raw_outputs=state.raw_outputs,
+        all_flags=state.all_flags,
+        worst_score=state.worst_score,
+        doc_evidence=state.doc_evidence,
+        chunk_debug_entries=state.chunk_debug_entries,
+        rendered_prompt_preview=rendered_prompt_preview,
+        debug=debug,
+        conflicts=state.conflicts,
+        diagnostics=diagnostics,
+    )
+
+
 def _build_extract_result[T](
     *,
     ctx: _ExtractionContext,
@@ -1359,6 +2034,7 @@ def _build_extract_result[T](
     rendered_prompt_preview: str | None,
     debug: bool,
     conflicts: list[MergeConflict] | None = None,
+    diagnostics: dict[str, FieldDiagnostic] | None = None,
 ) -> ExtractResult[T]:
     validated = ctx.adapter.validate(merged_value)
     debug_info = (
@@ -1379,6 +2055,7 @@ def _build_extract_result[T](
         score=worst_score,
         evidence=doc_evidence,
         sources=_build_sources(doc_evidence),
+        diagnostics=diagnostics or _build_field_diagnostics(merged_value, doc_evidence),
         debug=debug_info,
         conflicts=conflicts or [],
     )
@@ -1395,6 +2072,74 @@ class _DocumentState:
     chunk_debug_entries: list[ChunkDebug] = field(default_factory=list)
     doc_evidence: list[FieldEvidence] = field(default_factory=list)
     conflicts: list[MergeConflict] = field(default_factory=list)
+    diagnostics: dict[str, FieldDiagnostic] = field(default_factory=dict)
+
+
+def _has_evidence_at_path(path: str, evidence_paths: set[str]) -> bool:
+    pointer_path = _pointer_path(path)
+    return any(
+        item == pointer_path or item.startswith(pointer_path + "/") for item in evidence_paths
+    )
+
+
+def _classify_field_state(value: Any, *, has_evidence: bool) -> FieldState:
+    if value is None:
+        return FieldState.ABSENT
+    if isinstance(value, str) and value == "":
+        return FieldState.EMPTY if has_evidence else FieldState.ABSENT
+    if isinstance(value, (list, dict)) and not value:
+        return FieldState.EMPTY if has_evidence else FieldState.ABSENT
+    return FieldState.PRESENT
+
+
+def _diagnostic_confidence(state: FieldState, *, has_evidence: bool) -> float:
+    if state == FieldState.ABSENT:
+        return 0.0
+    if has_evidence:
+        return 1.0
+    if state == FieldState.EMPTY:
+        return 0.5
+    return 0.75
+
+
+def _build_field_diagnostics(
+    value: Any,
+    evidence: Sequence[FieldEvidence],
+    *,
+    source: Literal["document", "page", "fused", "repair"] = "document",
+) -> dict[str, FieldDiagnostic]:
+    diagnostics: dict[str, FieldDiagnostic] = {}
+    evidence_paths = {_pointer_path(item.path) for item in evidence}
+
+    def _visit(current: Any, path: str) -> None:
+        pointer_path = _pointer_path(path)
+        has_evidence = _has_evidence_at_path(pointer_path, evidence_paths)
+        state = _classify_field_state(current, has_evidence=has_evidence)
+        diagnostics[pointer_path] = FieldDiagnostic(
+            state=state,
+            source=source,
+            confidence=_diagnostic_confidence(state, has_evidence=has_evidence),
+        )
+        if isinstance(current, dict):
+            for key, child in current.items():
+                _visit(child, _pointer_with_child(path, key))
+        elif isinstance(current, list):
+            for idx, child in enumerate(current):
+                _visit(child, _pointer_with_child(path, idx))
+
+    if value is not None:
+        _visit(value, "")
+    return diagnostics
+
+
+def _value_for_evidence(value: Any) -> Any:
+    if hasattr(value, "model_dump"):
+        return _value_for_evidence(value.model_dump(exclude_defaults=True))
+    if isinstance(value, list):
+        return [_value_for_evidence(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _value_for_evidence(item) for key, item in value.items()}
+    return to_jsonable_python(value)
 
 
 def _accumulate_pass[T](
@@ -1458,7 +2203,7 @@ def _accumulate_pass[T](
             state.worst_score = max(state.worst_score, parsed.score)
             chunk_evidence = _align_evidence(
                 chunk.text,
-                chunk_value,
+                _value_for_evidence(parsed.value),
                 tokenizer=ctx.opts.tokenizer,
                 alignment=ctx.opts.alignment,
                 offset=chunk.start,
@@ -1506,6 +2251,7 @@ def _accumulate_pass[T](
         state.doc_evidence = pass_evidence
     else:
         state.doc_evidence = _dedupe_field_evidence([*state.doc_evidence, *pass_evidence])
+    state.diagnostics = _build_field_diagnostics(state.merged_value, state.doc_evidence)
 
 
 def _accumulate_media_pass[T](
@@ -1561,7 +2307,7 @@ def _accumulate_media_pass[T](
 
         if chunk_value is not None:
             chunk_evidence: list[FieldEvidence] = []
-            for path, text in _iter_leaf_values(chunk_value):
+            for path, text in _iter_leaf_values(_value_for_evidence(parsed.value)):
                 chunk_evidence.append(
                     FieldEvidence(
                         path=path,
@@ -1612,6 +2358,199 @@ def _accumulate_media_pass[T](
         state.doc_evidence = pass_evidence
     else:
         state.doc_evidence = _dedupe_field_evidence([*state.doc_evidence, *pass_evidence])
+    state.diagnostics = _build_field_diagnostics(
+        state.merged_value, state.doc_evidence, source="page"
+    )
+
+
+def _targeted_repair_attempts(opts: ExtractOptions) -> int:
+    if _effective_repair_mode(opts) != "targeted":
+        return 0
+    return max(opts.max_repair_attempts, opts.passes - 1)
+
+
+def _run_text_targeted_repair[T](
+    *,
+    ctx: _ExtractionContext,
+    doc: Document,
+    state: _DocumentState,
+    original_prompt: str,
+    target: type[T] | TypeAdapter[T],
+    parse_options: ParseOptions | None,
+    coerce_options: CoerceOptions | None,
+    debug: bool,
+    native_kwargs: dict[str, Any],
+) -> None:
+    repair_chunk = TextChunk(text=doc.text, start=0, end=len(doc.text))
+    for attempt in range(_targeted_repair_attempts(ctx.opts)):
+        errors = _validation_errors_for_state(ctx, state)
+        if not errors:
+            return
+        repair_prompt = _build_targeted_repair_prompt(
+            ctx=ctx,
+            doc=doc,
+            state=state,
+            original_prompt=original_prompt,
+        )
+        inferred = _infer_batch(ctx, ctx.provider, [repair_prompt], 1, **native_kwargs)
+        _accumulate_pass(
+            pass_index=attempt + 1,
+            state=state,
+            chunks=[repair_chunk],
+            inferred=inferred,
+            target=target,
+            ctx=ctx,
+            parse_options=parse_options,
+            coerce_options=coerce_options,
+            debug=debug,
+        )
+        state.diagnostics = _build_field_diagnostics(
+            state.merged_value, state.doc_evidence, source="repair"
+        )
+
+
+async def _arun_text_targeted_repair[T](
+    *,
+    ctx: _ExtractionContext,
+    doc: Document,
+    state: _DocumentState,
+    original_prompt: str,
+    target: type[T] | TypeAdapter[T],
+    parse_options: ParseOptions | None,
+    coerce_options: CoerceOptions | None,
+    debug: bool,
+    native_kwargs: dict[str, Any],
+) -> None:
+    repair_chunk = TextChunk(text=doc.text, start=0, end=len(doc.text))
+    for attempt in range(_targeted_repair_attempts(ctx.opts)):
+        errors = _validation_errors_for_state(ctx, state)
+        if not errors:
+            return
+        repair_prompt = _build_targeted_repair_prompt(
+            ctx=ctx,
+            doc=doc,
+            state=state,
+            original_prompt=original_prompt,
+        )
+        inferred = await _ainfer_batch(ctx, ctx.provider, [repair_prompt], 1, **native_kwargs)
+        _accumulate_pass(
+            pass_index=attempt + 1,
+            state=state,
+            chunks=[repair_chunk],
+            inferred=inferred,
+            target=target,
+            ctx=ctx,
+            parse_options=parse_options,
+            coerce_options=coerce_options,
+            debug=debug,
+        )
+        state.diagnostics = _build_field_diagnostics(
+            state.merged_value, state.doc_evidence, source="repair"
+        )
+
+
+def _run_media_targeted_repair[T](
+    *,
+    ctx: _ExtractionContext,
+    doc: Document,
+    state: _DocumentState,
+    request: InferenceRequest,
+    chunk: MediaChunk,
+    original_prompt: str,
+    target: type[T] | TypeAdapter[T],
+    parse_options: ParseOptions | None,
+    coerce_options: CoerceOptions | None,
+    debug: bool,
+    native_kwargs: dict[str, Any],
+) -> None:
+    for attempt in range(_targeted_repair_attempts(ctx.opts)):
+        errors = _validation_errors_for_state(ctx, state)
+        if not errors:
+            return
+        repair_prompt = _build_targeted_repair_prompt(
+            ctx=ctx,
+            doc=doc,
+            state=state,
+            original_prompt=original_prompt,
+        )
+        repair_request = InferenceRequest(
+            prompt=repair_prompt,
+            attachments=request.attachments,
+            document_id=request.document_id,
+            document_index=request.document_index,
+            attachment_index=request.attachment_index,
+            page_index=request.page_index,
+            meta=request.meta,
+        )
+        inferred = _infer_media_batch(ctx, ctx.provider, [repair_request], 1, **native_kwargs)
+        _accumulate_media_pass(
+            pass_index=attempt + 1,
+            state=state,
+            media_requests=[repair_request],
+            media_chunks=[chunk],
+            inferred=inferred,
+            target=target,
+            ctx=ctx,
+            parse_options=parse_options,
+            coerce_options=coerce_options,
+            debug=debug,
+        )
+        state.diagnostics = _build_field_diagnostics(
+            state.merged_value, state.doc_evidence, source="repair"
+        )
+
+
+async def _arun_media_targeted_repair[T](
+    *,
+    ctx: _ExtractionContext,
+    doc: Document,
+    state: _DocumentState,
+    request: InferenceRequest,
+    chunk: MediaChunk,
+    original_prompt: str,
+    target: type[T] | TypeAdapter[T],
+    parse_options: ParseOptions | None,
+    coerce_options: CoerceOptions | None,
+    debug: bool,
+    native_kwargs: dict[str, Any],
+) -> None:
+    for attempt in range(_targeted_repair_attempts(ctx.opts)):
+        errors = _validation_errors_for_state(ctx, state)
+        if not errors:
+            return
+        repair_prompt = _build_targeted_repair_prompt(
+            ctx=ctx,
+            doc=doc,
+            state=state,
+            original_prompt=original_prompt,
+        )
+        repair_request = InferenceRequest(
+            prompt=repair_prompt,
+            attachments=request.attachments,
+            document_id=request.document_id,
+            document_index=request.document_index,
+            attachment_index=request.attachment_index,
+            page_index=request.page_index,
+            meta=request.meta,
+        )
+        inferred = await _ainfer_media_batch(
+            ctx, ctx.provider, [repair_request], 1, **native_kwargs
+        )
+        _accumulate_media_pass(
+            pass_index=attempt + 1,
+            state=state,
+            media_requests=[repair_request],
+            media_chunks=[chunk],
+            inferred=inferred,
+            target=target,
+            ctx=ctx,
+            parse_options=parse_options,
+            coerce_options=coerce_options,
+            debug=debug,
+        )
+        state.diagnostics = _build_field_diagnostics(
+            state.merged_value, state.doc_evidence, source="repair"
+        )
 
 
 def _dedupe_field_evidence(evidence: Sequence[FieldEvidence]) -> list[FieldEvidence]:
@@ -1637,7 +2576,16 @@ def _dedupe_field_evidence(evidence: Sequence[FieldEvidence]) -> list[FieldEvide
     return deduped
 
 
-def _is_missing_hybrid_value(value: Any) -> bool:
+def _is_missing_hybrid_value(
+    value: Any,
+    diagnostic: FieldDiagnostic | None = None,
+) -> bool:
+    if diagnostic is not None:
+        return diagnostic.state in {
+            FieldState.ABSENT,
+            FieldState.ERROR,
+            FieldState.NOT_ATTEMPTED,
+        }
     return value in (None, "", [], {})
 
 
@@ -1687,8 +2635,6 @@ def _evidence_value_index(
 ) -> dict[str, set[str]]:
     values_by_path: dict[str, set[str]] = defaultdict(set)
     for item in evidence:
-        if item.value_preview == "":
-            continue
         values_by_path[item.path].add(item.value_preview)
     return values_by_path
 
@@ -1698,6 +2644,13 @@ def _conflicts_by_path(conflicts: Sequence[MergeConflict]) -> dict[str, list[Mer
     for conflict in conflicts:
         grouped[conflict.path].append(conflict)
     return grouped
+
+
+def _diagnostic_at_path(
+    diagnostics: dict[str, FieldDiagnostic],
+    path: str,
+) -> FieldDiagnostic | None:
+    return diagnostics.get(_pointer_path(path))
 
 
 def _relative_leaf_map(value: Any) -> dict[str, str]:
@@ -1753,6 +2706,36 @@ def _item_match_score(
     if any(page_leaves[path] != whole_leaves[path] for path in paths_to_compare):
         return 0.0
     return len(paths_to_compare) / max(len(page_leaves), len(whole_leaves), 1)
+
+
+def _item_identity_signature(
+    item: Any,
+    *,
+    item_path: str,
+    field_scope: Any,
+) -> tuple[tuple[str, str], ...]:
+    leaf_map = _normalized_relative_leaf_map(item)
+    if not leaf_map:
+        return ()
+    identity_items = [
+        (relative_path, value)
+        for relative_path, value in leaf_map.items()
+        if field_scope.scope_for(_join_relative_pointer(item_path, relative_path)) == "auto"
+    ]
+    if identity_items:
+        return tuple(sorted(identity_items))
+    return tuple(sorted(leaf_map.items()))
+
+
+def _item_sort_key(
+    item: Any,
+    *,
+    item_path: str,
+    field_scope: Any,
+) -> tuple[tuple[tuple[str, str], ...], int, tuple[tuple[str, str], ...]]:
+    signature = _item_identity_signature(item, item_path=item_path, field_scope=field_scope)
+    normalized = _normalized_relative_leaf_map(item)
+    return (signature, -len(normalized), tuple(sorted(normalized.items())))
 
 
 def _add_alias(aliases: list[tuple[str, str]], source_path: str, final_path: str) -> None:
@@ -1825,12 +2808,14 @@ def _should_prefer_whole_for_auto_scalar(
     path: str,
     page_value: Any,
     whole_value: Any,
+    page_diagnostic: FieldDiagnostic | None,
+    whole_diagnostic: FieldDiagnostic | None,
     page_values_by_path: dict[str, set[str]],
     page_conflicts_by_path: dict[str, list[MergeConflict]],
 ) -> bool:
-    if _is_missing_hybrid_value(page_value):
+    if _is_missing_hybrid_value(page_value, page_diagnostic):
         return True
-    if _is_missing_hybrid_value(whole_value):
+    if _is_missing_hybrid_value(whole_value, whole_diagnostic):
         return False
     if page_value == whole_value:
         return False
@@ -1845,21 +2830,33 @@ def _reconcile_hybrid_value(
     whole_value: Any,
     path: str,
     field_scope: Any,
+    page_diagnostics: dict[str, FieldDiagnostic],
+    whole_diagnostics: dict[str, FieldDiagnostic],
     page_values_by_path: dict[str, set[str]],
     page_conflicts_by_path: dict[str, list[MergeConflict]],
 ) -> tuple[Any, _HybridMergeTrace]:
     trace = _HybridMergeTrace()
     pointer_path = _pointer_path(path)
     scope = field_scope.scope_for(pointer_path)
+    page_diagnostic = _diagnostic_at_path(page_diagnostics, pointer_path)
+    whole_diagnostic = _diagnostic_at_path(whole_diagnostics, pointer_path)
 
-    if _is_missing_hybrid_value(page_value):
+    if _is_missing_hybrid_value(page_value, page_diagnostic):
         if whole_value is None:
             return None, trace
         trace.include_whole_value(whole_value, path)
         return whole_value, trace
-    if _is_missing_hybrid_value(whole_value):
+    if _is_missing_hybrid_value(whole_value, whole_diagnostic):
         trace.include_page_value(page_value, path)
         return page_value, trace
+    if page_diagnostic is not None and page_diagnostic.state == FieldState.EMPTY:
+        if scope in {"auto", "local", "span"} or whole_diagnostic is None:
+            trace.include_page_value(page_value, path)
+            return page_value, trace
+    if whole_diagnostic is not None and whole_diagnostic.state == FieldState.EMPTY:
+        if scope == "global":
+            trace.include_whole_value(whole_value, path)
+            return whole_value, trace
 
     if isinstance(page_value, dict) or isinstance(whole_value, dict):
         if not isinstance(page_value, dict):
@@ -1868,6 +2865,12 @@ def _reconcile_hybrid_value(
         if not isinstance(whole_value, dict):
             trace.include_page_value(page_value, path)
             return page_value, trace
+        if page_diagnostic is not None and page_diagnostic.state == FieldState.EMPTY:
+            trace.include_page_value(page_value, path)
+            return page_value, trace
+        if whole_diagnostic is not None and whole_diagnostic.state == FieldState.EMPTY:
+            trace.include_whole_value(whole_value, path)
+            return whole_value, trace
         merged: dict[str, Any] = {}
         for key in sorted(set(page_value) | set(whole_value)):
             child_path = _pointer_with_child(path, key)
@@ -1876,6 +2879,8 @@ def _reconcile_hybrid_value(
                 whole_value=whole_value.get(key),
                 path=child_path,
                 field_scope=field_scope,
+                page_diagnostics=page_diagnostics,
+                whole_diagnostics=whole_diagnostics,
                 page_values_by_path=page_values_by_path,
                 page_conflicts_by_path=page_conflicts_by_path,
             )
@@ -1891,11 +2896,19 @@ def _reconcile_hybrid_value(
         if not isinstance(whole_value, list):
             trace.include_page_value(page_value, path)
             return page_value, trace
+        if page_diagnostic is not None and page_diagnostic.state == FieldState.EMPTY:
+            trace.include_page_value(page_value, path)
+            return page_value, trace
+        if whole_diagnostic is not None and whole_diagnostic.state == FieldState.EMPTY:
+            trace.include_whole_value(whole_value, path)
+            return whole_value, trace
         merged_list, list_trace = _reconcile_hybrid_list(
             page_items=page_value,
             whole_items=whole_value,
             path=path,
             field_scope=field_scope,
+            page_diagnostics=page_diagnostics,
+            whole_diagnostics=whole_diagnostics,
             page_values_by_path=page_values_by_path,
             page_conflicts_by_path=page_conflicts_by_path,
         )
@@ -1908,6 +2921,8 @@ def _reconcile_hybrid_value(
             path=pointer_path,
             page_value=page_value,
             whole_value=whole_value,
+            page_diagnostic=page_diagnostic,
+            whole_diagnostic=whole_diagnostic,
             page_values_by_path=page_values_by_path,
             page_conflicts_by_path=page_conflicts_by_path,
         )
@@ -1934,6 +2949,8 @@ def _reconcile_hybrid_list(
     whole_items: list[Any],
     path: str,
     field_scope: Any,
+    page_diagnostics: dict[str, FieldDiagnostic],
+    whole_diagnostics: dict[str, FieldDiagnostic],
     page_values_by_path: dict[str, set[str]],
     page_conflicts_by_path: dict[str, list[MergeConflict]],
 ) -> tuple[list[Any], _HybridMergeTrace]:
@@ -1950,6 +2967,15 @@ def _reconcile_hybrid_list(
 
     used_secondary: set[int] = set()
     merged_items: list[Any] = []
+    primary_order = list(range(len(primary_items)))
+    secondary_order = sorted(
+        range(len(secondary_items)),
+        key=lambda idx: _item_sort_key(
+            secondary_items[idx],
+            item_path=_pointer_with_child(path, idx),
+            field_scope=field_scope,
+        ),
+    )
 
     def _leaf_map_is_subset(subset_map: dict[str, str], superset_map: dict[str, str]) -> bool:
         return bool(subset_map) and all(
@@ -1991,12 +3017,18 @@ def _reconcile_hybrid_list(
             return None
         return matches[0]
 
-    for primary_index, primary_item in enumerate(primary_items):
-        best_secondary_index: int | None = None
-        best_score = 0.0
-        for secondary_index, secondary_item in enumerate(secondary_items):
-            if secondary_index in used_secondary:
-                continue
+    candidate_matches: list[
+        tuple[
+            float,
+            int,
+            tuple[tuple[tuple[str, str], ...], int, tuple[tuple[str, str], ...]],
+            int,
+        ]
+    ] = []
+    for primary_index in primary_order:
+        primary_item = primary_items[primary_index]
+        for secondary_index in secondary_order:
+            secondary_item = secondary_items[secondary_index]
             page_item_path = _pointer_with_child(
                 path,
                 primary_index if primary_branch == "page" else secondary_index,
@@ -2007,9 +3039,35 @@ def _reconcile_hybrid_list(
                 page_item_path=page_item_path,
                 field_scope=field_scope,
             )
-            if score > best_score:
-                best_score = score
-                best_secondary_index = secondary_index
+            if score <= 0:
+                continue
+            candidate_matches.append(
+                (
+                    score,
+                    primary_index,
+                    _item_sort_key(
+                        secondary_item,
+                        item_path=_pointer_with_child(path, secondary_index),
+                        field_scope=field_scope,
+                    ),
+                    secondary_index,
+                )
+            )
+
+    primary_to_secondary: dict[int, int] = {}
+    for _, primary_index, _, secondary_index in sorted(
+        candidate_matches,
+        key=lambda item: (-item[0], item[1], item[2], item[3]),
+    ):
+        if primary_index in primary_to_secondary or secondary_index in used_secondary:
+            continue
+        primary_to_secondary[primary_index] = secondary_index
+        used_secondary.add(secondary_index)
+
+    used_secondary.clear()
+    for primary_index in primary_order:
+        primary_item = primary_items[primary_index]
+        best_secondary_index = primary_to_secondary.get(primary_index)
 
         final_index = len(merged_items)
         final_item_path = _pointer_with_child(path, final_index)
@@ -2020,13 +3078,15 @@ def _reconcile_hybrid_list(
         else:
             _add_alias(item_trace.whole_aliases, primary_item_path, final_item_path)
 
-        if best_secondary_index is None or best_score <= 0.0:
+        if best_secondary_index is None:
             if primary_branch == "page":
                 item_value, value_trace = _reconcile_hybrid_value(
                     page_value=primary_item,
                     whole_value=None,
                     path=final_item_path,
                     field_scope=field_scope,
+                    page_diagnostics=page_diagnostics,
+                    whole_diagnostics=whole_diagnostics,
                     page_values_by_path=page_values_by_path,
                     page_conflicts_by_path=page_conflicts_by_path,
                 )
@@ -2036,6 +3096,8 @@ def _reconcile_hybrid_list(
                     whole_value=primary_item,
                     path=final_item_path,
                     field_scope=field_scope,
+                    page_diagnostics=page_diagnostics,
+                    whole_diagnostics=whole_diagnostics,
                     page_values_by_path=page_values_by_path,
                     page_conflicts_by_path=page_conflicts_by_path,
                 )
@@ -2050,6 +3112,8 @@ def _reconcile_hybrid_list(
                     whole_value=secondary_item,
                     path=final_item_path,
                     field_scope=field_scope,
+                    page_diagnostics=page_diagnostics,
+                    whole_diagnostics=whole_diagnostics,
                     page_values_by_path=page_values_by_path,
                     page_conflicts_by_path=page_conflicts_by_path,
                 )
@@ -2060,6 +3124,8 @@ def _reconcile_hybrid_list(
                     whole_value=primary_item,
                     path=final_item_path,
                     field_scope=field_scope,
+                    page_diagnostics=page_diagnostics,
+                    whole_diagnostics=whole_diagnostics,
                     page_values_by_path=page_values_by_path,
                     page_conflicts_by_path=page_conflicts_by_path,
                 )
@@ -2067,7 +3133,8 @@ def _reconcile_hybrid_list(
         item_trace.merge(value_trace)
         trace.merge(item_trace)
 
-    for secondary_index, secondary_item in enumerate(secondary_items):
+    for secondary_index in secondary_order:
+        secondary_item = secondary_items[secondary_index]
         if secondary_index in used_secondary:
             continue
         final_index = len(merged_items)
@@ -2081,6 +3148,8 @@ def _reconcile_hybrid_list(
                 whole_value=secondary_item,
                 path=final_item_path,
                 field_scope=field_scope,
+                page_diagnostics=page_diagnostics,
+                whole_diagnostics=whole_diagnostics,
                 page_values_by_path=page_values_by_path,
                 page_conflicts_by_path=page_conflicts_by_path,
             )
@@ -2091,6 +3160,8 @@ def _reconcile_hybrid_list(
                 whole_value=None,
                 path=final_item_path,
                 field_scope=field_scope,
+                page_diagnostics=page_diagnostics,
+                whole_diagnostics=whole_diagnostics,
                 page_values_by_path=page_values_by_path,
                 page_conflicts_by_path=page_conflicts_by_path,
             )
@@ -2289,6 +3360,7 @@ def _branch_has_contribution(
     trace: _HybridMergeTrace,
     evidence: Sequence[FieldEvidence],
     merged_value: Any,
+    diagnostics: dict[str, FieldDiagnostic],
 ) -> bool:
     if branch == "page" and trace.page_paths:
         return True
@@ -2299,8 +3371,30 @@ def _branch_has_contribution(
         if branch == "page"
         else _remap_evidence_paths(evidence, trace.whole_aliases)
     )
-    selected_paths = {path for path, value in _iter_leaf_values(merged_value) if value is not None}
+    selected_paths = {
+        path
+        for path, diagnostic in diagnostics.items()
+        if diagnostic.state in {FieldState.PRESENT, FieldState.EMPTY}
+    } or {path for path, value in _iter_leaf_values(merged_value) if value is not None}
     return any(item.path in selected_paths for item in branch_evidence)
+
+
+def _build_merged_diagnostics(
+    *,
+    merged_value: Any,
+    doc_evidence: Sequence[FieldEvidence],
+    trace: _HybridMergeTrace,
+    page_diagnostics: dict[str, FieldDiagnostic],
+    whole_diagnostics: dict[str, FieldDiagnostic],
+) -> dict[str, FieldDiagnostic]:
+    diagnostics = _build_field_diagnostics(merged_value, doc_evidence)
+    for path in trace.page_paths:
+        if path in diagnostics and path in page_diagnostics:
+            diagnostics[path] = page_diagnostics[path]
+    for path in trace.whole_paths:
+        if path in diagnostics and path in whole_diagnostics:
+            diagnostics[path] = whole_diagnostics[path]
+    return diagnostics
 
 
 def _merge_hybrid_states(
@@ -2318,6 +3412,8 @@ def _merge_hybrid_states(
         whole_value=whole_state.merged_value,
         path="",
         field_scope=field_scope,
+        page_diagnostics=page_state.diagnostics,
+        whole_diagnostics=whole_state.diagnostics,
         page_values_by_path=page_values_by_path,
         page_conflicts_by_path=page_conflicts_by_path,
     )
@@ -2342,12 +3438,14 @@ def _merge_hybrid_states(
         trace=trace,
         evidence=page_state.doc_evidence,
         merged_value=merged_value,
+        diagnostics=page_state.diagnostics,
     )
     whole_contributed = _branch_has_contribution(
         branch="whole",
         trace=trace,
         evidence=whole_state.doc_evidence,
         merged_value=merged_value,
+        diagnostics=whole_state.diagnostics,
     )
     contributing_states: list[_DocumentState] = []
     if page_contributed:
@@ -2365,6 +3463,13 @@ def _merge_hybrid_states(
         ],
         doc_evidence=doc_evidence,
         conflicts=conflicts,
+        diagnostics=_build_merged_diagnostics(
+            merged_value=merged_value,
+            doc_evidence=doc_evidence,
+            trace=trace,
+            page_diagnostics=page_state.diagnostics,
+            whole_diagnostics=whole_state.diagnostics,
+        ),
     )
 
 
@@ -2394,7 +3499,7 @@ def _run_hybrid_media_extraction[T](
     single_req = _build_single_inference_request(ctx, doc, whole_media_chunks)
     rendered_prompt_preview = single_req.prompt[:500] if debug else None
     batch_length = max(1, ctx.opts.batch_length)
-    max_workers = max(1, ctx.opts.max_workers)
+    max_workers = max(1, min(ctx.opts.max_workers, ctx.budget.network_workers))
     page_state = _DocumentState()
     whole_state = _DocumentState()
     aggregate_chunk = MediaChunk(
@@ -2404,65 +3509,76 @@ def _run_hybrid_media_extraction[T](
         text=whole_media_chunks[0].text,
     )
 
-    for pass_index in range(max(1, ctx.opts.passes)):
+    def _run_whole_branch() -> list[str]:
+        return _infer_media_batch(ctx, ctx.provider, [single_req], batch_length, **native_kwargs)
 
-        def _run_whole_branch() -> list[str]:
-            return _infer_media_batch(ctx.provider, [single_req], batch_length, **native_kwargs)
-
-        def _run_page_branch() -> list[str]:
-            if max_workers <= 1:
-                return _infer_media_batch(
-                    ctx.provider, media_requests, batch_length, **native_kwargs
-                )
-            return _infer_media_batch_parallel(
-                ctx.provider,
-                media_requests,
-                batch_length,
-                max_workers,
-                **native_kwargs,
+    def _run_page_branch() -> list[str]:
+        if max_workers <= 1:
+            return _infer_media_batch(
+                ctx, ctx.provider, media_requests, batch_length, **native_kwargs
             )
-
-        if isinstance(ctx.provider, SupportsAsyncMediaInfer):
-            whole_inferred = _run_whole_branch()
-            page_inferred = _run_page_branch()
-        else:
-            whole_inferred, page_inferred = _run_parallel_pair(_run_whole_branch, _run_page_branch)
-        _accumulate_media_pass(
-            pass_index=pass_index,
-            state=whole_state,
-            media_requests=[single_req],
-            media_chunks=[aggregate_chunk],
-            inferred=whole_inferred,
-            target=target,
-            ctx=ctx,
-            parse_options=parse_options,
-            coerce_options=coerce_options,
-            debug=debug,
+        return _infer_media_batch_parallel(
+            ctx,
+            ctx.provider,
+            media_requests,
+            batch_length,
+            max_workers,
+            **native_kwargs,
         )
 
-        _accumulate_media_pass(
-            pass_index=pass_index,
-            state=page_state,
-            media_requests=media_requests,
-            media_chunks=page_media_chunks,
-            inferred=page_inferred,
-            target=target,
-            ctx=ctx,
-            parse_options=parse_options,
-            coerce_options=coerce_options,
-            debug=debug,
-        )
-
-    return (
-        _merge_hybrid_states(
-            page_state=page_state,
-            whole_state=whole_state,
-            field_scope=ctx.resolved_strategy.field_scope,
-            doc=doc,
-            output_kind=ctx.output_kind,
-        ),
-        rendered_prompt_preview,
+    if isinstance(ctx.provider, SupportsAsyncMediaInfer):
+        whole_inferred = _run_whole_branch()
+        page_inferred = _run_page_branch()
+    else:
+        whole_inferred, page_inferred = _run_parallel_pair(_run_whole_branch, _run_page_branch)
+    _accumulate_media_pass(
+        pass_index=0,
+        state=whole_state,
+        media_requests=[single_req],
+        media_chunks=[aggregate_chunk],
+        inferred=whole_inferred,
+        target=target,
+        ctx=ctx,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
     )
+
+    _accumulate_media_pass(
+        pass_index=0,
+        state=page_state,
+        media_requests=media_requests,
+        media_chunks=page_media_chunks,
+        inferred=page_inferred,
+        target=target,
+        ctx=ctx,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
+    )
+
+    merged_state = _merge_hybrid_states(
+        page_state=page_state,
+        whole_state=whole_state,
+        field_scope=ctx.resolved_strategy.field_scope,
+        doc=doc,
+        output_kind=ctx.output_kind,
+    )
+    _run_media_targeted_repair(
+        ctx=ctx,
+        doc=doc,
+        state=merged_state,
+        request=single_req,
+        chunk=aggregate_chunk,
+        original_prompt=single_req.prompt,
+        target=target,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
+        native_kwargs=native_kwargs,
+    )
+
+    return merged_state, rendered_prompt_preview
 
 
 async def _arun_hybrid_media_extraction[T](
@@ -2483,7 +3599,7 @@ async def _arun_hybrid_media_extraction[T](
     single_req = _build_single_inference_request(ctx, doc, whole_media_chunks)
     rendered_prompt_preview = single_req.prompt[:500] if debug else None
     batch_length = max(1, ctx.opts.batch_length)
-    max_workers = max(1, ctx.opts.max_workers)
+    max_workers = max(1, min(ctx.opts.max_workers, ctx.budget.network_workers))
     page_state = _DocumentState()
     whole_state = _DocumentState()
     aggregate_chunk = MediaChunk(
@@ -2493,64 +3609,75 @@ async def _arun_hybrid_media_extraction[T](
         text=whole_media_chunks[0].text,
     )
 
-    for pass_index in range(max(1, ctx.opts.passes)):
+    def _run_whole_branch() -> Any:
+        return _ainfer_media_batch(ctx, ctx.provider, [single_req], batch_length, **native_kwargs)
 
-        def _run_whole_branch() -> Any:
-            return _ainfer_media_batch(ctx.provider, [single_req], batch_length, **native_kwargs)
-
-        def _run_page_branch() -> Any:
-            if max_workers <= 1:
-                return _ainfer_media_batch(
-                    ctx.provider, media_requests, batch_length, **native_kwargs
-                )
-            return _ainfer_media_batch_parallel(
-                ctx.provider,
-                media_requests,
-                batch_length,
-                max_workers,
-                **native_kwargs,
+    def _run_page_branch() -> Any:
+        if max_workers <= 1:
+            return _ainfer_media_batch(
+                ctx, ctx.provider, media_requests, batch_length, **native_kwargs
             )
-
-        whole_inferred, page_inferred = await _arun_parallel_pair(
-            _run_whole_branch,
-            _run_page_branch,
-        )
-        _accumulate_media_pass(
-            pass_index=pass_index,
-            state=whole_state,
-            media_requests=[single_req],
-            media_chunks=[aggregate_chunk],
-            inferred=whole_inferred,
-            target=target,
-            ctx=ctx,
-            parse_options=parse_options,
-            coerce_options=coerce_options,
-            debug=debug,
+        return _ainfer_media_batch_parallel(
+            ctx,
+            ctx.provider,
+            media_requests,
+            batch_length,
+            max_workers,
+            **native_kwargs,
         )
 
-        _accumulate_media_pass(
-            pass_index=pass_index,
-            state=page_state,
-            media_requests=media_requests,
-            media_chunks=page_media_chunks,
-            inferred=page_inferred,
-            target=target,
-            ctx=ctx,
-            parse_options=parse_options,
-            coerce_options=coerce_options,
-            debug=debug,
-        )
-
-    return (
-        _merge_hybrid_states(
-            page_state=page_state,
-            whole_state=whole_state,
-            field_scope=ctx.resolved_strategy.field_scope,
-            doc=doc,
-            output_kind=ctx.output_kind,
-        ),
-        rendered_prompt_preview,
+    whole_inferred, page_inferred = await _arun_parallel_pair(
+        _run_whole_branch,
+        _run_page_branch,
     )
+    _accumulate_media_pass(
+        pass_index=0,
+        state=whole_state,
+        media_requests=[single_req],
+        media_chunks=[aggregate_chunk],
+        inferred=whole_inferred,
+        target=target,
+        ctx=ctx,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
+    )
+
+    _accumulate_media_pass(
+        pass_index=0,
+        state=page_state,
+        media_requests=media_requests,
+        media_chunks=page_media_chunks,
+        inferred=page_inferred,
+        target=target,
+        ctx=ctx,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
+    )
+
+    merged_state = _merge_hybrid_states(
+        page_state=page_state,
+        whole_state=whole_state,
+        field_scope=ctx.resolved_strategy.field_scope,
+        doc=doc,
+        output_kind=ctx.output_kind,
+    )
+    await _arun_media_targeted_repair(
+        ctx=ctx,
+        doc=doc,
+        state=merged_state,
+        request=single_req,
+        chunk=aggregate_chunk,
+        original_prompt=single_req.prompt,
+        target=target,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
+        native_kwargs=native_kwargs,
+    )
+
+    return merged_state, rendered_prompt_preview
 
 
 def _run_hybrid_text_extraction[T](
@@ -2569,66 +3696,75 @@ def _run_hybrid_text_extraction[T](
     whole_prompt = _build_single_text_prompt(ctx, doc)
     rendered_prompt_preview = whole_prompt[:500] if debug else None
     batch_length = max(1, ctx.opts.batch_length)
-    max_workers = max(1, ctx.opts.max_workers)
+    max_workers = max(1, min(ctx.opts.max_workers, ctx.budget.network_workers))
     page_state = _DocumentState()
     whole_state = _DocumentState()
     aggregate_chunk = TextChunk(text=doc.text, start=0, end=len(doc.text))
 
-    for pass_index in range(max(1, ctx.opts.passes)):
+    def _run_whole_branch() -> list[str]:
+        return _infer_batch(ctx, ctx.provider, [whole_prompt], batch_length, **native_kwargs)
 
-        def _run_whole_branch() -> list[str]:
-            return _infer_batch(ctx.provider, [whole_prompt], batch_length, **native_kwargs)
-
-        def _run_page_branch() -> list[str]:
-            if max_workers <= 1:
-                return _infer_batch(ctx.provider, chunk_prompts, batch_length, **native_kwargs)
-            return _infer_batch_parallel(
-                ctx.provider,
-                chunk_prompts,
-                batch_length,
-                max_workers,
-                **native_kwargs,
-            )
-
-        if _provider_supports_async_text(ctx.provider):
-            whole_inferred = _run_whole_branch()
-            page_inferred = _run_page_branch()
-        else:
-            whole_inferred, page_inferred = _run_parallel_pair(_run_whole_branch, _run_page_branch)
-        _accumulate_pass(
-            pass_index=pass_index,
-            state=whole_state,
-            chunks=[aggregate_chunk],
-            inferred=whole_inferred,
-            target=target,
-            ctx=ctx,
-            parse_options=parse_options,
-            coerce_options=coerce_options,
-            debug=debug,
+    def _run_page_branch() -> list[str]:
+        if max_workers <= 1:
+            return _infer_batch(ctx, ctx.provider, chunk_prompts, batch_length, **native_kwargs)
+        return _infer_batch_parallel(
+            ctx,
+            ctx.provider,
+            chunk_prompts,
+            batch_length,
+            max_workers,
+            **native_kwargs,
         )
 
-        _accumulate_pass(
-            pass_index=pass_index,
-            state=page_state,
-            chunks=chunks,
-            inferred=page_inferred,
-            target=target,
-            ctx=ctx,
-            parse_options=parse_options,
-            coerce_options=coerce_options,
-            debug=debug,
-        )
-
-    return (
-        _merge_hybrid_states(
-            page_state=page_state,
-            whole_state=whole_state,
-            field_scope=ctx.resolved_strategy.field_scope,
-            doc=doc,
-            output_kind=ctx.output_kind,
-        ),
-        rendered_prompt_preview,
+    if _provider_supports_async_text(ctx.provider):
+        whole_inferred = _run_whole_branch()
+        page_inferred = _run_page_branch()
+    else:
+        whole_inferred, page_inferred = _run_parallel_pair(_run_whole_branch, _run_page_branch)
+    _accumulate_pass(
+        pass_index=0,
+        state=whole_state,
+        chunks=[aggregate_chunk],
+        inferred=whole_inferred,
+        target=target,
+        ctx=ctx,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
     )
+
+    _accumulate_pass(
+        pass_index=0,
+        state=page_state,
+        chunks=chunks,
+        inferred=page_inferred,
+        target=target,
+        ctx=ctx,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
+    )
+
+    merged_state = _merge_hybrid_states(
+        page_state=page_state,
+        whole_state=whole_state,
+        field_scope=ctx.resolved_strategy.field_scope,
+        doc=doc,
+        output_kind=ctx.output_kind,
+    )
+    _run_text_targeted_repair(
+        ctx=ctx,
+        doc=doc,
+        state=merged_state,
+        original_prompt=whole_prompt,
+        target=target,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
+        native_kwargs=native_kwargs,
+    )
+
+    return merged_state, rendered_prompt_preview
 
 
 async def _arun_hybrid_text_extraction[T](
@@ -2647,65 +3783,282 @@ async def _arun_hybrid_text_extraction[T](
     whole_prompt = _build_single_text_prompt(ctx, doc)
     rendered_prompt_preview = whole_prompt[:500] if debug else None
     batch_length = max(1, ctx.opts.batch_length)
-    max_workers = max(1, ctx.opts.max_workers)
+    max_workers = max(1, min(ctx.opts.max_workers, ctx.budget.network_workers))
     page_state = _DocumentState()
     whole_state = _DocumentState()
     aggregate_chunk = TextChunk(text=doc.text, start=0, end=len(doc.text))
 
-    for pass_index in range(max(1, ctx.opts.passes)):
+    def _run_whole_branch() -> Any:
+        return _ainfer_batch(ctx, ctx.provider, [whole_prompt], batch_length, **native_kwargs)
 
-        def _run_whole_branch() -> Any:
-            return _ainfer_batch(ctx.provider, [whole_prompt], batch_length, **native_kwargs)
+    def _run_page_branch() -> Any:
+        if max_workers <= 1:
+            return _ainfer_batch(ctx, ctx.provider, chunk_prompts, batch_length, **native_kwargs)
+        return _ainfer_batch_parallel(
+            ctx,
+            ctx.provider,
+            chunk_prompts,
+            batch_length,
+            max_workers,
+            **native_kwargs,
+        )
 
-        def _run_page_branch() -> Any:
-            if max_workers <= 1:
-                return _ainfer_batch(ctx.provider, chunk_prompts, batch_length, **native_kwargs)
-            return _ainfer_batch_parallel(
+    whole_inferred, page_inferred = await _arun_parallel_pair(
+        _run_whole_branch,
+        _run_page_branch,
+    )
+    _accumulate_pass(
+        pass_index=0,
+        state=whole_state,
+        chunks=[aggregate_chunk],
+        inferred=whole_inferred,
+        target=target,
+        ctx=ctx,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
+    )
+
+    _accumulate_pass(
+        pass_index=0,
+        state=page_state,
+        chunks=chunks,
+        inferred=page_inferred,
+        target=target,
+        ctx=ctx,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
+    )
+
+    merged_state = _merge_hybrid_states(
+        page_state=page_state,
+        whole_state=whole_state,
+        field_scope=ctx.resolved_strategy.field_scope,
+        doc=doc,
+        output_kind=ctx.output_kind,
+    )
+    await _arun_text_targeted_repair(
+        ctx=ctx,
+        doc=doc,
+        state=merged_state,
+        original_prompt=whole_prompt,
+        target=target,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
+        native_kwargs=native_kwargs,
+    )
+
+    return merged_state, rendered_prompt_preview
+
+
+def _run_fused_media_extraction[T](
+    *,
+    ctx: _ExtractionContext,
+    doc: Document,
+    media_chunks: list[MediaChunk],
+    target: type[T] | TypeAdapter[T],
+    parse_options: ParseOptions | None,
+    coerce_options: CoerceOptions | None,
+    debug: bool,
+    native_kwargs: dict[str, Any],
+) -> tuple[_DocumentState, str | None]:
+    media_chunks = _resolve_fused_media_chunks(doc, media_chunks)
+    media_mode_chunks = [chunk for chunk in media_chunks if chunk.mode != "text_only"]
+    text_only_chunks = [chunk for chunk in media_chunks if chunk.mode == "text_only"]
+    media_requests = _build_media_inference_requests(ctx, doc, media_mode_chunks)
+    rendered_prompt_preview = media_requests[0].prompt[:500] if (debug and media_requests) else None
+    state = _DocumentState()
+    batch_length = max(1, ctx.opts.batch_length)
+    max_workers = max(1, min(ctx.opts.max_workers, ctx.budget.network_workers))
+    if media_requests:
+        if max_workers <= 1:
+            inferred = _infer_media_batch(
+                ctx, ctx.provider, media_requests, batch_length, **native_kwargs
+            )
+        else:
+            inferred = _infer_media_batch_parallel(
+                ctx,
                 ctx.provider,
-                chunk_prompts,
+                media_requests,
                 batch_length,
                 max_workers,
                 **native_kwargs,
             )
-
-        whole_inferred, page_inferred = await _arun_parallel_pair(
-            _run_whole_branch,
-            _run_page_branch,
-        )
-        _accumulate_pass(
-            pass_index=pass_index,
-            state=whole_state,
-            chunks=[aggregate_chunk],
-            inferred=whole_inferred,
+        _accumulate_media_pass(
+            pass_index=0,
+            state=state,
+            media_requests=media_requests,
+            media_chunks=media_mode_chunks,
+            inferred=inferred,
             target=target,
             ctx=ctx,
             parse_options=parse_options,
             coerce_options=coerce_options,
             debug=debug,
         )
-
+    if text_only_chunks:
+        text_prompts = [
+            _render_prompt(
+                ctx.prompt_obj,
+                schema_text=ctx.schema_text,
+                examples=ctx.normalized_examples,
+                question=_media_chunk_question(doc, chunk),
+                format_handler=ctx.format_handler,
+                additional_context=doc.additional_context,
+                output_kind=ctx.output_kind,
+                native_mode=ctx.use_native_schema,
+            )
+            for chunk in text_only_chunks
+        ]
+        text_chunks = [
+            TextChunk(
+                text=_media_chunk_question(doc, chunk),
+                start=0,
+                end=len(_media_chunk_question(doc, chunk)),
+            )
+            for chunk in text_only_chunks
+        ]
+        inferred = _infer_batch(ctx, ctx.provider, text_prompts, batch_length, **native_kwargs)
         _accumulate_pass(
-            pass_index=pass_index,
-            state=page_state,
-            chunks=chunks,
-            inferred=page_inferred,
+            pass_index=0,
+            state=state,
+            chunks=text_chunks,
+            inferred=inferred,
             target=target,
             ctx=ctx,
             parse_options=parse_options,
             coerce_options=coerce_options,
             debug=debug,
         )
-
-    return (
-        _merge_hybrid_states(
-            page_state=page_state,
-            whole_state=whole_state,
-            field_scope=ctx.resolved_strategy.field_scope,
-            doc=doc,
-            output_kind=ctx.output_kind,
-        ),
-        rendered_prompt_preview,
+    single_req = _build_single_inference_request(ctx, doc, media_mode_chunks or media_chunks)
+    aggregate_chunk = MediaChunk(
+        attachment=(media_mode_chunks or media_chunks)[0].attachment,
+        attachment_index=None,
+        page_index=None,
+        text=doc.text,
+        mode="fused",
     )
+    _run_media_targeted_repair(
+        ctx=ctx,
+        doc=doc,
+        state=state,
+        request=single_req,
+        chunk=aggregate_chunk,
+        original_prompt=single_req.prompt,
+        target=target,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
+        native_kwargs=native_kwargs,
+    )
+    return state, rendered_prompt_preview
+
+
+async def _arun_fused_media_extraction[T](
+    *,
+    ctx: _ExtractionContext,
+    doc: Document,
+    media_chunks: list[MediaChunk],
+    target: type[T] | TypeAdapter[T],
+    parse_options: ParseOptions | None,
+    coerce_options: CoerceOptions | None,
+    debug: bool,
+    native_kwargs: dict[str, Any],
+) -> tuple[_DocumentState, str | None]:
+    media_chunks = _resolve_fused_media_chunks(doc, media_chunks)
+    media_mode_chunks = [chunk for chunk in media_chunks if chunk.mode != "text_only"]
+    text_only_chunks = [chunk for chunk in media_chunks if chunk.mode == "text_only"]
+    media_requests = _build_media_inference_requests(ctx, doc, media_mode_chunks)
+    rendered_prompt_preview = media_requests[0].prompt[:500] if (debug and media_requests) else None
+    state = _DocumentState()
+    batch_length = max(1, ctx.opts.batch_length)
+    max_workers = max(1, min(ctx.opts.max_workers, ctx.budget.network_workers))
+    if media_requests:
+        if max_workers <= 1:
+            inferred = await _ainfer_media_batch(
+                ctx, ctx.provider, media_requests, batch_length, **native_kwargs
+            )
+        else:
+            inferred = await _ainfer_media_batch_parallel(
+                ctx,
+                ctx.provider,
+                media_requests,
+                batch_length,
+                max_workers,
+                **native_kwargs,
+            )
+        _accumulate_media_pass(
+            pass_index=0,
+            state=state,
+            media_requests=media_requests,
+            media_chunks=media_mode_chunks,
+            inferred=inferred,
+            target=target,
+            ctx=ctx,
+            parse_options=parse_options,
+            coerce_options=coerce_options,
+            debug=debug,
+        )
+    if text_only_chunks:
+        text_prompts = [
+            _render_prompt(
+                ctx.prompt_obj,
+                schema_text=ctx.schema_text,
+                examples=ctx.normalized_examples,
+                question=_media_chunk_question(doc, chunk),
+                format_handler=ctx.format_handler,
+                additional_context=doc.additional_context,
+                output_kind=ctx.output_kind,
+                native_mode=ctx.use_native_schema,
+            )
+            for chunk in text_only_chunks
+        ]
+        text_chunks = [
+            TextChunk(
+                text=_media_chunk_question(doc, chunk),
+                start=0,
+                end=len(_media_chunk_question(doc, chunk)),
+            )
+            for chunk in text_only_chunks
+        ]
+        inferred = await _ainfer_batch(
+            ctx, ctx.provider, text_prompts, batch_length, **native_kwargs
+        )
+        _accumulate_pass(
+            pass_index=0,
+            state=state,
+            chunks=text_chunks,
+            inferred=inferred,
+            target=target,
+            ctx=ctx,
+            parse_options=parse_options,
+            coerce_options=coerce_options,
+            debug=debug,
+        )
+    single_req = _build_single_inference_request(ctx, doc, media_mode_chunks or media_chunks)
+    aggregate_chunk = MediaChunk(
+        attachment=(media_mode_chunks or media_chunks)[0].attachment,
+        attachment_index=None,
+        page_index=None,
+        text=doc.text,
+        mode="fused",
+    )
+    await _arun_media_targeted_repair(
+        ctx=ctx,
+        doc=doc,
+        state=state,
+        request=single_req,
+        chunk=aggregate_chunk,
+        original_prompt=single_req.prompt,
+        target=target,
+        parse_options=parse_options,
+        coerce_options=coerce_options,
+        debug=debug,
+        native_kwargs=native_kwargs,
+    )
+    return state, rendered_prompt_preview
 
 
 def _streaming_mode_error(detail: str) -> NotImplementedError:
@@ -3245,9 +4598,27 @@ def extract_iter[T](
     )
 
     for doc in ctx.documents:
+        preflights = _enforce_document_limits(ctx, doc)
+        ctx.budget.document_deadline = (
+            time.monotonic() + ctx.opts.per_document_timeout_s
+            if ctx.opts.per_document_timeout_s is not None
+            else None
+        )
         has_media = needs_media(doc.attachments)
+        if has_media and preflights:
+            all_text_only = all(
+                preflight.recommended_plan == "text_only" for preflight in preflights.values()
+            )
+            if (ctx.resolved_strategy.plan == "fused" and all_text_only) or (
+                ctx.budget.consecutive_server_errors >= 2
+            ):
+                text_doc = _try_pdf_text_extraction(doc, ctx.opts.media)
+                if text_doc is not None:
+                    logger.warning("Falling back to text-only extraction for %s", doc.document_id)
+                    doc = text_doc
+                    has_media = False
 
-        if has_media and ctx.resolved_strategy.plan != "hybrid":
+        if has_media and ctx.resolved_strategy.plan not in {"hybrid", "fused"}:
             # Try text extraction for PDFs with text layers (pdf_mode=auto)
             text_doc = _try_pdf_text_extraction(doc, ctx.opts.media)
             if text_doc is not None:
@@ -3296,6 +4667,27 @@ def extract_iter[T](
                     debug=debug,
                     native_kwargs=_native_kwargs,
                 )
+            elif ctx.resolved_strategy.plan == "fused":
+                preflight_map = dict(preflights)
+                media_chunks = chunk_attachments(
+                    doc.attachments,
+                    text=doc.text,
+                    media_options=ctx.opts.media,
+                    provider_supports_native_pdf=False,
+                    fused=True,
+                    preflight_results=preflight_map,
+                )
+                media_chunks = _resolve_fused_media_chunks(doc, media_chunks)
+                state, rendered_prompt_preview = _run_fused_media_extraction(
+                    ctx=ctx,
+                    doc=doc,
+                    media_chunks=media_chunks,
+                    target=target,
+                    parse_options=parse_options,
+                    coerce_options=coerce_options,
+                    debug=debug,
+                    native_kwargs=_native_kwargs,
+                )
             else:
                 _ensure_native_pdf_support(
                     ctx.provider,
@@ -3312,65 +4704,97 @@ def extract_iter[T](
                 strategy = _resolve_page_strategy(ctx.opts.media.page_strategy, media_chunks)
                 state = _DocumentState()
                 batch_length = max(1, ctx.opts.batch_length)
-                max_workers = max(1, ctx.opts.max_workers)
+                max_workers = max(1, min(ctx.opts.max_workers, ctx.budget.network_workers))
 
                 if strategy == "single":
                     single_req = _build_single_inference_request(ctx, doc, media_chunks)
                     rendered_prompt_preview = single_req.prompt[:500] if debug else None
-                    for _pass in range(max(1, ctx.opts.passes)):
-                        inferred = _infer_media_batch(
-                            ctx.provider, [single_req], batch_length, **_native_kwargs
-                        )
-                        # For "single" mode, use a synthetic aggregate chunk with None
-                        # indices to avoid misattributing evidence to the first attachment.
-                        aggregate_chunk = MediaChunk(
-                            attachment=media_chunks[0].attachment,
-                            attachment_index=None,
-                            page_index=None,
-                            text=media_chunks[0].text,
-                        )
-                        _accumulate_media_pass(
-                            pass_index=_pass,
-                            state=state,
-                            media_requests=[single_req],
-                            media_chunks=[aggregate_chunk],
-                            inferred=inferred,
-                            target=target,
-                            ctx=ctx,
-                            parse_options=parse_options,
-                            coerce_options=coerce_options,
-                            debug=debug,
-                        )
+                    inferred = _infer_media_batch(
+                        ctx, ctx.provider, [single_req], batch_length, **_native_kwargs
+                    )
+                    aggregate_chunk = MediaChunk(
+                        attachment=media_chunks[0].attachment,
+                        attachment_index=None,
+                        page_index=None,
+                        text=media_chunks[0].text,
+                        mode=media_chunks[0].mode,
+                    )
+                    _accumulate_media_pass(
+                        pass_index=0,
+                        state=state,
+                        media_requests=[single_req],
+                        media_chunks=[aggregate_chunk],
+                        inferred=inferred,
+                        target=target,
+                        ctx=ctx,
+                        parse_options=parse_options,
+                        coerce_options=coerce_options,
+                        debug=debug,
+                    )
+                    _run_media_targeted_repair(
+                        ctx=ctx,
+                        doc=doc,
+                        state=state,
+                        request=single_req,
+                        chunk=aggregate_chunk,
+                        original_prompt=single_req.prompt,
+                        target=target,
+                        parse_options=parse_options,
+                        coerce_options=coerce_options,
+                        debug=debug,
+                        native_kwargs=_native_kwargs,
+                    )
                 else:
                     media_requests = _build_media_inference_requests(ctx, doc, media_chunks)
                     rendered_prompt_preview = (
                         media_requests[0].prompt[:500] if (debug and media_requests) else None
                     )
-                    for _pass in range(max(1, ctx.opts.passes)):
-                        if max_workers <= 1:
-                            inferred = _infer_media_batch(
-                                ctx.provider, media_requests, batch_length, **_native_kwargs
-                            )
-                        else:
-                            inferred = _infer_media_batch_parallel(
-                                ctx.provider,
-                                media_requests,
-                                batch_length,
-                                max_workers,
-                                **_native_kwargs,
-                            )
-                        _accumulate_media_pass(
-                            pass_index=_pass,
-                            state=state,
-                            media_requests=media_requests,
-                            media_chunks=media_chunks,
-                            inferred=inferred,
-                            target=target,
-                            ctx=ctx,
-                            parse_options=parse_options,
-                            coerce_options=coerce_options,
-                            debug=debug,
+                    if max_workers <= 1:
+                        inferred = _infer_media_batch(
+                            ctx, ctx.provider, media_requests, batch_length, **_native_kwargs
                         )
+                    else:
+                        inferred = _infer_media_batch_parallel(
+                            ctx,
+                            ctx.provider,
+                            media_requests,
+                            batch_length,
+                            max_workers,
+                            **_native_kwargs,
+                        )
+                    _accumulate_media_pass(
+                        pass_index=0,
+                        state=state,
+                        media_requests=media_requests,
+                        media_chunks=media_chunks,
+                        inferred=inferred,
+                        target=target,
+                        ctx=ctx,
+                        parse_options=parse_options,
+                        coerce_options=coerce_options,
+                        debug=debug,
+                    )
+                    single_req = _build_single_inference_request(ctx, doc, media_chunks)
+                    aggregate_chunk = MediaChunk(
+                        attachment=media_chunks[0].attachment,
+                        attachment_index=None,
+                        page_index=None,
+                        text=doc.text,
+                        mode=media_chunks[0].mode,
+                    )
+                    _run_media_targeted_repair(
+                        ctx=ctx,
+                        doc=doc,
+                        state=state,
+                        request=single_req,
+                        chunk=aggregate_chunk,
+                        original_prompt=single_req.prompt,
+                        target=target,
+                        parse_options=parse_options,
+                        coerce_options=coerce_options,
+                        debug=debug,
+                        native_kwargs=_native_kwargs,
+                    )
         else:
             if ctx.resolved_strategy.plan == "hybrid":
                 state, rendered_prompt_preview = _run_hybrid_text_extraction(
@@ -3389,28 +4813,43 @@ def extract_iter[T](
                 )
                 state = _DocumentState()
                 batch_length = max(1, ctx.opts.batch_length)
-                max_workers = max(1, ctx.opts.max_workers)
+                max_workers = max(1, min(ctx.opts.max_workers, ctx.budget.network_workers))
 
-                for _pass in range(max(1, ctx.opts.passes)):
-                    if max_workers <= 1:
-                        inferred = _infer_batch(
-                            ctx.provider, chunk_prompts, batch_length, **_native_kwargs
-                        )
-                    else:
-                        inferred = _infer_batch_parallel(
-                            ctx.provider, chunk_prompts, batch_length, max_workers, **_native_kwargs
-                        )
-                    _accumulate_pass(
-                        pass_index=_pass,
-                        state=state,
-                        chunks=chunks,
-                        inferred=inferred,
-                        target=target,
-                        ctx=ctx,
-                        parse_options=parse_options,
-                        coerce_options=coerce_options,
-                        debug=debug,
+                if max_workers <= 1:
+                    inferred = _infer_batch(
+                        ctx, ctx.provider, chunk_prompts, batch_length, **_native_kwargs
                     )
+                else:
+                    inferred = _infer_batch_parallel(
+                        ctx,
+                        ctx.provider,
+                        chunk_prompts,
+                        batch_length,
+                        max_workers,
+                        **_native_kwargs,
+                    )
+                _accumulate_pass(
+                    pass_index=0,
+                    state=state,
+                    chunks=chunks,
+                    inferred=inferred,
+                    target=target,
+                    ctx=ctx,
+                    parse_options=parse_options,
+                    coerce_options=coerce_options,
+                    debug=debug,
+                )
+                _run_text_targeted_repair(
+                    ctx=ctx,
+                    doc=doc,
+                    state=state,
+                    original_prompt=_build_single_text_prompt(ctx, doc),
+                    target=target,
+                    parse_options=parse_options,
+                    coerce_options=coerce_options,
+                    debug=debug,
+                    native_kwargs=_native_kwargs,
+                )
 
         yield _build_extract_result(
             ctx=ctx,
@@ -3424,10 +4863,12 @@ def extract_iter[T](
             rendered_prompt_preview=rendered_prompt_preview,
             debug=debug,
             conflicts=state.conflicts,
+            diagnostics=state.diagnostics,
         )
 
 
 async def _ainfer_batch(
+    ctx: _ExtractionContext,
     provider: Any,
     prompts: Sequence[str],
     batch_length: int,
@@ -3437,20 +4878,36 @@ async def _ainfer_batch(
     all_outputs: list[str] = []
     for i in range(0, len(prompts), batch_length):
         batch = prompts[i : i + batch_length]
-        if hasattr(provider, "ainfer"):
-            outputs = await provider.ainfer(batch, **infer_kwargs)
-        else:
-            outputs = await asyncio.to_thread(provider.infer, batch, **infer_kwargs)
-        outputs = normalize_text_outputs(
-            outputs,
-            expected_count=len(batch),
-            context="provider.ainfer" if hasattr(provider, "ainfer") else "provider.infer",
-        )
+        _check_document_deadline(ctx)
+        ctx.budget.ensure_api_budget(1)
+        try:
+            if hasattr(provider, "ainfer"):
+                outputs = await _run_async_call_with_timeout(
+                    lambda batch=batch: provider.ainfer(batch, **infer_kwargs),
+                    timeout_s=ctx.opts.per_call_timeout_s,
+                )
+            else:
+                outputs = await asyncio.to_thread(
+                    lambda batch=batch: _run_sync_call_with_timeout(
+                        lambda: provider.infer(batch, **infer_kwargs),
+                        timeout_s=ctx.opts.per_call_timeout_s,
+                    )
+                )
+            outputs = normalize_text_outputs(
+                outputs,
+                expected_count=len(batch),
+                context="provider.ainfer" if hasattr(provider, "ainfer") else "provider.infer",
+            )
+            _record_inference_success(ctx)
+        except Exception as exc:
+            _maybe_handle_provider_error(ctx, exc)
+            raise
         all_outputs.extend(outputs)
     return all_outputs
 
 
 async def _ainfer_batch_parallel(
+    ctx: _ExtractionContext,
     provider: Any,
     prompts: Sequence[str],
     batch_length: int,
@@ -3462,7 +4919,7 @@ async def _ainfer_batch_parallel(
     batches: list[Sequence[str]] = []
     for i in range(0, len(prompts), batch_length):
         batches.append(prompts[i : i + batch_length])
-    max_workers = max(1, max_workers)
+    max_workers = max(1, min(max_workers, ctx.budget.network_workers))
     logger.debug(
         "Async parallel batched inference: %d batches, max_workers=%d", len(batches), max_workers
     )
@@ -3471,16 +4928,32 @@ async def _ainfer_batch_parallel(
 
     async def _run_batch(batch: Sequence[str]) -> list[str]:
         async with sem:
-            if hasattr(provider, "ainfer"):
-                raw = await provider.ainfer(batch, **infer_kwargs)
-            else:
-                raw = await asyncio.to_thread(provider.infer, batch, **infer_kwargs)
-            return normalize_text_outputs(
-                raw,
-                expected_count=len(batch),
-                context="provider.ainfer" if hasattr(provider, "ainfer") else "provider.infer",
-            )
+            _check_document_deadline(ctx)
+            try:
+                if hasattr(provider, "ainfer"):
+                    raw = await _run_async_call_with_timeout(
+                        lambda: provider.ainfer(batch, **infer_kwargs),
+                        timeout_s=ctx.opts.per_call_timeout_s,
+                    )
+                else:
+                    raw = await asyncio.to_thread(
+                        lambda: _run_sync_call_with_timeout(
+                            lambda: provider.infer(batch, **infer_kwargs),
+                            timeout_s=ctx.opts.per_call_timeout_s,
+                        )
+                    )
+                normalized = normalize_text_outputs(
+                    raw,
+                    expected_count=len(batch),
+                    context="provider.ainfer" if hasattr(provider, "ainfer") else "provider.infer",
+                )
+                _record_inference_success(ctx)
+                return normalized
+            except Exception as exc:
+                _maybe_handle_provider_error(ctx, exc)
+                raise
 
+    ctx.budget.ensure_api_budget(len(batches))
     results = await asyncio.gather(*[_run_batch(b) for b in batches])
 
     all_outputs: list[str] = []
@@ -3511,9 +4984,27 @@ async def extract_aiter[T](
     )
 
     for doc in ctx.documents:
+        preflights = _enforce_document_limits(ctx, doc)
+        ctx.budget.document_deadline = (
+            time.monotonic() + ctx.opts.per_document_timeout_s
+            if ctx.opts.per_document_timeout_s is not None
+            else None
+        )
         has_media = needs_media(doc.attachments)
+        if has_media and preflights:
+            all_text_only = all(
+                preflight.recommended_plan == "text_only" for preflight in preflights.values()
+            )
+            if (ctx.resolved_strategy.plan == "fused" and all_text_only) or (
+                ctx.budget.consecutive_server_errors >= 2
+            ):
+                text_doc = _try_pdf_text_extraction(doc, ctx.opts.media)
+                if text_doc is not None:
+                    logger.warning("Falling back to text-only extraction for %s", doc.document_id)
+                    doc = text_doc
+                    has_media = False
 
-        if has_media and ctx.resolved_strategy.plan != "hybrid":
+        if has_media and ctx.resolved_strategy.plan not in {"hybrid", "fused"}:
             text_doc = _try_pdf_text_extraction(doc, ctx.opts.media)
             if text_doc is not None:
                 doc = text_doc
@@ -3561,6 +5052,27 @@ async def extract_aiter[T](
                     debug=debug,
                     native_kwargs=_native_kwargs,
                 )
+            elif ctx.resolved_strategy.plan == "fused":
+                preflight_map = dict(preflights)
+                media_chunks = chunk_attachments(
+                    doc.attachments,
+                    text=doc.text,
+                    media_options=ctx.opts.media,
+                    provider_supports_native_pdf=False,
+                    fused=True,
+                    preflight_results=preflight_map,
+                )
+                media_chunks = _resolve_fused_media_chunks(doc, media_chunks)
+                state, rendered_prompt_preview = await _arun_fused_media_extraction(
+                    ctx=ctx,
+                    doc=doc,
+                    media_chunks=media_chunks,
+                    target=target,
+                    parse_options=parse_options,
+                    coerce_options=coerce_options,
+                    debug=debug,
+                    native_kwargs=_native_kwargs,
+                )
             else:
                 _ensure_native_pdf_support(
                     ctx.provider,
@@ -3577,63 +5089,97 @@ async def extract_aiter[T](
                 strategy = _resolve_page_strategy(ctx.opts.media.page_strategy, media_chunks)
                 state = _DocumentState()
                 batch_length = max(1, ctx.opts.batch_length)
-                max_workers = max(1, ctx.opts.max_workers)
+                max_workers = max(1, min(ctx.opts.max_workers, ctx.budget.network_workers))
 
                 if strategy == "single":
                     single_req = _build_single_inference_request(ctx, doc, media_chunks)
                     rendered_prompt_preview = single_req.prompt[:500] if debug else None
-                    for _pass in range(max(1, ctx.opts.passes)):
-                        inferred = await _ainfer_media_batch(
-                            ctx.provider, [single_req], batch_length, **_native_kwargs
-                        )
-                        aggregate_chunk = MediaChunk(
-                            attachment=media_chunks[0].attachment,
-                            attachment_index=None,
-                            page_index=None,
-                            text=media_chunks[0].text,
-                        )
-                        _accumulate_media_pass(
-                            pass_index=_pass,
-                            state=state,
-                            media_requests=[single_req],
-                            media_chunks=[aggregate_chunk],
-                            inferred=inferred,
-                            target=target,
-                            ctx=ctx,
-                            parse_options=parse_options,
-                            coerce_options=coerce_options,
-                            debug=debug,
-                        )
+                    inferred = await _ainfer_media_batch(
+                        ctx, ctx.provider, [single_req], batch_length, **_native_kwargs
+                    )
+                    aggregate_chunk = MediaChunk(
+                        attachment=media_chunks[0].attachment,
+                        attachment_index=None,
+                        page_index=None,
+                        text=media_chunks[0].text,
+                        mode=media_chunks[0].mode,
+                    )
+                    _accumulate_media_pass(
+                        pass_index=0,
+                        state=state,
+                        media_requests=[single_req],
+                        media_chunks=[aggregate_chunk],
+                        inferred=inferred,
+                        target=target,
+                        ctx=ctx,
+                        parse_options=parse_options,
+                        coerce_options=coerce_options,
+                        debug=debug,
+                    )
+                    await _arun_media_targeted_repair(
+                        ctx=ctx,
+                        doc=doc,
+                        state=state,
+                        request=single_req,
+                        chunk=aggregate_chunk,
+                        original_prompt=single_req.prompt,
+                        target=target,
+                        parse_options=parse_options,
+                        coerce_options=coerce_options,
+                        debug=debug,
+                        native_kwargs=_native_kwargs,
+                    )
                 else:
                     media_requests = _build_media_inference_requests(ctx, doc, media_chunks)
                     rendered_prompt_preview = (
                         media_requests[0].prompt[:500] if (debug and media_requests) else None
                     )
-                    for _pass in range(max(1, ctx.opts.passes)):
-                        if max_workers <= 1:
-                            inferred = await _ainfer_media_batch(
-                                ctx.provider, media_requests, batch_length, **_native_kwargs
-                            )
-                        else:
-                            inferred = await _ainfer_media_batch_parallel(
-                                ctx.provider,
-                                media_requests,
-                                batch_length,
-                                max_workers,
-                                **_native_kwargs,
-                            )
-                        _accumulate_media_pass(
-                            pass_index=_pass,
-                            state=state,
-                            media_requests=media_requests,
-                            media_chunks=media_chunks,
-                            inferred=inferred,
-                            target=target,
-                            ctx=ctx,
-                            parse_options=parse_options,
-                            coerce_options=coerce_options,
-                            debug=debug,
+                    if max_workers <= 1:
+                        inferred = await _ainfer_media_batch(
+                            ctx, ctx.provider, media_requests, batch_length, **_native_kwargs
                         )
+                    else:
+                        inferred = await _ainfer_media_batch_parallel(
+                            ctx,
+                            ctx.provider,
+                            media_requests,
+                            batch_length,
+                            max_workers,
+                            **_native_kwargs,
+                        )
+                    _accumulate_media_pass(
+                        pass_index=0,
+                        state=state,
+                        media_requests=media_requests,
+                        media_chunks=media_chunks,
+                        inferred=inferred,
+                        target=target,
+                        ctx=ctx,
+                        parse_options=parse_options,
+                        coerce_options=coerce_options,
+                        debug=debug,
+                    )
+                    single_req = _build_single_inference_request(ctx, doc, media_chunks)
+                    aggregate_chunk = MediaChunk(
+                        attachment=media_chunks[0].attachment,
+                        attachment_index=None,
+                        page_index=None,
+                        text=doc.text,
+                        mode=media_chunks[0].mode,
+                    )
+                    await _arun_media_targeted_repair(
+                        ctx=ctx,
+                        doc=doc,
+                        state=state,
+                        request=single_req,
+                        chunk=aggregate_chunk,
+                        original_prompt=single_req.prompt,
+                        target=target,
+                        parse_options=parse_options,
+                        coerce_options=coerce_options,
+                        debug=debug,
+                        native_kwargs=_native_kwargs,
+                    )
         else:
             if ctx.resolved_strategy.plan == "hybrid":
                 state, rendered_prompt_preview = await _arun_hybrid_text_extraction(
@@ -3652,28 +5198,43 @@ async def extract_aiter[T](
                 )
                 state = _DocumentState()
                 batch_length = max(1, ctx.opts.batch_length)
-                max_workers = max(1, ctx.opts.max_workers)
+                max_workers = max(1, min(ctx.opts.max_workers, ctx.budget.network_workers))
 
-                for _pass in range(max(1, ctx.opts.passes)):
-                    if max_workers <= 1:
-                        inferred = await _ainfer_batch(
-                            ctx.provider, chunk_prompts, batch_length, **_native_kwargs
-                        )
-                    else:
-                        inferred = await _ainfer_batch_parallel(
-                            ctx.provider, chunk_prompts, batch_length, max_workers, **_native_kwargs
-                        )
-                    _accumulate_pass(
-                        pass_index=_pass,
-                        state=state,
-                        chunks=chunks,
-                        inferred=inferred,
-                        target=target,
-                        ctx=ctx,
-                        parse_options=parse_options,
-                        coerce_options=coerce_options,
-                        debug=debug,
+                if max_workers <= 1:
+                    inferred = await _ainfer_batch(
+                        ctx, ctx.provider, chunk_prompts, batch_length, **_native_kwargs
                     )
+                else:
+                    inferred = await _ainfer_batch_parallel(
+                        ctx,
+                        ctx.provider,
+                        chunk_prompts,
+                        batch_length,
+                        max_workers,
+                        **_native_kwargs,
+                    )
+                _accumulate_pass(
+                    pass_index=0,
+                    state=state,
+                    chunks=chunks,
+                    inferred=inferred,
+                    target=target,
+                    ctx=ctx,
+                    parse_options=parse_options,
+                    coerce_options=coerce_options,
+                    debug=debug,
+                )
+                await _arun_text_targeted_repair(
+                    ctx=ctx,
+                    doc=doc,
+                    state=state,
+                    original_prompt=_build_single_text_prompt(ctx, doc),
+                    target=target,
+                    parse_options=parse_options,
+                    coerce_options=coerce_options,
+                    debug=debug,
+                    native_kwargs=_native_kwargs,
+                )
 
         yield _build_extract_result(
             ctx=ctx,
@@ -3687,6 +5248,7 @@ async def extract_aiter[T](
             rendered_prompt_preview=rendered_prompt_preview,
             debug=debug,
             conflicts=state.conflicts,
+            diagnostics=state.diagnostics,
         )
 
 

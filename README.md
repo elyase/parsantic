@@ -111,7 +111,7 @@ class Person(BaseModel):
 result = extract(
     "Dr. Sarah Chen is a principal ML engineer at Anthropic (3 years).",
     Person,
-    model="openai:gpt-4o-mini",
+    model="gemini:gemini-2.5-flash-lite",
 )
 result.value
 # Person(name='Sarah Chen', role='principal ML engineer', years_experience=3)

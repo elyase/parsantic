@@ -1,0 +1,115 @@
+{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "patient": {
+    "resourceType": "Patient",
+    "identifier": "ONC-2026-0142",
+    "name": "Maya Hernandez",
+    "gender": "female",
+    "birthDate": "1978-09-12"
+  },
+  "encounter": {
+    "resourceType": "Encounter",
+    "periodStart": "2026-02-18",
+    "participant": "Dr. Priya Shah",
+    "serviceProvider": "North Valley Cancer Center"
+  },
+  "condition": {
+    "resourceType": "Condition",
+    "code": {
+      "text": "Metastatic breast carcinoma"
+    },
+    "clinicalStatus": "active",
+    "stage": "Stage IV",
+    "bodySite": "left breast with liver metastases"
+  },
+  "diagnosticReport": {
+    "resourceType": "DiagnosticReport",
+    "code": {
+      "text": "Pathology and biomarker summary"
+    },
+    "effectiveDateTime": "2026-02-12",
+    "conclusion": "Metastatic adenocarcinoma consistent with breast primary; ER positive, HER2-low, PD-L1 CPS 12."
+  },
+  "observations": [
+    {
+      "resourceType": "Observation",
+      "code": {
+        "text": "Hemoglobin"
+      },
+      "effectiveDateTime": "2026-02-18",
+      "valueQuantity": {
+        "value": 11.2,
+        "unit": "g/dL"
+      }
+    },
+    {
+      "resourceType": "Observation",
+      "code": {
+        "text": "Absolute neutrophil count"
+      },
+      "effectiveDateTime": "2026-02-18",
+      "valueQuantity": {
+        "value": 2.4,
+        "unit": "x10^9/L"
+      }
+    },
+    {
+      "resourceType": "Observation",
+      "code": {
+        "text": "Creatinine"
+      },
+      "effectiveDateTime": "2026-02-18",
+      "valueQuantity": {
+        "value": 0.9,
+        "unit": "mg/dL"
+      }
+    },
+    {
+      "resourceType": "Observation",
+      "code": {
+        "text": "CA 15-3"
+      },
+      "effectiveDateTime": "2026-02-18",
+      "valueQuantity": {
+        "value": 48.0,
+        "unit": "U/mL"
+      }
+    }
+  ],
+  "medications": [
+    {
+      "resourceType": "MedicationRequest",
+      "status": "active",
+      "medicationCodeableConcept": {
+        "text": "Capecitabine"
+      },
+      "dosageInstruction": "1500 mg orally twice daily on days 1-14 of a 21-day cycle",
+      "route": "oral"
+    },
+    {
+      "resourceType": "MedicationRequest",
+      "status": "active",
+      "medicationCodeableConcept": {
+        "text": "Ondansetron"
+      },
+      "dosageInstruction": "8 mg every 8 hours as needed for nausea",
+      "route": "oral"
+    },
+    {
+      "resourceType": "MedicationRequest",
+      "status": "active",
+      "medicationCodeableConcept": {
+        "text": "Zoledronic acid"
+      },
+      "dosageInstruction": "4 mg every 28 days",
+      "route": "intravenous"
+    }
+  ],
+  "carePlan": {
+    "resourceType": "CarePlan",
+    "status": "active",
+    "intent": "plan",
+    "description": "Continue capecitabine, repeat CT chest/abdomen/pelvis in 8 weeks, and return to clinic on 2026-03-11."
+  }
+}

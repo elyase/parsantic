@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from .attachments import Attachment, AttachmentKind
+from .preflight import PreflightResult
 
 if TYPE_CHECKING:
     from parsantic.extract.options import MediaOptions
@@ -26,6 +27,7 @@ class MediaChunk:
     attachment_index: int | None
     page_index: int | None
     text: str = ""
+    mode: Literal["image_only", "text_only", "fused", "native"] = "image_only"
 
 
 def _should_rasterize_pdf(
@@ -47,16 +49,25 @@ def _rasterize_pdf_chunks(
     *,
     dpi: int,
     text: str,
+    fused: bool = False,
+    preflight: PreflightResult | None = None,
     strict: bool = False,
     raster_format: str = "jpeg",
     jpeg_quality: int = 85,
 ) -> list[MediaChunk]:
     """Rasterize PDF pages into image MediaChunks."""
     try:
-        from .preprocessing import rasterize_pdf
+        from .preprocessing import extract_pdf_page_texts, rasterize_pdf
 
         source = attachment.source
         page_indices = attachment.page_indices
+        try:
+            page_texts = dict(extract_pdf_page_texts(source, page_indices=page_indices))
+        except Exception:
+            logger.debug(
+                "Page-local PDF text extraction failed; continuing without text", exc_info=True
+            )
+            page_texts = {}
         pages = rasterize_pdf(
             source,
             dpi=dpi,
@@ -77,6 +88,11 @@ def _rasterize_pdf_chunks(
         return _native_pdf_chunks(attachment, att_idx, text=text)
 
     chunks: list[MediaChunk] = []
+    page_modes = (
+        {item.page_index: item.recommended_mode for item in preflight.pages}
+        if preflight is not None
+        else {}
+    )
     for page_idx, image_bytes in pages:
         mime = "image/jpeg" if raster_format == "jpeg" else "image/png"
         page_attachment = Attachment.image(image_bytes, mime_type=mime, name=attachment.name)
@@ -85,7 +101,8 @@ def _rasterize_pdf_chunks(
                 attachment=page_attachment,
                 attachment_index=att_idx,
                 page_index=page_idx,
-                text=text,
+                text=page_texts.get(page_idx, ""),
+                mode="fused" if fused else page_modes.get(page_idx, "image_only"),
             )
         )
     return chunks
@@ -112,6 +129,7 @@ def _native_pdf_chunks(
             attachment_index=att_idx,
             page_index=None,
             text=hint_text,
+            mode="native",
         )
     ]
 
@@ -146,6 +164,7 @@ def _normalize_image_chunk(
         attachment_index=att_idx,
         page_index=None,
         text=text,
+        mode="image_only",
     )
 
 
@@ -155,6 +174,8 @@ def chunk_attachments(
     text: str = "",
     media_options: MediaOptions | None = None,
     provider_supports_native_pdf: bool = True,
+    fused: bool = False,
+    preflight_results: dict[int, PreflightResult] | None = None,
 ) -> list[MediaChunk]:
     """Split attachments into individual media chunks.
 
@@ -180,6 +201,8 @@ def chunk_attachments(
                         att_idx,
                         dpi=opts.raster_dpi,
                         text=text,
+                        fused=fused,
+                        preflight=(preflight_results or {}).get(att_idx),
                         strict=(opts.pdf_mode == "raster"),
                         raster_format=opts.raster_format,
                         jpeg_quality=opts.jpeg_quality,

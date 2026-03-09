@@ -1,0 +1,50 @@
+{
+  "name": "nasal-melanoma-default-native-gemini31",
+  "root": ".",
+  "configs": [
+    {
+      "name": "document_auto",
+      "model": "provider_from_model('gemini:gemini-3.1-flash-lite-preview')",
+      "options": "ExtractOptions(repair='targeted', max_repair_attempts=1)",
+      "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document."
+    },
+    {
+      "name": "hybrid_targeted",
+      "model": "provider_from_model('gemini:gemini-3.1-flash-lite-preview')",
+      "options": "ExtractOptions(mode='hybrid', document_input='native', page_input='image', repair='targeted', max_repair_attempts=1)",
+      "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document."
+    },
+    {
+      "name": "fused_targeted",
+      "model": "provider_from_model('gemini:gemini-3.1-flash-lite-preview')",
+      "options": "ExtractOptions(strategy=extract.Strategy(plan='fused'), repair='targeted', max_repair_attempts=1)",
+      "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document."
+    }
+  ],
+  "cases": [
+    {
+      "name": "nasal_melanoma_clean",
+      "document": "generated/nasal_melanoma_clean.pdf",
+      "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+      "expected": "ground_truth.json"
+    },
+    {
+      "name": "nasal_melanoma_table",
+      "document": "generated/nasal_melanoma_table.pdf",
+      "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+      "expected": "ground_truth.json"
+    },
+    {
+      "name": "nasal_melanoma_scanned",
+      "document": "generated/nasal_melanoma_scanned.pdf",
+      "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+      "expected": "ground_truth.json"
+    },
+    {
+      "name": "nasal_melanoma_mixed",
+      "document": "generated/nasal_melanoma_mixed.pdf",
+      "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+      "expected": "ground_truth.json"
+    }
+  ]
+}

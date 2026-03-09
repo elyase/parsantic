@@ -3,8 +3,17 @@ from __future__ import annotations
 from .alignment import AlignmentOptions, Resolver, TokenAlignmentResolver, get_resolver
 from .batch import BatchResult, BatchStatus, SupportsBatchInfer, aextract_batch, extract_batch
 from .chunking import TextChunk
+from .concurrency import ConcurrencyConfig
+from .diagnostics import FieldDiagnostic, FieldState
 from .formatting import FormatOptions
-from .media import Attachment, AttachmentKind
+from .media import (
+    Attachment,
+    AttachmentKind,
+    PageQuality,
+    PreflightResult,
+    analyze_pdf_attachment,
+    analyze_pdf_source,
+)
 from .options import (
     ExtractOptions,
     FieldScopePolicy,
@@ -46,19 +55,24 @@ __all__ = [
     "BatchResult",
     "BatchStatus",
     "ChunkDebug",
+    "ConcurrencyConfig",
     "Document",
     "Example",
     "ExtractDebug",
     "ExtractOptions",
     "ExtractResult",
     "ExtractStreamEvent",
+    "FieldDiagnostic",
     "Extractor",
     "FieldEvidence",
+    "FieldState",
     "FieldScopePolicy",
     "FormatOptions",
     "MediaOptions",
     "MergeConflict",
     "Prompt",
+    "PageQuality",
+    "PreflightResult",
     "ProvenancePolicy",
     "PromptValidationLevel",
     "ResolvedStrategy",
@@ -72,6 +86,8 @@ __all__ = [
     "aextract",
     "aextract_stream",
     "aextract_batch",
+    "analyze_pdf_attachment",
+    "analyze_pdf_source",
     "extract",
     "extract_aiter",
     "extract_batch",
