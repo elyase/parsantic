@@ -18,3 +18,4 @@ site/
 .DS_Store
 .env
 .tldr/
+reference/
