@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 CORPUS = ROOT / "corpus" / "nasal_melanoma"
 TRUTH = CORPUS / "ground_truth.json"
+EXPECTED_SOURCES = CORPUS / "expected_sources.json"
 OUTPUT = CORPUS / "results.matrix.json"
 HOME_ENV = Path.home() / ".env"
 MODELS = [
@@ -51,7 +52,7 @@ import json, time
 from pathlib import Path
 from pydantic import BaseModel
 from parsantic.extract import Document, ExtractOptions, Strategy, extract
-from benchmarks.metrics import score_case
+from benchmarks.metrics import score_case, score_provenance_case
 
 class NasalMelanomaSnapshot(BaseModel):
     age_years: int
@@ -81,11 +82,13 @@ class NasalMelanomaSnapshot(BaseModel):
     pathologic_n_stage: str
 
 truth = json.loads(Path({truth!r}).read_text())
+expected_sources = json.loads(Path({expected_sources!r}).read_text())
 pdf_path = Path({pdf!r})
 model = {model!r}
 start = time.perf_counter()
 output = {{}}
 error = None
+sources = {{}}
 try:
     result = extract(
         Document.from_pdf(
@@ -98,10 +101,12 @@ try:
         options={options_expr},
     )
     output = result.value.model_dump(mode='json')
+    sources = result.sources
 except Exception as exc:
     error = f"{{type(exc).__name__}}: {{exc}}"
 elapsed = time.perf_counter() - start
 metrics = score_case(truth, output)
+provenance_accuracy, page_coverage = score_provenance_case(expected_sources, sources)
 print(json.dumps({{
     'model': model,
     'strategy': {strategy!r},
@@ -109,6 +114,8 @@ print(json.dumps({{
     'exact_accuracy': metrics.exact_accuracy,
     'fuzzy_accuracy': metrics.fuzzy_accuracy,
     'completeness': metrics.completeness,
+    'provenance_accuracy': provenance_accuracy,
+    'page_coverage': page_coverage,
     'latency_s': elapsed,
     'error': error,
     'output': output,
@@ -121,6 +128,7 @@ print(json.dumps({{
             for pdf in PDFS:
                 payload = script.format(
                     truth=str(TRUTH),
+                    expected_sources=str(EXPECTED_SOURCES),
                     pdf=str(CORPUS / pdf),
                     model=model,
                     options_expr=options_expr,
@@ -146,6 +154,8 @@ print(json.dumps({{
                             "exact_accuracy": 0.0,
                             "fuzzy_accuracy": 0.0,
                             "completeness": 0.0,
+                            "provenance_accuracy": 0.0,
+                            "page_coverage": 0.0,
                             "latency_s": 0.0,
                             "error": completed.stderr.strip() or "No output",
                             "output": {},
@@ -158,6 +168,8 @@ print(json.dumps({{
                         "exact_accuracy": 0.0,
                         "fuzzy_accuracy": 0.0,
                         "completeness": 0.0,
+                        "provenance_accuracy": 0.0,
+                        "page_coverage": 0.0,
                         "latency_s": float(exc.timeout),
                         "error": f"TimeoutExpired: child process exceeded {exc.timeout}s",
                         "output": {},
@@ -170,6 +182,8 @@ print(json.dumps({{
                     round(float(row["exact_accuracy"]), 3),
                     round(float(row["fuzzy_accuracy"]), 3),
                     round(float(row["completeness"]), 3),
+                    round(float(row["provenance_accuracy"]), 3),
+                    round(float(row["page_coverage"]), 3),
                     round(float(row["latency_s"]), 2),
                     str(row["error"] or "")[:120],
                     flush=True,
@@ -188,6 +202,9 @@ print(json.dumps({{
                     "fuzzy_accuracy": sum(float(row["fuzzy_accuracy"]) for row in group)
                     / len(group),
                     "completeness": sum(float(row["completeness"]) for row in group) / len(group),
+                    "provenance_accuracy": sum(float(row["provenance_accuracy"]) for row in group)
+                    / len(group),
+                    "page_coverage": sum(float(row["page_coverage"]) for row in group) / len(group),
                     "total_latency_s": sum(float(row["latency_s"]) for row in group),
                     "all_cases_succeeded": all(not row["error"] for row in group),
                 }

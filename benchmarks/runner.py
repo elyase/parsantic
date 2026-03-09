@@ -14,9 +14,21 @@ from parsantic.extract.providers.base import InferenceRequest
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from benchmarks.metrics import BenchmarkMetrics, CaseMetrics, score_case, summarize_cases
+    from benchmarks.metrics import (
+        BenchmarkMetrics,
+        CaseMetrics,
+        score_case,
+        score_provenance_case,
+        summarize_cases,
+    )
 else:
-    from .metrics import BenchmarkMetrics, CaseMetrics, score_case, summarize_cases
+    from .metrics import (
+        BenchmarkMetrics,
+        CaseMetrics,
+        score_case,
+        score_provenance_case,
+        summarize_cases,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +37,7 @@ class BenchmarkCase:
     document: str
     schema: str
     expected: str
+    expected_sources: str | None = None
     prompt: str = ""
     additional_context: str | None = None
     tags: tuple[str, ...] = ()
@@ -155,6 +168,7 @@ def _load_manifest(path: Path) -> BenchmarkManifest:
             document=item["document"],
             schema=item["schema"],
             expected=item["expected"],
+            expected_sources=item.get("expected_sources"),
             prompt=item.get("prompt", ""),
             additional_context=item.get("additional_context"),
             tags=tuple(item.get("tags", [])),
@@ -265,6 +279,11 @@ def run_suite(
             document = _load_document(case, config, root)
             target = _resolve_symbol(case.schema)
             expected = _load_json((root / case.expected).resolve())
+            expected_sources = (
+                _load_json((root / case.expected_sources).resolve())
+                if case.expected_sources is not None
+                else {}
+            )
 
             start = time.perf_counter()
             error: str | None = None
@@ -277,6 +296,21 @@ def run_suite(
                     else result.value
                 )
                 metrics = score_case(expected, output, fuzzy_threshold=fuzzy_threshold)
+                provenance_accuracy, page_coverage = score_provenance_case(
+                    expected_sources,
+                    result.sources,
+                )
+                metrics = CaseMetrics(
+                    exact_accuracy=metrics.exact_accuracy,
+                    fuzzy_accuracy=metrics.fuzzy_accuracy,
+                    completeness=metrics.completeness,
+                    exact_matches=metrics.exact_matches,
+                    fuzzy_matches=metrics.fuzzy_matches,
+                    expected_fields=metrics.expected_fields,
+                    predicted_fields=metrics.predicted_fields,
+                    provenance_accuracy=provenance_accuracy,
+                    page_coverage=page_coverage,
+                )
             except Exception as exc:
                 error = str(exc)
                 metrics = _zero_metrics(expected)

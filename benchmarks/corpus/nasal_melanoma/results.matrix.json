@@ -6,25 +6,31 @@
       "exact_accuracy": 0.8225806451612904,
       "fuzzy_accuracy": 0.8225806451612904,
       "completeness": 0.9758064516129032,
-      "total_latency_s": 21.003385082120076,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "total_latency_s": 25.60559683293104,
       "all_cases_succeeded": true
     },
     {
       "model": "gemini:gemini-3.1-flash-lite-preview",
       "strategy": "hybrid_targeted",
-      "exact_accuracy": 0.8064516129032258,
-      "fuzzy_accuracy": 0.8064516129032258,
-      "completeness": 1.0,
-      "total_latency_s": 56.81180875108112,
-      "all_cases_succeeded": true
+      "exact_accuracy": 0.5806451612903226,
+      "fuzzy_accuracy": 0.5806451612903226,
+      "completeness": 0.75,
+      "provenance_accuracy": 0.4274193548387097,
+      "page_coverage": 0.5725806451612903,
+      "total_latency_s": 109.4770287090214,
+      "all_cases_succeeded": false
     },
     {
       "model": "gemini:gemini-3.1-flash-lite-preview",
       "strategy": "fused_targeted",
-      "exact_accuracy": 0.5,
-      "fuzzy_accuracy": 0.5161290322580645,
+      "exact_accuracy": 0.5161290322580645,
+      "fuzzy_accuracy": 0.532258064516129,
       "completeness": 1.0,
-      "total_latency_s": 33.749635750078596,
+      "provenance_accuracy": 0.16935483870967744,
+      "page_coverage": 0.5,
+      "total_latency_s": 62.71264254092239,
       "all_cases_succeeded": true
     },
     {
@@ -33,52 +39,64 @@
       "exact_accuracy": 0.8306451612903226,
       "fuzzy_accuracy": 0.8306451612903226,
       "completeness": 0.9758064516129032,
-      "total_latency_s": 16.166160459048115,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "total_latency_s": 16.771682834019884,
       "all_cases_succeeded": true
     },
     {
       "model": "gemini:gemini-2.5-flash-lite",
       "strategy": "hybrid_targeted",
-      "exact_accuracy": 0.8145161290322581,
-      "fuzzy_accuracy": 0.8145161290322581,
+      "exact_accuracy": 0.814516129032258,
+      "fuzzy_accuracy": 0.8387096774193548,
       "completeness": 1.0,
-      "total_latency_s": 49.90230154094752,
+      "provenance_accuracy": 0.5564516129032258,
+      "page_coverage": 0.8225806451612903,
+      "total_latency_s": 48.50108754099347,
       "all_cases_succeeded": true
     },
     {
       "model": "gemini:gemini-2.5-flash-lite",
       "strategy": "fused_targeted",
-      "exact_accuracy": 0.4838709677419355,
-      "fuzzy_accuracy": 0.49193548387096775,
+      "exact_accuracy": 0.5241935483870968,
+      "fuzzy_accuracy": 0.5241935483870968,
       "completeness": 1.0,
-      "total_latency_s": 26.23469779198058,
+      "provenance_accuracy": 0.18548387096774194,
+      "page_coverage": 0.5,
+      "total_latency_s": 27.637021581991576,
       "all_cases_succeeded": true
     },
     {
       "model": "gemini:gemini-2.5-flash",
       "strategy": "document_auto",
-      "exact_accuracy": 0.814516129032258,
+      "exact_accuracy": 0.7580645161290323,
       "fuzzy_accuracy": 0.8225806451612903,
       "completeness": 0.9758064516129032,
-      "total_latency_s": 37.995215000002645,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "total_latency_s": 90.86762729182374,
       "all_cases_succeeded": true
     },
     {
       "model": "gemini:gemini-2.5-flash",
       "strategy": "hybrid_targeted",
-      "exact_accuracy": 0.7661290322580645,
-      "fuzzy_accuracy": 0.7903225806451613,
+      "exact_accuracy": 0.8225806451612903,
+      "fuzzy_accuracy": 0.8225806451612903,
       "completeness": 1.0,
-      "total_latency_s": 181.72659762494732,
+      "provenance_accuracy": 0.49193548387096775,
+      "page_coverage": 0.8064516129032258,
+      "total_latency_s": 186.9977648749482,
       "all_cases_succeeded": true
     },
     {
       "model": "gemini:gemini-2.5-flash",
       "strategy": "fused_targeted",
-      "exact_accuracy": 0.5725806451612903,
-      "fuzzy_accuracy": 0.5725806451612903,
+      "exact_accuracy": 0.5403225806451613,
+      "fuzzy_accuracy": 0.5483870967741935,
       "completeness": 1.0,
-      "total_latency_s": 132.43507625104394,
+      "provenance_accuracy": 0.18548387096774194,
+      "page_coverage": 0.5,
+      "total_latency_s": 148.60134120681323,
       "all_cases_succeeded": true
     }
   ],
@@ -90,7 +108,9 @@
       "exact_accuracy": 0.8387096774193549,
       "fuzzy_accuracy": 0.8387096774193549,
       "completeness": 1.0,
-      "latency_s": 3.9994053330738097,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 6.484566667000763,
       "error": null,
       "output": {
         "age_years": 56,
@@ -141,7 +161,9 @@
       "exact_accuracy": 1.0,
       "fuzzy_accuracy": 1.0,
       "completeness": 1.0,
-      "latency_s": 4.8690391660202295,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 4.918063916033134,
       "error": null,
       "output": {
         "age_years": 56,
@@ -192,7 +214,9 @@
       "exact_accuracy": 0.8387096774193549,
       "fuzzy_accuracy": 0.8387096774193549,
       "completeness": 1.0,
-      "latency_s": 8.763165207928978,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 9.117036832962185,
       "error": null,
       "output": {
         "age_years": 56,
@@ -243,7 +267,9 @@
       "exact_accuracy": 0.6129032258064516,
       "fuzzy_accuracy": 0.6129032258064516,
       "completeness": 0.9032258064516129,
-      "latency_s": 3.3717753750970587,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 5.08592941693496,
       "error": null,
       "output": {
         "age_years": 56,
@@ -260,10 +286,10 @@
           1.8,
           1.4
         ],
-        "mri_face_date": "null",
+        "mri_face_date": "not documented",
         "mri_mass_size_cm": [],
         "left_submandibular_node_cm": 0.0,
-        "pet_ct_date": "null",
+        "pet_ct_date": "not documented",
         "pet_hypermetabolic_nasal_mass": false,
         "metastatic_disease_on_pet": false,
         "left_apical_lung_nodule_present": false,
@@ -287,18 +313,19 @@
       "model": "gemini:gemini-3.1-flash-lite-preview",
       "strategy": "hybrid_targeted",
       "pdf": "nasal_melanoma_clean.pdf",
-      "exact_accuracy": 0.7419354838709677,
-      "fuzzy_accuracy": 0.7419354838709677,
+      "exact_accuracy": 0.8387096774193549,
+      "fuzzy_accuracy": 0.8387096774193549,
       "completeness": 1.0,
-      "latency_s": 13.878637458081357,
+      "provenance_accuracy": 0.7419354838709677,
+      "page_coverage": 0.9032258064516129,
+      "latency_s": 22.47326187498402,
       "error": null,
       "output": {
         "age_years": 56,
         "sex": "female",
         "comorbidities": [
           "hyperlipidemia",
-          "tobacco abuse",
-          "none"
+          "tobacco abuse"
         ],
         "presenting_symptom_month": "11/2025",
         "primary_site": "left nasal cavity",
@@ -306,10 +333,7 @@
         "ct_sinus_date": "12/21/25",
         "ct_lesion_size_cm": [
           1.8,
-          1.4,
-          3.0,
-          1.3,
-          2.5
+          1.4
         ],
         "mri_face_date": "1/15/26",
         "mri_mass_size_cm": [
@@ -324,8 +348,6 @@
         "left_apical_lung_nodule_present": true,
         "surgery_date": "2/16/26",
         "surgery_procedures": [
-          "endoscopic resection of nasal mass",
-          "left level IB neck dissection",
           "left partial rhinectomy",
           "left maxillectomy",
           "cervical lymphadenectomy"
@@ -344,10 +366,25 @@
       "model": "gemini:gemini-3.1-flash-lite-preview",
       "strategy": "hybrid_targeted",
       "pdf": "nasal_melanoma_table.pdf",
-      "exact_accuracy": 1.0,
-      "fuzzy_accuracy": 1.0,
+      "exact_accuracy": 0.0,
+      "fuzzy_accuracy": 0.0,
+      "completeness": 0.0,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 39.33929716702551,
+      "error": "ReadError: ",
+      "output": {}
+    },
+    {
+      "model": "gemini:gemini-3.1-flash-lite-preview",
+      "strategy": "hybrid_targeted",
+      "pdf": "nasal_melanoma_scanned.pdf",
+      "exact_accuracy": 0.7419354838709677,
+      "fuzzy_accuracy": 0.7419354838709677,
       "completeness": 1.0,
-      "latency_s": 10.223460334003903,
+      "provenance_accuracy": 0.3870967741935484,
+      "page_coverage": 0.5806451612903226,
+      "latency_s": 25.10353029204998,
       "error": null,
       "output": {
         "age_years": 56,
@@ -356,7 +393,183 @@
           "hyperlipidemia",
           "tobacco abuse",
           "Hypertension",
-          "Type 2 diabetes"
+          "Type 2 diabetes mellitus",
+          "Hyperlipidemia",
+          "Osteoporosis",
+          "Chronic obstructive pulmonary disease"
+        ],
+        "presenting_symptom_month": "11/2025",
+        "primary_site": "left nasal cavity",
+        "diagnosis": "mucosal malignant melanoma",
+        "ct_sinus_date": "12/21/25",
+        "ct_lesion_size_cm": [
+          1.8,
+          1.4,
+          3.2,
+          1.5,
+          2.8
+        ],
+        "mri_face_date": "1/15/26",
+        "mri_mass_size_cm": [
+          3.0,
+          1.3,
+          2.5
+        ],
+        "left_submandibular_node_cm": 1.3,
+        "pet_ct_date": "2/3/26",
+        "pet_hypermetabolic_nasal_mass": true,
+        "metastatic_disease_on_pet": false,
+        "left_apical_lung_nodule_present": true,
+        "surgery_date": "2/16/26",
+        "surgery_procedures": [
+          "Endoscopic resection of left nasal cavity mass",
+          "Left selective neck dissection",
+          "left partial rhinectomy",
+          "left maxillectomy",
+          "cervical lymphadenectomy"
+        ],
+        "pathology_size_cm": 3.1,
+        "margins_negative": true,
+        "lymphovascular_invasion": false,
+        "perineural_invasion": false,
+        "nodes_positive": 0,
+        "nodes_examined": 27,
+        "pathologic_t_stage": "pT4a",
+        "pathologic_n_stage": "pN0"
+      }
+    },
+    {
+      "model": "gemini:gemini-3.1-flash-lite-preview",
+      "strategy": "hybrid_targeted",
+      "pdf": "nasal_melanoma_mixed.pdf",
+      "exact_accuracy": 0.7419354838709677,
+      "fuzzy_accuracy": 0.7419354838709677,
+      "completeness": 1.0,
+      "provenance_accuracy": 0.5806451612903226,
+      "page_coverage": 0.8064516129032258,
+      "latency_s": 22.56093937496189,
+      "error": null,
+      "output": {
+        "age_years": 56,
+        "sex": "female",
+        "comorbidities": [
+          "hyperlipidemia",
+          "tobacco abuse",
+          "Hypertension",
+          "Hypothyroidism",
+          "Hyperlipidemia"
+        ],
+        "presenting_symptom_month": "11/2025",
+        "primary_site": "left nasal cavity",
+        "diagnosis": "mucosal malignant melanoma",
+        "ct_sinus_date": "12/21/25",
+        "ct_lesion_size_cm": [
+          1.8,
+          1.4,
+          3.0,
+          2.5
+        ],
+        "mri_face_date": "1/15/26",
+        "mri_mass_size_cm": [
+          3.0,
+          1.3,
+          2.5
+        ],
+        "left_submandibular_node_cm": 1.3,
+        "pet_ct_date": "2/3/26",
+        "pet_hypermetabolic_nasal_mass": true,
+        "metastatic_disease_on_pet": false,
+        "left_apical_lung_nodule_present": true,
+        "surgery_date": "2/16/26",
+        "surgery_procedures": [
+          "Endoscopic resection of left nasal mass",
+          "Left selective neck dissection",
+          "left partial rhinectomy",
+          "left maxillectomy",
+          "cervical lymphadenectomy"
+        ],
+        "pathology_size_cm": 3.1,
+        "margins_negative": true,
+        "lymphovascular_invasion": false,
+        "perineural_invasion": false,
+        "nodes_positive": 0,
+        "nodes_examined": 27,
+        "pathologic_t_stage": "pT4a",
+        "pathologic_n_stage": "pN0"
+      }
+    },
+    {
+      "model": "gemini:gemini-3.1-flash-lite-preview",
+      "strategy": "fused_targeted",
+      "pdf": "nasal_melanoma_clean.pdf",
+      "exact_accuracy": 0.5161290322580645,
+      "fuzzy_accuracy": 0.5161290322580645,
+      "completeness": 1.0,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 20.069011957966723,
+      "error": null,
+      "output": {
+        "age_years": 56,
+        "sex": "female",
+        "comorbidities": [
+          "hyperlipidemia",
+          "tobacco abuse"
+        ],
+        "presenting_symptom_month": "11/2025",
+        "primary_site": "left nasal ala and lateral nasal sidewall",
+        "diagnosis": "nasal melanoma",
+        "ct_sinus_date": "12/21/25",
+        "ct_lesion_size_cm": [
+          1.8,
+          1.4
+        ],
+        "mri_face_date": "null",
+        "mri_mass_size_cm": [
+          3.0,
+          1.3,
+          2.5
+        ],
+        "left_submandibular_node_cm": 0.0,
+        "pet_ct_date": "null",
+        "pet_hypermetabolic_nasal_mass": false,
+        "metastatic_disease_on_pet": false,
+        "left_apical_lung_nodule_present": false,
+        "surgery_date": "null",
+        "surgery_procedures": [
+          "left partial rhinectomy",
+          "left maxillectomy",
+          "cervical lymphadenectomy"
+        ],
+        "pathology_size_cm": 0.0,
+        "margins_negative": false,
+        "lymphovascular_invasion": false,
+        "perineural_invasion": false,
+        "nodes_positive": 0,
+        "nodes_examined": 0,
+        "pathologic_t_stage": "null",
+        "pathologic_n_stage": "null"
+      }
+    },
+    {
+      "model": "gemini:gemini-3.1-flash-lite-preview",
+      "strategy": "fused_targeted",
+      "pdf": "nasal_melanoma_table.pdf",
+      "exact_accuracy": 0.7419354838709677,
+      "fuzzy_accuracy": 0.7419354838709677,
+      "completeness": 1.0,
+      "provenance_accuracy": 0.2903225806451613,
+      "page_coverage": 1.0,
+      "latency_s": 13.714839874999598,
+      "error": null,
+      "output": {
+        "age_years": 56,
+        "sex": "female",
+        "comorbidities": [
+          "hyperlipidemia",
+          "tobacco abuse",
+          "hypertension",
+          "type 2 diabetes"
         ],
         "presenting_symptom_month": "2025-11",
         "primary_site": "left nasal cavity",
@@ -380,153 +593,35 @@
         ],
         "left_submandibular_node_cm": 1.3,
         "pet_ct_date": "2026-02-03",
-        "pet_hypermetabolic_nasal_mass": true,
+        "pet_hypermetabolic_nasal_mass": false,
         "metastatic_disease_on_pet": false,
-        "left_apical_lung_nodule_present": true,
-        "surgery_date": "2026-02-16",
+        "left_apical_lung_nodule_present": false,
+        "surgery_date": "null",
         "surgery_procedures": [
           "left partial rhinectomy",
           "left maxillectomy",
           "cervical lymphadenectomy"
         ],
-        "pathology_size_cm": 3.1,
-        "margins_negative": true,
+        "pathology_size_cm": 0.0,
+        "margins_negative": false,
         "lymphovascular_invasion": false,
         "perineural_invasion": false,
         "nodes_positive": 0,
-        "nodes_examined": 27,
-        "pathologic_t_stage": "pT4a",
-        "pathologic_n_stage": "pN0"
-      }
-    },
-    {
-      "model": "gemini:gemini-3.1-flash-lite-preview",
-      "strategy": "hybrid_targeted",
-      "pdf": "nasal_melanoma_scanned.pdf",
-      "exact_accuracy": 0.7419354838709677,
-      "fuzzy_accuracy": 0.7419354838709677,
-      "completeness": 1.0,
-      "latency_s": 16.388447167002596,
-      "error": null,
-      "output": {
-        "age_years": 56,
-        "sex": "female",
-        "comorbidities": [
-          "hyperlipidemia",
-          "tobacco abuse",
-          "none"
-        ],
-        "presenting_symptom_month": "11/2025",
-        "primary_site": "left nasal cavity",
-        "diagnosis": "mucosal malignant melanoma",
-        "ct_sinus_date": "12/21/25",
-        "ct_lesion_size_cm": [
-          1.8,
-          1.4,
-          3.0,
-          1.2,
-          2.5
-        ],
-        "mri_face_date": "1/15/26",
-        "mri_mass_size_cm": [
-          3.0,
-          1.3,
-          2.5
-        ],
-        "left_submandibular_node_cm": 1.3,
-        "pet_ct_date": "2/3/26",
-        "pet_hypermetabolic_nasal_mass": true,
-        "metastatic_disease_on_pet": false,
-        "left_apical_lung_nodule_present": true,
-        "surgery_date": "2/16/26",
-        "surgery_procedures": [
-          "endoscopic resection of left nasal mass",
-          "left medial maxillectomy",
-          "left partial ethmoidectomy",
-          "left septectomy",
-          "left neck dissection",
-          "left partial rhinectomy",
-          "left maxillectomy",
-          "cervical lymphadenectomy"
-        ],
-        "pathology_size_cm": 3.1,
-        "margins_negative": true,
-        "lymphovascular_invasion": false,
-        "perineural_invasion": false,
-        "nodes_positive": 0,
-        "nodes_examined": 27,
-        "pathologic_t_stage": "pT4a",
-        "pathologic_n_stage": "pN0"
-      }
-    },
-    {
-      "model": "gemini:gemini-3.1-flash-lite-preview",
-      "strategy": "hybrid_targeted",
-      "pdf": "nasal_melanoma_mixed.pdf",
-      "exact_accuracy": 0.7419354838709677,
-      "fuzzy_accuracy": 0.7419354838709677,
-      "completeness": 1.0,
-      "latency_s": 16.32126379199326,
-      "error": null,
-      "output": {
-        "age_years": 56,
-        "sex": "female",
-        "comorbidities": [
-          "hyperlipidemia",
-          "tobacco abuse",
-          "Hypertension",
-          "Type 2 diabetes",
-          "Hyperlipidemia"
-        ],
-        "presenting_symptom_month": "11/2025",
-        "primary_site": "left nasal cavity",
-        "diagnosis": "mucosal malignant melanoma",
-        "ct_sinus_date": "12/21/25",
-        "ct_lesion_size_cm": [
-          1.8,
-          1.4,
-          3.0,
-          2.5
-        ],
-        "mri_face_date": "1/15/26",
-        "mri_mass_size_cm": [
-          3.0,
-          1.3,
-          2.5
-        ],
-        "left_submandibular_node_cm": 1.3,
-        "pet_ct_date": "2/3/26",
-        "pet_hypermetabolic_nasal_mass": true,
-        "metastatic_disease_on_pet": false,
-        "left_apical_lung_nodule_present": true,
-        "surgery_date": "2/16/26",
-        "surgery_procedures": [
-          "Endoscopic wide local excision of left nasal cavity mass",
-          "Left total ethmoidectomy",
-          "Left partial maxillectomy",
-          "Left inferior turbinectomy",
-          "left partial rhinectomy",
-          "left maxillectomy",
-          "cervical lymphadenectomy"
-        ],
-        "pathology_size_cm": 3.1,
-        "margins_negative": true,
-        "lymphovascular_invasion": false,
-        "perineural_invasion": false,
-        "nodes_positive": 0,
-        "nodes_examined": 27,
-        "pathologic_t_stage": "pT4a",
-        "pathologic_n_stage": "pN0"
+        "nodes_examined": 0,
+        "pathologic_t_stage": "null",
+        "pathologic_n_stage": "null"
       }
     },
     {
       "model": "gemini:gemini-3.1-flash-lite-preview",
       "strategy": "fused_targeted",
-      "pdf": "nasal_melanoma_clean.pdf",
+      "pdf": "nasal_melanoma_scanned.pdf",
       "exact_accuracy": 0.41935483870967744,
       "fuzzy_accuracy": 0.41935483870967744,
       "completeness": 1.0,
-      "latency_s": 8.066710124956444,
+      "provenance_accuracy": 0.3870967741935484,
+      "page_coverage": 1.0,
+      "latency_s": 17.67032024997752,
       "error": null,
       "output": {
         "age_years": 56,
@@ -539,124 +634,6 @@
           "Hyperlipidemia"
         ],
         "presenting_symptom_month": "11/2025",
-        "primary_site": "left nasal ala and lateral nasal sidewall",
-        "diagnosis": "nasal melanoma",
-        "ct_sinus_date": "12/21/25",
-        "ct_lesion_size_cm": [
-          1.8,
-          1.4,
-          2.9,
-          1.2,
-          2.4
-        ],
-        "mri_face_date": "null",
-        "mri_mass_size_cm": [
-          3.0,
-          1.3,
-          2.5
-        ],
-        "left_submandibular_node_cm": 0.0,
-        "pet_ct_date": "null",
-        "pet_hypermetabolic_nasal_mass": false,
-        "metastatic_disease_on_pet": false,
-        "left_apical_lung_nodule_present": false,
-        "surgery_date": "null",
-        "surgery_procedures": [
-          "Endoscopic resection of left nasal mass",
-          "Left selective neck dissection",
-          "left partial rhinectomy",
-          "left maxillectomy",
-          "cervical lymphadenectomy"
-        ],
-        "pathology_size_cm": 0.0,
-        "margins_negative": false,
-        "lymphovascular_invasion": false,
-        "perineural_invasion": false,
-        "nodes_positive": 0,
-        "nodes_examined": 0,
-        "pathologic_t_stage": "null",
-        "pathologic_n_stage": "null"
-      }
-    },
-    {
-      "model": "gemini:gemini-3.1-flash-lite-preview",
-      "strategy": "fused_targeted",
-      "pdf": "nasal_melanoma_table.pdf",
-      "exact_accuracy": 0.7419354838709677,
-      "fuzzy_accuracy": 0.7419354838709677,
-      "completeness": 1.0,
-      "latency_s": 7.636720624985173,
-      "error": null,
-      "output": {
-        "age_years": 56,
-        "sex": "female",
-        "comorbidities": [
-          "hyperlipidemia",
-          "tobacco abuse",
-          "Hypertension",
-          "Type 2 diabetes"
-        ],
-        "presenting_symptom_month": "2025-11",
-        "primary_site": "left nasal cavity",
-        "diagnosis": "mucosal malignant melanoma",
-        "ct_sinus_date": "2025-12-21",
-        "ct_lesion_size_cm": [
-          1.8,
-          1.4,
-          3.2,
-          2.5,
-          2.8
-        ],
-        "mri_face_date": "2026-01-15",
-        "mri_mass_size_cm": [
-          3.0,
-          1.3,
-          2.5,
-          3.4,
-          2.6
-        ],
-        "left_submandibular_node_cm": 1.3,
-        "pet_ct_date": "2026-02-03",
-        "pet_hypermetabolic_nasal_mass": false,
-        "metastatic_disease_on_pet": false,
-        "left_apical_lung_nodule_present": false,
-        "surgery_date": "null",
-        "surgery_procedures": [
-          "left partial rhinectomy",
-          "left maxillectomy",
-          "cervical lymphadenectomy"
-        ],
-        "pathology_size_cm": 0.0,
-        "margins_negative": false,
-        "lymphovascular_invasion": false,
-        "perineural_invasion": false,
-        "nodes_positive": 0,
-        "nodes_examined": 0,
-        "pathologic_t_stage": "null",
-        "pathologic_n_stage": "null"
-      }
-    },
-    {
-      "model": "gemini:gemini-3.1-flash-lite-preview",
-      "strategy": "fused_targeted",
-      "pdf": "nasal_melanoma_scanned.pdf",
-      "exact_accuracy": 0.41935483870967744,
-      "fuzzy_accuracy": 0.41935483870967744,
-      "completeness": 1.0,
-      "latency_s": 9.659653458045796,
-      "error": null,
-      "output": {
-        "age_years": 56,
-        "sex": "female",
-        "comorbidities": [
-          "hyperlipidemia",
-          "tobacco abuse",
-          "Hypertension",
-          "Hyperlipidemia",
-          "Type 2 diabetes mellitus",
-          "Chronic kidney disease stage 3a"
-        ],
-        "presenting_symptom_month": "11/2025",
         "primary_site": "anterior left naris",
         "diagnosis": "null",
         "ct_sinus_date": "12/21/25",
@@ -664,7 +641,7 @@
           1.8,
           1.4,
           3.0,
-          1.2,
+          1.3,
           2.5
         ],
         "mri_face_date": "null",
@@ -680,11 +657,9 @@
         "left_apical_lung_nodule_present": false,
         "surgery_date": "null",
         "surgery_procedures": [
-          "Endoscopic wide local excision of left nasal cavity mass",
-          "Left total ethmoidectomy",
-          "Left partial maxillectomy",
-          "Left partial septectomy",
-          "Left level Ib neck dissection",
+          "Endoscopic medial maxillectomy",
+          "Ethmoidectomy",
+          "Left neck dissection",
           "left partial rhinectomy",
           "left maxillectomy",
           "cervical lymphadenectomy"
@@ -703,29 +678,34 @@
       "model": "gemini:gemini-3.1-flash-lite-preview",
       "strategy": "fused_targeted",
       "pdf": "nasal_melanoma_mixed.pdf",
-      "exact_accuracy": 0.41935483870967744,
-      "fuzzy_accuracy": 0.4838709677419355,
+      "exact_accuracy": 0.3870967741935484,
+      "fuzzy_accuracy": 0.45161290322580644,
       "completeness": 1.0,
-      "latency_s": 8.386551542091183,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 11.258470457978547,
       "error": null,
       "output": {
-        "age_years": 83,
+        "age_years": 82,
         "sex": "Female",
         "comorbidities": [
           "Hypertension",
           "Hyperlipidemia",
+          "Hypothyroidism",
+          "Osteoporosis",
           "hyperlipidemia",
           "tobacco abuse"
         ],
         "presenting_symptom_month": "December 2025",
         "primary_site": "Left nasal cavity",
-        "diagnosis": "Mucosal melanoma",
-        "ct_sinus_date": "1/8/26",
+        "diagnosis": "Malignant melanoma",
+        "ct_sinus_date": "1/9/26",
         "ct_lesion_size_cm": [
-          3.2,
-          1.4,
-          2.6,
-          1.8
+          2.9,
+          1.2,
+          2.3,
+          1.8,
+          1.4
         ],
         "mri_face_date": "1/15/26",
         "mri_mass_size_cm": [
@@ -738,12 +718,12 @@
         "pet_hypermetabolic_nasal_mass": true,
         "metastatic_disease_on_pet": false,
         "left_apical_lung_nodule_present": true,
-        "surgery_date": "2/10/26",
+        "surgery_date": "2/17/26",
         "surgery_procedures": [
-          "Left endoscopic nasal mass resection",
-          "Left partial septectomy",
-          "Left inferior turbinectomy",
-          "Left selective neck dissection",
+          "Endoscopic medial maxillectomy",
+          "Left ethmoidectomy",
+          "Septoplasty",
+          "Level I-III neck dissection",
           "left partial rhinectomy",
           "left maxillectomy",
           "cervical lymphadenectomy"
@@ -753,7 +733,7 @@
         "lymphovascular_invasion": false,
         "perineural_invasion": false,
         "nodes_positive": 0,
-        "nodes_examined": 13,
+        "nodes_examined": 28,
         "pathologic_t_stage": "pT3",
         "pathologic_n_stage": "pN0"
       }
@@ -765,7 +745,9 @@
       "exact_accuracy": 0.8387096774193549,
       "fuzzy_accuracy": 0.8387096774193549,
       "completeness": 1.0,
-      "latency_s": 3.156928584096022,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 3.297891709022224,
       "error": null,
       "output": {
         "age_years": 56,
@@ -816,7 +798,9 @@
       "exact_accuracy": 1.0,
       "fuzzy_accuracy": 1.0,
       "completeness": 1.0,
-      "latency_s": 2.4797017090022564,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 2.7703678749967366,
       "error": null,
       "output": {
         "age_years": 56,
@@ -867,7 +851,9 @@
       "exact_accuracy": 0.8387096774193549,
       "fuzzy_accuracy": 0.8387096774193549,
       "completeness": 1.0,
-      "latency_s": 7.694700583000667,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 7.696178208920173,
       "error": null,
       "output": {
         "age_years": 56,
@@ -884,18 +870,18 @@
           1.8,
           1.4
         ],
-        "mri_face_date": "01/15/26",
+        "mri_face_date": "1/15/26",
         "mri_mass_size_cm": [
           3.0,
           1.3,
           2.5
         ],
         "left_submandibular_node_cm": 1.3,
-        "pet_ct_date": "02/03/26",
+        "pet_ct_date": "2/3/26",
         "pet_hypermetabolic_nasal_mass": true,
         "metastatic_disease_on_pet": false,
         "left_apical_lung_nodule_present": true,
-        "surgery_date": "02/16/26",
+        "surgery_date": "2/16/26",
         "surgery_procedures": [
           "left partial rhinectomy",
           "left maxillectomy",
@@ -918,7 +904,9 @@
       "exact_accuracy": 0.6451612903225806,
       "fuzzy_accuracy": 0.6451612903225806,
       "completeness": 0.9032258064516129,
-      "latency_s": 2.834829582949169,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 3.0072450410807505,
       "error": null,
       "output": {
         "age_years": 56,
@@ -935,10 +923,10 @@
           1.8,
           1.4
         ],
-        "mri_face_date": "unknown",
+        "mri_face_date": "N/A",
         "mri_mass_size_cm": [],
         "left_submandibular_node_cm": 0.0,
-        "pet_ct_date": "unknown",
+        "pet_ct_date": "N/A",
         "pet_hypermetabolic_nasal_mass": false,
         "metastatic_disease_on_pet": false,
         "left_apical_lung_nodule_present": false,
@@ -965,7 +953,9 @@
       "exact_accuracy": 0.8387096774193549,
       "fuzzy_accuracy": 0.8387096774193549,
       "completeness": 1.0,
-      "latency_s": 12.93583099998068,
+      "provenance_accuracy": 0.7419354838709677,
+      "page_coverage": 0.9032258064516129,
+      "latency_s": 11.529854291002266,
       "error": null,
       "output": {
         "age_years": 56,
@@ -1013,10 +1003,12 @@
       "model": "gemini:gemini-2.5-flash-lite",
       "strategy": "hybrid_targeted",
       "pdf": "nasal_melanoma_table.pdf",
-      "exact_accuracy": 0.8709677419354839,
-      "fuzzy_accuracy": 0.8709677419354839,
+      "exact_accuracy": 0.9032258064516129,
+      "fuzzy_accuracy": 0.9032258064516129,
       "completeness": 1.0,
-      "latency_s": 10.814170375000685,
+      "provenance_accuracy": 0.3548387096774194,
+      "page_coverage": 1.0,
+      "latency_s": 9.653408749960363,
       "error": null,
       "output": {
         "age_years": 56,
@@ -1043,7 +1035,7 @@
         "pet_ct_date": "2026-02-03",
         "pet_hypermetabolic_nasal_mass": true,
         "metastatic_disease_on_pet": false,
-        "left_apical_lung_nodule_present": false,
+        "left_apical_lung_nodule_present": true,
         "surgery_date": "",
         "surgery_procedures": [
           "left partial rhinectomy",
@@ -1065,17 +1057,18 @@
       "strategy": "hybrid_targeted",
       "pdf": "nasal_melanoma_scanned.pdf",
       "exact_accuracy": 0.7096774193548387,
-      "fuzzy_accuracy": 0.7096774193548387,
+      "fuzzy_accuracy": 0.8064516129032258,
       "completeness": 1.0,
-      "latency_s": 14.495601582922973,
+      "provenance_accuracy": 0.45161290322580644,
+      "page_coverage": 0.5806451612903226,
+      "latency_s": 14.951650125090964,
       "error": null,
       "output": {
         "age_years": 56,
         "sex": "female",
         "comorbidities": [
           "hyperlipidemia",
-          "tobacco abuse",
-          "melanoma"
+          "tobacco abuse"
         ],
         "presenting_symptom_month": "11/2025",
         "primary_site": "nasal cavity",
@@ -1084,28 +1077,29 @@
         "ct_lesion_size_cm": [
           1.8,
           1.4,
-          3.0,
-          1.3,
-          2.5
+          7.4,
+          5.1,
+          4.0
         ],
-        "mri_face_date": "01/15/26",
+        "mri_face_date": "1/15/26",
         "mri_mass_size_cm": [
           3.0,
           1.3,
-          2.5
+          2.5,
+          7.4,
+          5.1,
+          4.0
         ],
         "left_submandibular_node_cm": 1.3,
-        "pet_ct_date": "02/03/26",
+        "pet_ct_date": "2/3/26",
         "pet_hypermetabolic_nasal_mass": true,
         "metastatic_disease_on_pet": false,
         "left_apical_lung_nodule_present": true,
-        "surgery_date": "02/16/26",
+        "surgery_date": "2/16/26",
         "surgery_procedures": [
-          "unknown",
-          "Left partial rhinestomy",
+          "Left partial rhinectomy",
           "Left maxillectomy",
-          "Cervical lymphadenectomy",
-          "left partial rhinectomy"
+          "Cervical lymphadenectomy"
         ],
         "pathology_size_cm": 3.1,
         "margins_negative": true,
@@ -1121,10 +1115,12 @@
       "model": "gemini:gemini-2.5-flash-lite",
       "strategy": "hybrid_targeted",
       "pdf": "nasal_melanoma_mixed.pdf",
-      "exact_accuracy": 0.8387096774193549,
-      "fuzzy_accuracy": 0.8387096774193549,
+      "exact_accuracy": 0.8064516129032258,
+      "fuzzy_accuracy": 0.8064516129032258,
       "completeness": 1.0,
-      "latency_s": 11.65669858304318,
+      "provenance_accuracy": 0.6774193548387096,
+      "page_coverage": 0.8064516129032258,
+      "latency_s": 12.366174374939874,
       "error": null,
       "output": {
         "age_years": 56,
@@ -1134,28 +1130,25 @@
           "tobacco abuse"
         ],
         "presenting_symptom_month": "11/2025",
-        "primary_site": "left nasal cavity",
+        "primary_site": "nasal cavity",
         "diagnosis": "mucosal malignant melanoma",
         "ct_sinus_date": "12/21/25",
         "ct_lesion_size_cm": [
           1.8,
-          1.4,
-          3.0,
-          1.3,
-          2.5
+          1.4
         ],
-        "mri_face_date": "01/15/26",
+        "mri_face_date": "1/15/26",
         "mri_mass_size_cm": [
           3.0,
           1.3,
           2.5
         ],
         "left_submandibular_node_cm": 1.3,
-        "pet_ct_date": "02/03/26",
+        "pet_ct_date": "2/3/26",
         "pet_hypermetabolic_nasal_mass": true,
         "metastatic_disease_on_pet": false,
         "left_apical_lung_nodule_present": true,
-        "surgery_date": "02/16/26",
+        "surgery_date": "2/16/26",
         "surgery_procedures": [
           "left partial rhinectomy",
           "left maxillectomy",
@@ -1178,7 +1171,9 @@
       "exact_accuracy": 0.41935483870967744,
       "fuzzy_accuracy": 0.41935483870967744,
       "completeness": 1.0,
-      "latency_s": 6.658371625002474,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 6.823532292037271,
       "error": null,
       "output": {
         "age_years": 56,
@@ -1186,26 +1181,27 @@
         "comorbidities": [
           "hyperlipidemia",
           "tobacco abuse",
-          "string",
           "hypertension",
-          "type 2 diabetes"
+          "string"
         ],
         "presenting_symptom_month": "11/2025",
-        "primary_site": "nasal ala",
+        "primary_site": "nasal cavity",
         "diagnosis": "nasal melanoma",
         "ct_sinus_date": "12/21/25",
         "ct_lesion_size_cm": [
           1.8,
           1.4,
-          1.23,
-          4.5
+          3.0,
+          1.3,
+          2.5,
+          1.23
         ],
         "mri_face_date": "N/A",
         "mri_mass_size_cm": [
           3.0,
           1.3,
           2.5,
-          4.2
+          1.23
         ],
         "left_submandibular_node_cm": 0.0,
         "pet_ct_date": "N/A",
@@ -1214,10 +1210,11 @@
         "left_apical_lung_nodule_present": false,
         "surgery_date": "N/A",
         "surgery_procedures": [
-          "string",
-          "Left partial rhinectomy",
-          "Left maxillectomy",
-          "Cervical lymphadenectomy"
+          "endoscopic resection of nasal mass",
+          "left neck dissection",
+          "left partial rhinectomy",
+          "left maxillectomy",
+          "cervical lymphadenectomy"
         ],
         "pathology_size_cm": 0.0,
         "margins_negative": false,
@@ -1236,7 +1233,9 @@
       "exact_accuracy": 0.7741935483870968,
       "fuzzy_accuracy": 0.7741935483870968,
       "completeness": 1.0,
-      "latency_s": 5.3460092919413,
+      "provenance_accuracy": 0.2903225806451613,
+      "page_coverage": 1.0,
+      "latency_s": 5.710595916025341,
       "error": null,
       "output": {
         "age_years": 56,
@@ -1264,7 +1263,7 @@
         "pet_hypermetabolic_nasal_mass": true,
         "metastatic_disease_on_pet": false,
         "left_apical_lung_nodule_present": false,
-        "surgery_date": "N/A",
+        "surgery_date": "",
         "surgery_procedures": [
           "left partial rhinectomy",
           "left maxillectomy",
@@ -1276,18 +1275,20 @@
         "perineural_invasion": false,
         "nodes_positive": 0,
         "nodes_examined": 0,
-        "pathologic_t_stage": "N/A",
-        "pathologic_n_stage": "N/A"
+        "pathologic_t_stage": "",
+        "pathologic_n_stage": ""
       }
     },
     {
       "model": "gemini:gemini-2.5-flash-lite",
       "strategy": "fused_targeted",
       "pdf": "nasal_melanoma_scanned.pdf",
-      "exact_accuracy": 0.4838709677419355,
-      "fuzzy_accuracy": 0.5161290322580645,
+      "exact_accuracy": 0.41935483870967744,
+      "fuzzy_accuracy": 0.41935483870967744,
       "completeness": 1.0,
-      "latency_s": 7.759025792009197,
+      "provenance_accuracy": 0.45161290322580644,
+      "page_coverage": 1.0,
+      "latency_s": 8.01120941597037,
       "error": null,
       "output": {
         "age_years": 56,
@@ -1295,24 +1296,29 @@
         "comorbidities": [
           "hyperlipidemia",
           "tobacco abuse",
-          "melanoma"
+          "hypertension",
+          "diabetes"
         ],
         "presenting_symptom_month": "11/2025",
         "primary_site": "anterior left naris",
-        "diagnosis": "polypoid lesion",
+        "diagnosis": "nasal melanoma",
         "ct_sinus_date": "12/21/25",
         "ct_lesion_size_cm": [
           1.8,
           1.4,
           3.0,
           1.3,
-          2.5
+          2.5,
+          3.5,
+          4.2
         ],
         "mri_face_date": "N/A",
         "mri_mass_size_cm": [
           3.0,
           1.3,
-          2.5
+          2.5,
+          3.8,
+          4.5
         ],
         "left_submandibular_node_cm": 0.0,
         "pet_ct_date": "N/A",
@@ -1321,6 +1327,7 @@
         "left_apical_lung_nodule_present": false,
         "surgery_date": "N/A",
         "surgery_procedures": [
+          "nasal cavity mass resection",
           "left partial rhin-ectomy",
           "left maxillectomy",
           "cervical lymphadenectomy"
@@ -1339,130 +1346,29 @@
       "model": "gemini:gemini-2.5-flash-lite",
       "strategy": "fused_targeted",
       "pdf": "nasal_melanoma_mixed.pdf",
-      "exact_accuracy": 0.25806451612903225,
-      "fuzzy_accuracy": 0.25806451612903225,
+      "exact_accuracy": 0.4838709677419355,
+      "fuzzy_accuracy": 0.4838709677419355,
       "completeness": 1.0,
-      "latency_s": 6.471291083027609,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 7.091683957958594,
       "error": null,
       "output": {
-        "age_years": 123,
-        "sex": "string",
+        "age_years": 53,
+        "sex": "male",
         "comorbidities": [
-          "string",
           "hyperlipidemia",
           "tobacco abuse",
-          "Hypertension"
+          "none"
         ],
-        "presenting_symptom_month": "string",
+        "presenting_symptom_month": "January",
         "primary_site": "nasal cavity",
         "diagnosis": "melanoma",
-        "ct_sinus_date": "string",
+        "ct_sinus_date": "2026-01-15",
         "ct_lesion_size_cm": [
-          1.23,
-          1.8,
-          1.4,
-          2.8
-        ],
-        "mri_face_date": "1/15/26",
-        "mri_mass_size_cm": [
           3.0,
           1.3,
-          2.5
-        ],
-        "left_submandibular_node_cm": 1.3,
-        "pet_ct_date": "2/3/26",
-        "pet_hypermetabolic_nasal_mass": true,
-        "metastatic_disease_on_pet": false,
-        "left_apical_lung_nodule_present": true,
-        "surgery_date": "string",
-        "surgery_procedures": [
-          "string",
-          "left partial rhinectomy",
-          "left maxillectomy",
-          "cervical lymphadenectomy"
-        ],
-        "pathology_size_cm": 1.23,
-        "margins_negative": true,
-        "lymphovascular_invasion": true,
-        "perineural_invasion": true,
-        "nodes_positive": 123,
-        "nodes_examined": 123,
-        "pathologic_t_stage": "string",
-        "pathologic_n_stage": "string"
-      }
-    },
-    {
-      "model": "gemini:gemini-2.5-flash",
-      "strategy": "document_auto",
-      "pdf": "nasal_melanoma_clean.pdf",
-      "exact_accuracy": 0.7741935483870968,
-      "fuzzy_accuracy": 0.8064516129032258,
-      "completeness": 1.0,
-      "latency_s": 7.830048292060383,
-      "error": null,
-      "output": {
-        "age_years": 56,
-        "sex": "Female",
-        "comorbidities": [
-          "hyperlipidemia",
-          "tobacco abuse"
-        ],
-        "presenting_symptom_month": "November",
-        "primary_site": "left paranasal sinus, maxillary",
-        "diagnosis": "mucosal malignant melanoma",
-        "ct_sinus_date": "12/21/2025",
-        "ct_lesion_size_cm": [
-          1.8,
-          1.4
-        ],
-        "mri_face_date": "01/15/2026",
-        "mri_mass_size_cm": [
-          3.0,
-          1.3,
-          2.5
-        ],
-        "left_submandibular_node_cm": 1.3,
-        "pet_ct_date": "02/03/2026",
-        "pet_hypermetabolic_nasal_mass": true,
-        "metastatic_disease_on_pet": false,
-        "left_apical_lung_nodule_present": true,
-        "surgery_date": "02/16/2026",
-        "surgery_procedures": [
-          "left partial rhinectomy",
-          "left maxillectomy",
-          "cervical lymphadenectomy"
-        ],
-        "pathology_size_cm": 3.1,
-        "margins_negative": true,
-        "lymphovascular_invasion": false,
-        "perineural_invasion": false,
-        "nodes_positive": 0,
-        "nodes_examined": 27,
-        "pathologic_t_stage": "pT4a",
-        "pathologic_n_stage": "pN0"
-      }
-    },
-    {
-      "model": "gemini:gemini-2.5-flash",
-      "strategy": "document_auto",
-      "pdf": "nasal_melanoma_table.pdf",
-      "exact_accuracy": 1.0,
-      "fuzzy_accuracy": 1.0,
-      "completeness": 1.0,
-      "latency_s": 6.345906125032343,
-      "error": null,
-      "output": {
-        "age_years": 56,
-        "sex": "female",
-        "comorbidities": [
-          "hyperlipidemia",
-          "tobacco abuse"
-        ],
-        "presenting_symptom_month": "2025-11",
-        "primary_site": "left nasal cavity",
-        "diagnosis": "mucosal malignant melanoma",
-        "ct_sinus_date": "2025-12-21",
-        "ct_lesion_size_cm": [
+          2.5,
           1.8,
           1.4
         ],
@@ -1470,37 +1376,41 @@
         "mri_mass_size_cm": [
           3.0,
           1.3,
-          2.5
+          2.5,
+          3.2
         ],
         "left_submandibular_node_cm": 1.3,
         "pet_ct_date": "2026-02-03",
         "pet_hypermetabolic_nasal_mass": true,
         "metastatic_disease_on_pet": false,
         "left_apical_lung_nodule_present": true,
-        "surgery_date": "2026-02-16",
+        "surgery_date": "2026-01-15",
         "surgery_procedures": [
+          "nasal mass resection",
           "left partial rhinectomy",
           "left maxillectomy",
           "cervical lymphadenectomy"
         ],
-        "pathology_size_cm": 3.1,
-        "margins_negative": true,
+        "pathology_size_cm": 3.0,
+        "margins_negative": false,
         "lymphovascular_invasion": false,
         "perineural_invasion": false,
         "nodes_positive": 0,
-        "nodes_examined": 27,
-        "pathologic_t_stage": "pT4a",
+        "nodes_examined": 0,
+        "pathologic_t_stage": "pT2",
         "pathologic_n_stage": "pN0"
       }
     },
     {
       "model": "gemini:gemini-2.5-flash",
       "strategy": "document_auto",
-      "pdf": "nasal_melanoma_scanned.pdf",
-      "exact_accuracy": 0.8387096774193549,
-      "fuzzy_accuracy": 0.8387096774193549,
+      "pdf": "nasal_melanoma_clean.pdf",
+      "exact_accuracy": 0.8064516129032258,
+      "fuzzy_accuracy": 0.8064516129032258,
       "completeness": 1.0,
-      "latency_s": 14.689631999935955,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 7.39228849997744,
       "error": null,
       "output": {
         "age_years": 56,
@@ -1509,8 +1419,8 @@
           "hyperlipidemia",
           "tobacco abuse"
         ],
-        "presenting_symptom_month": "11/2025",
-        "primary_site": "left nasal cavity",
+        "presenting_symptom_month": "November 2025",
+        "primary_site": "left paranasal sinus, maxillary",
         "diagnosis": "mucosal malignant melanoma",
         "ct_sinus_date": "12/21/25",
         "ct_lesion_size_cm": [
@@ -1547,109 +1457,13 @@
     {
       "model": "gemini:gemini-2.5-flash",
       "strategy": "document_auto",
-      "pdf": "nasal_melanoma_mixed.pdf",
-      "exact_accuracy": 0.6451612903225806,
-      "fuzzy_accuracy": 0.6451612903225806,
-      "completeness": 0.9032258064516129,
-      "latency_s": 9.129628582973965,
-      "error": null,
-      "output": {
-        "age_years": 56,
-        "sex": "female",
-        "comorbidities": [
-          "hyperlipidemia",
-          "tobacco abuse"
-        ],
-        "presenting_symptom_month": "11/2025",
-        "primary_site": "left nasal cavity",
-        "diagnosis": "mucosal malignant melanoma",
-        "ct_sinus_date": "12/21/25",
-        "ct_lesion_size_cm": [
-          1.8,
-          1.4
-        ],
-        "mri_face_date": "",
-        "mri_mass_size_cm": [],
-        "left_submandibular_node_cm": 0.0,
-        "pet_ct_date": "",
-        "pet_hypermetabolic_nasal_mass": false,
-        "metastatic_disease_on_pet": false,
-        "left_apical_lung_nodule_present": false,
-        "surgery_date": "2/16/26",
-        "surgery_procedures": [
-          "left partial rhinectomy",
-          "left maxillectomy",
-          "cervical lymphadenectomy"
-        ],
-        "pathology_size_cm": 3.1,
-        "margins_negative": true,
-        "lymphovascular_invasion": false,
-        "perineural_invasion": false,
-        "nodes_positive": 0,
-        "nodes_examined": 27,
-        "pathologic_t_stage": "pT4a",
-        "pathologic_n_stage": "pN0"
-      }
-    },
-    {
-      "model": "gemini:gemini-2.5-flash",
-      "strategy": "hybrid_targeted",
-      "pdf": "nasal_melanoma_clean.pdf",
-      "exact_accuracy": 0.7741935483870968,
-      "fuzzy_accuracy": 0.7741935483870968,
-      "completeness": 1.0,
-      "latency_s": 42.66505133302417,
-      "error": null,
-      "output": {
-        "age_years": 56,
-        "sex": "female",
-        "comorbidities": [
-          "hyperlipidemia",
-          "tobacco abuse"
-        ],
-        "presenting_symptom_month": "11/2025",
-        "primary_site": "left nasal cavity",
-        "diagnosis": "mucosal malignant melanoma",
-        "ct_sinus_date": "12/21/25",
-        "ct_lesion_size_cm": [
-          1.8,
-          1.4
-        ],
-        "mri_face_date": "",
-        "mri_mass_size_cm": [
-          3.0,
-          1.3,
-          2.5
-        ],
-        "left_submandibular_node_cm": 1.3,
-        "pet_ct_date": "",
-        "pet_hypermetabolic_nasal_mass": true,
-        "metastatic_disease_on_pet": false,
-        "left_apical_lung_nodule_present": true,
-        "surgery_date": "",
-        "surgery_procedures": [
-          "left partial rhinectomy",
-          "left maxillectomy",
-          "cervical lymphadenectomy"
-        ],
-        "pathology_size_cm": 3.1,
-        "margins_negative": true,
-        "lymphovascular_invasion": false,
-        "perineural_invasion": false,
-        "nodes_positive": 0,
-        "nodes_examined": 27,
-        "pathologic_t_stage": "",
-        "pathologic_n_stage": ""
-      }
-    },
-    {
-      "model": "gemini:gemini-2.5-flash",
-      "strategy": "hybrid_targeted",
       "pdf": "nasal_melanoma_table.pdf",
-      "exact_accuracy": 0.8709677419354839,
-      "fuzzy_accuracy": 0.8709677419354839,
+      "exact_accuracy": 0.967741935483871,
+      "fuzzy_accuracy": 0.967741935483871,
       "completeness": 1.0,
-      "latency_s": 37.503367249970324,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 8.181110166944563,
       "error": null,
       "output": {
         "age_years": 56,
@@ -1677,7 +1491,7 @@
         "pet_hypermetabolic_nasal_mass": true,
         "metastatic_disease_on_pet": false,
         "left_apical_lung_nodule_present": true,
-        "surgery_date": "",
+        "surgery_date": "2026-02-16",
         "surgery_procedures": [
           "left partial rhinectomy",
           "left maxillectomy",
@@ -1689,18 +1503,122 @@
         "perineural_invasion": false,
         "nodes_positive": 0,
         "nodes_examined": 27,
-        "pathologic_t_stage": "",
-        "pathologic_n_stage": ""
+        "pathologic_t_stage": "pT4a",
+        "pathologic_n_stage": "pN0"
+      }
+    },
+    {
+      "model": "gemini:gemini-2.5-flash",
+      "strategy": "document_auto",
+      "pdf": "nasal_melanoma_scanned.pdf",
+      "exact_accuracy": 0.6451612903225806,
+      "fuzzy_accuracy": 0.8387096774193549,
+      "completeness": 1.0,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 62.16004649992101,
+      "error": null,
+      "output": {
+        "age_years": 56,
+        "sex": "Female",
+        "comorbidities": [
+          "hyperlipidemia",
+          "tobacco abuse"
+        ],
+        "presenting_symptom_month": "11/2025",
+        "primary_site": "Left nasal cavity",
+        "diagnosis": "Mucosal malignant melanoma",
+        "ct_sinus_date": "12/21/25",
+        "ct_lesion_size_cm": [
+          1.8,
+          1.4
+        ],
+        "mri_face_date": "1/15/26",
+        "mri_mass_size_cm": [
+          3.0,
+          1.3,
+          2.5
+        ],
+        "left_submandibular_node_cm": 1.3,
+        "pet_ct_date": "2/3/26",
+        "pet_hypermetabolic_nasal_mass": true,
+        "metastatic_disease_on_pet": false,
+        "left_apical_lung_nodule_present": true,
+        "surgery_date": "2/16/26",
+        "surgery_procedures": [
+          "Left partial rhinectomy",
+          "Left maxillectomy",
+          "Cervical lymphadenectomy"
+        ],
+        "pathology_size_cm": 3.1,
+        "margins_negative": true,
+        "lymphovascular_invasion": false,
+        "perineural_invasion": false,
+        "nodes_positive": 0,
+        "nodes_examined": 27,
+        "pathologic_t_stage": "pT4a",
+        "pathologic_n_stage": "pN0"
+      }
+    },
+    {
+      "model": "gemini:gemini-2.5-flash",
+      "strategy": "document_auto",
+      "pdf": "nasal_melanoma_mixed.pdf",
+      "exact_accuracy": 0.6129032258064516,
+      "fuzzy_accuracy": 0.6774193548387096,
+      "completeness": 0.9032258064516129,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 13.134182124980725,
+      "error": null,
+      "output": {
+        "age_years": 56,
+        "sex": "Female",
+        "comorbidities": [
+          "hyperlipidemia",
+          "tobacco abuse"
+        ],
+        "presenting_symptom_month": "November",
+        "primary_site": "Left paranasal sinus, maxillary",
+        "diagnosis": "Mucosal malignant melanoma",
+        "ct_sinus_date": "2025-12-21",
+        "ct_lesion_size_cm": [
+          1.8,
+          1.4
+        ],
+        "mri_face_date": "",
+        "mri_mass_size_cm": [],
+        "left_submandibular_node_cm": 0.0,
+        "pet_ct_date": "",
+        "pet_hypermetabolic_nasal_mass": false,
+        "metastatic_disease_on_pet": false,
+        "left_apical_lung_nodule_present": false,
+        "surgery_date": "2026-02-16",
+        "surgery_procedures": [
+          "left partial rhinectomy",
+          "left maxillectomy",
+          "cervical lymphadenectomy"
+        ],
+        "pathology_size_cm": 3.1,
+        "margins_negative": true,
+        "lymphovascular_invasion": false,
+        "perineural_invasion": false,
+        "nodes_positive": 0,
+        "nodes_examined": 27,
+        "pathologic_t_stage": "pT4a",
+        "pathologic_n_stage": "pN0"
       }
     },
     {
       "model": "gemini:gemini-2.5-flash",
       "strategy": "hybrid_targeted",
-      "pdf": "nasal_melanoma_scanned.pdf",
-      "exact_accuracy": 0.7419354838709677,
-      "fuzzy_accuracy": 0.7419354838709677,
+      "pdf": "nasal_melanoma_clean.pdf",
+      "exact_accuracy": 0.7741935483870968,
+      "fuzzy_accuracy": 0.7741935483870968,
       "completeness": 1.0,
-      "latency_s": 43.20968274993356,
+      "provenance_accuracy": 0.5806451612903226,
+      "page_coverage": 0.9032258064516129,
+      "latency_s": 48.28108099999372,
       "error": null,
       "output": {
         "age_years": 56,
@@ -1710,7 +1628,7 @@
           "tobacco abuse"
         ],
         "presenting_symptom_month": "11/2025",
-        "primary_site": "Left nasal cavity, paranasal sinus",
+        "primary_site": "left nasal cavity",
         "diagnosis": "mucosal malignant melanoma",
         "ct_sinus_date": "12/21/25",
         "ct_lesion_size_cm": [
@@ -1747,35 +1665,37 @@
     {
       "model": "gemini:gemini-2.5-flash",
       "strategy": "hybrid_targeted",
-      "pdf": "nasal_melanoma_mixed.pdf",
-      "exact_accuracy": 0.6774193548387096,
-      "fuzzy_accuracy": 0.7741935483870968,
+      "pdf": "nasal_melanoma_table.pdf",
+      "exact_accuracy": 0.9032258064516129,
+      "fuzzy_accuracy": 0.9032258064516129,
       "completeness": 1.0,
-      "latency_s": 58.34849629201926,
+      "provenance_accuracy": 0.3548387096774194,
+      "page_coverage": 1.0,
+      "latency_s": 37.77262658299878,
       "error": null,
       "output": {
         "age_years": 56,
-        "sex": "Female",
+        "sex": "female",
         "comorbidities": [
           "hyperlipidemia",
           "tobacco abuse"
         ],
-        "presenting_symptom_month": "11/2025",
-        "primary_site": "Left nasal cavity",
-        "diagnosis": "Mucosal malignant melanoma",
-        "ct_sinus_date": "12/21/2025",
+        "presenting_symptom_month": "2025-11",
+        "primary_site": "left nasal cavity",
+        "diagnosis": "mucosal malignant melanoma",
+        "ct_sinus_date": "2025-12-21",
         "ct_lesion_size_cm": [
           1.8,
           1.4
         ],
-        "mri_face_date": "",
+        "mri_face_date": "2026-01-15",
         "mri_mass_size_cm": [
           3.0,
           1.3,
           2.5
         ],
         "left_submandibular_node_cm": 1.3,
-        "pet_ct_date": "",
+        "pet_ct_date": "2026-02-03",
         "pet_hypermetabolic_nasal_mass": true,
         "metastatic_disease_on_pet": false,
         "left_apical_lung_nodule_present": true,
@@ -1797,12 +1717,14 @@
     },
     {
       "model": "gemini:gemini-2.5-flash",
-      "strategy": "fused_targeted",
-      "pdf": "nasal_melanoma_clean.pdf",
-      "exact_accuracy": 0.4838709677419355,
-      "fuzzy_accuracy": 0.4838709677419355,
+      "strategy": "hybrid_targeted",
+      "pdf": "nasal_melanoma_scanned.pdf",
+      "exact_accuracy": 0.8064516129032258,
+      "fuzzy_accuracy": 0.8064516129032258,
       "completeness": 1.0,
-      "latency_s": 28.780343750026077,
+      "provenance_accuracy": 0.3870967741935484,
+      "page_coverage": 0.5161290322580645,
+      "latency_s": 52.4011843749322,
       "error": null,
       "output": {
         "age_years": 56,
@@ -1812,8 +1734,114 @@
           "tobacco abuse"
         ],
         "presenting_symptom_month": "11/2025",
-        "primary_site": "nasal",
-        "diagnosis": "Nasal Melanoma",
+        "primary_site": "left paranasal sinus, maxillary",
+        "diagnosis": "mucosal malignant melanoma",
+        "ct_sinus_date": "12/21/25",
+        "ct_lesion_size_cm": [
+          1.8,
+          1.4
+        ],
+        "mri_face_date": "1/15/26",
+        "mri_mass_size_cm": [
+          3.0,
+          1.3,
+          2.5
+        ],
+        "left_submandibular_node_cm": 1.3,
+        "pet_ct_date": "2/3/26",
+        "pet_hypermetabolic_nasal_mass": true,
+        "metastatic_disease_on_pet": false,
+        "left_apical_lung_nodule_present": true,
+        "surgery_date": "2/16/26",
+        "surgery_procedures": [
+          "left partial rhinectomy",
+          "left maxillectomy",
+          "cervical lymphadenectomy"
+        ],
+        "pathology_size_cm": 3.1,
+        "margins_negative": true,
+        "lymphovascular_invasion": false,
+        "perineural_invasion": false,
+        "nodes_positive": 0,
+        "nodes_examined": 27,
+        "pathologic_t_stage": "pT4a",
+        "pathologic_n_stage": "pN0"
+      }
+    },
+    {
+      "model": "gemini:gemini-2.5-flash",
+      "strategy": "hybrid_targeted",
+      "pdf": "nasal_melanoma_mixed.pdf",
+      "exact_accuracy": 0.8064516129032258,
+      "fuzzy_accuracy": 0.8064516129032258,
+      "completeness": 1.0,
+      "provenance_accuracy": 0.6451612903225806,
+      "page_coverage": 0.8064516129032258,
+      "latency_s": 48.54287291702349,
+      "error": null,
+      "output": {
+        "age_years": 56,
+        "sex": "female",
+        "comorbidities": [
+          "hyperlipidemia",
+          "tobacco abuse"
+        ],
+        "presenting_symptom_month": "11/2025",
+        "primary_site": "left paranasal sinus, maxillary",
+        "diagnosis": "mucosal malignant melanoma",
+        "ct_sinus_date": "12/21/25",
+        "ct_lesion_size_cm": [
+          1.8,
+          1.4
+        ],
+        "mri_face_date": "1/15/26",
+        "mri_mass_size_cm": [
+          3.0,
+          1.3,
+          2.5
+        ],
+        "left_submandibular_node_cm": 1.3,
+        "pet_ct_date": "2/3/26",
+        "pet_hypermetabolic_nasal_mass": true,
+        "metastatic_disease_on_pet": false,
+        "left_apical_lung_nodule_present": true,
+        "surgery_date": "2/16/26",
+        "surgery_procedures": [
+          "left partial rhinectomy",
+          "left maxillectomy",
+          "cervical lymphadenectomy"
+        ],
+        "pathology_size_cm": 3.1,
+        "margins_negative": true,
+        "lymphovascular_invasion": false,
+        "perineural_invasion": false,
+        "nodes_positive": 0,
+        "nodes_examined": 27,
+        "pathologic_t_stage": "pT4a",
+        "pathologic_n_stage": "pN0"
+      }
+    },
+    {
+      "model": "gemini:gemini-2.5-flash",
+      "strategy": "fused_targeted",
+      "pdf": "nasal_melanoma_clean.pdf",
+      "exact_accuracy": 0.4838709677419355,
+      "fuzzy_accuracy": 0.5161290322580645,
+      "completeness": 1.0,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 35.725939165917225,
+      "error": null,
+      "output": {
+        "age_years": 56,
+        "sex": "Female",
+        "comorbidities": [
+          "hyperlipidemia",
+          "tobacco abuse"
+        ],
+        "presenting_symptom_month": "11/2025",
+        "primary_site": "anterior nasal cavity",
+        "diagnosis": "Nasal melanoma",
         "ct_sinus_date": "12/21/25",
         "ct_lesion_size_cm": [
           1.8,
@@ -1825,7 +1853,7 @@
           1.3,
           2.5
         ],
-        "left_submandibular_node_cm": -1.0,
+        "left_submandibular_node_cm": 0.0,
         "pet_ct_date": "",
         "pet_hypermetabolic_nasal_mass": false,
         "metastatic_disease_on_pet": false,
@@ -1836,12 +1864,12 @@
           "left maxillectomy",
           "cervical lymphadenectomy"
         ],
-        "pathology_size_cm": -1.0,
+        "pathology_size_cm": 0.0,
         "margins_negative": false,
         "lymphovascular_invasion": false,
         "perineural_invasion": false,
-        "nodes_positive": -1,
-        "nodes_examined": -1,
+        "nodes_positive": 0,
+        "nodes_examined": 0,
         "pathologic_t_stage": "",
         "pathologic_n_stage": ""
       }
@@ -1850,10 +1878,12 @@
       "model": "gemini:gemini-2.5-flash",
       "strategy": "fused_targeted",
       "pdf": "nasal_melanoma_table.pdf",
-      "exact_accuracy": 0.7419354838709677,
-      "fuzzy_accuracy": 0.7419354838709677,
+      "exact_accuracy": 0.7096774193548387,
+      "fuzzy_accuracy": 0.7096774193548387,
       "completeness": 1.0,
-      "latency_s": 29.66509737505112,
+      "provenance_accuracy": 0.2903225806451613,
+      "page_coverage": 1.0,
+      "latency_s": 30.580962750012986,
       "error": null,
       "output": {
         "age_years": 56,
@@ -1862,7 +1892,7 @@
           "hyperlipidemia",
           "tobacco abuse"
         ],
-        "presenting_symptom_month": "2025-11",
+        "presenting_symptom_month": "11",
         "primary_site": "left nasal cavity",
         "diagnosis": "mucosal malignant melanoma",
         "ct_sinus_date": "2025-12-21",
@@ -1901,10 +1931,12 @@
       "model": "gemini:gemini-2.5-flash",
       "strategy": "fused_targeted",
       "pdf": "nasal_melanoma_scanned.pdf",
-      "exact_accuracy": 0.5161290322580645,
-      "fuzzy_accuracy": 0.5161290322580645,
+      "exact_accuracy": 0.41935483870967744,
+      "fuzzy_accuracy": 0.41935483870967744,
       "completeness": 1.0,
-      "latency_s": 28.11185804195702,
+      "provenance_accuracy": 0.45161290322580644,
+      "page_coverage": 1.0,
+      "latency_s": 37.17979470791761,
       "error": null,
       "output": {
         "age_years": 56,
@@ -1915,25 +1947,29 @@
         ],
         "presenting_symptom_month": "11/2025",
         "primary_site": "anterior left naris",
-        "diagnosis": "polypoid lesion",
+        "diagnosis": "",
         "ct_sinus_date": "12/21/25",
         "ct_lesion_size_cm": [
           1.8,
-          1.4
+          1.4,
+          1.5,
+          1.0,
+          1.2
         ],
-        "mri_face_date": "unknown",
+        "mri_face_date": "",
         "mri_mass_size_cm": [
           3.0,
           1.3,
           2.5
         ],
         "left_submandibular_node_cm": 0.0,
-        "pet_ct_date": "unknown",
+        "pet_ct_date": "",
         "pet_hypermetabolic_nasal_mass": false,
         "metastatic_disease_on_pet": false,
         "left_apical_lung_nodule_present": false,
-        "surgery_date": "unknown",
+        "surgery_date": "",
         "surgery_procedures": [
+          "endoscopic resection",
           "left partial rhinectomy",
           "left maxillectomy",
           "cervical lymphadenectomy"
@@ -1944,8 +1980,8 @@
         "perineural_invasion": false,
         "nodes_positive": 0,
         "nodes_examined": 0,
-        "pathologic_t_stage": "unknown",
-        "pathologic_n_stage": "unknown"
+        "pathologic_t_stage": "",
+        "pathologic_n_stage": ""
       }
     },
     {
@@ -1955,7 +1991,9 @@
       "exact_accuracy": 0.5483870967741935,
       "fuzzy_accuracy": 0.5483870967741935,
       "completeness": 1.0,
-      "latency_s": 45.87777708400972,
+      "provenance_accuracy": 0.0,
+      "page_coverage": 0.0,
+      "latency_s": 45.11464458296541,
       "error": null,
       "output": {
         "age_years": 0,
@@ -1965,7 +2003,7 @@
           "tobacco abuse"
         ],
         "presenting_symptom_month": "",
-        "primary_site": "nasal cavity",
+        "primary_site": "anterior nasal cavity",
         "diagnosis": "melanoma",
         "ct_sinus_date": "",
         "ct_lesion_size_cm": [

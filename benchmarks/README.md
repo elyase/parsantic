@@ -10,74 +10,80 @@ Default recommendation:
 - Default model: `gemini:gemini-2.5-flash-lite`
 - Default strategy: `document_auto`
 - Default repair mode: `targeted`
+- If page-level provenance matters, prefer `hybrid_targeted`
 
-Why:
-- `document_auto` is the most stable strategy and usually the fastest good option.
-- `hybrid_targeted` can improve quality, but it is slower and not the best default tradeoff.
-- `fused_targeted` was consistently weaker in the current benchmarks.
-- `gemini:gemini-2.5-flash-lite` matched the main alternative lite Gemini on quality and was faster.
-
-Benchmarks in plain terms:
+Benchmarks:
 - `oncology`: 4 generated PDFs, about 4-5 pages each, small oncology snapshot.
 - `nasal_melanoma`: 4 generated PDFs, about 2-3 pages each, more realistic imaging/surgery/pathology note.
 
-What the strategy names mean:
-- `document_auto`: whole-document extraction first; uses text layer when available, otherwise media.
+Strategies:
+- `document_auto`: this is the library default and is equivalent to calling `ExtractOptions()` with no explicit `mode` or `strategy`.
+  For PDFs it picks the cheapest workable path in this order:
+  1. if the PDF has a text layer, extract the document as text and run one whole-document text extraction pass
+  2. otherwise, if the provider supports native PDF input, send the PDF natively
+  3. otherwise, rasterize the PDF to page images and process the image path
+  This is the default because it was the most stable strategy and usually the fastest good option.
 - `hybrid_targeted`: whole-document pass plus page-level pass, merge, then validation-guided repair.
+  This can improve quality, but it is slower and not the best default tradeoff.
 - `fused_targeted`: page-level extraction with page image plus page-local text together, then repair.
+  This was consistently weaker in the current benchmarks.
 
-What the metrics mean:
+Metrics:
 - `exact`: fields that match ground truth exactly.
 - `fuzzy`: fields that are acceptably close after normalization.
 - `completeness`: expected fields that were present at all.
+- `provenance`: fields whose source matched the expected scope/page exactly.
+- `page coverage`: expected page-local fields that came back with any page-local source.
 - `total latency`: wall-clock time for the whole benchmark slice.
 
 ### Oncology Strategy Benchmark
 
 Model used: `gemini:gemini-2.5-flash-lite`
 
-| Strategy | Exact | Fuzzy | Completeness | Total latency |
-| --- | ---: | ---: | ---: | ---: |
-| `document_auto` | `0.639` | `0.667` | `1.000` | `7.81s` |
-| `hybrid_targeted` | `0.917` | `0.917` | `1.000` | `66.67s` |
-| `fused_targeted` | `0.583` | `0.583` | `1.000` | `50.11s` |
+| Strategy | Exact | Fuzzy | Completeness | Provenance | Page coverage | Total latency |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `document_auto` | `0.639` | `0.667` | `1.000` | `0.000` | `0.000` | `19.17s` |
+| `hybrid_targeted` | `0.917` | `0.917` | `1.000` | `0.833` | `0.889` | `141.19s` |
+| `fused_targeted` | `0.583` | `0.583` | `1.000` | `0.667` | `1.000` | `75.86s` |
 
 Takeaway:
 - Best quality: `hybrid_targeted`
 - Best default tradeoff: `document_auto`
+- Best provenance: `hybrid_targeted`
 
 ### Nasal Melanoma Model Benchmark
 
 Strategy used: `document_auto`
 
-| Model | Exact | Fuzzy | Completeness | Total latency | Status |
-| --- | ---: | ---: | ---: | ---: | --- |
-| `gemini:gemini-3.1-flash-lite-preview` | `0.823` | `0.823` | `0.976` | `19.71s` | succeeded |
-| `gemini:gemini-2.5-flash-lite` | `0.823` | `0.823` | `0.976` | `16.25s` | succeeded |
-| `gemini:gemini-2.5-flash` | `0.815` | `0.823` | `0.976` | `34.91s` | succeeded |
-| `gemini:gemini-3-flash` | `0.000` | `0.000` | `0.000` | `9.96s` | unsupported (`404`) |
+| Model | Exact | Fuzzy | Completeness | Provenance | Page coverage | Total latency | Status |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `gemini:gemini-3.1-flash-lite-preview` | `0.823` | `0.823` | `0.976` | `0.000` | `0.000` | `29.39s` | succeeded |
+| `gemini:gemini-2.5-flash-lite` | `0.831` | `0.831` | `0.976` | `0.000` | `0.000` | `17.01s` | succeeded |
+| `gemini:gemini-2.5-flash` | `0.315` | `0.395` | `0.476` | `0.000` | `0.000` | `45.63s` | degraded by transient connect errors |
+| `gemini:gemini-3-flash` | `0.000` | `0.000` | `0.000` | `0.000` | `0.000` | `7.51s` | unsupported (`404`) |
 
 Takeaway:
-- `gemini-2.5-flash-lite` and `gemini-3.1-flash-lite-preview` were tied on quality here.
+- `gemini-2.5-flash-lite` and `gemini-3.1-flash-lite-preview` are effectively tied on quality here.
 - `gemini-2.5-flash-lite` was faster, so it is the better default.
+- `document_auto` does not provide strong page-level provenance regardless of model.
 
 ### Nasal Melanoma Strategy Matrix
 
-| Model | Strategy | Exact | Fuzzy | Completeness | Total latency | Status |
-| --- | --- | ---: | ---: | ---: | ---: | --- |
-| `gemini:gemini-3.1-flash-lite-preview` | `document_auto` | `0.823` | `0.823` | `0.976` | `21.00s` | succeeded |
-| `gemini:gemini-3.1-flash-lite-preview` | `hybrid_targeted` | `0.806` | `0.806` | `1.000` | `56.81s` | succeeded |
-| `gemini:gemini-3.1-flash-lite-preview` | `fused_targeted` | `0.500` | `0.516` | `1.000` | `33.75s` | succeeded |
-| `gemini:gemini-2.5-flash-lite` | `document_auto` | `0.831` | `0.831` | `0.976` | `16.17s` | succeeded |
-| `gemini:gemini-2.5-flash-lite` | `hybrid_targeted` | `0.815` | `0.815` | `1.000` | `49.90s` | succeeded |
-| `gemini:gemini-2.5-flash-lite` | `fused_targeted` | `0.484` | `0.492` | `1.000` | `26.23s` | succeeded |
-| `gemini:gemini-2.5-flash` | `document_auto` | `0.815` | `0.823` | `0.976` | `38.00s` | succeeded |
-| `gemini:gemini-2.5-flash` | `hybrid_targeted` | `0.766` | `0.790` | `1.000` | `181.73s` | succeeded |
-| `gemini:gemini-2.5-flash` | `fused_targeted` | `0.573` | `0.573` | `1.000` | `132.44s` | succeeded |
+| Model | Strategy | Exact | Fuzzy | Completeness | Provenance | Page coverage | Total latency | Status |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `gemini:gemini-3.1-flash-lite-preview` | `document_auto` | `0.823` | `0.823` | `0.976` | `0.000` | `0.000` | `21.00s` | succeeded |
+| `gemini:gemini-3.1-flash-lite-preview` | `hybrid_targeted` | `0.581` | `0.581` | `0.750` | `0.427` | `0.573` | `109.48s` | partial failures |
+| `gemini:gemini-3.1-flash-lite-preview` | `fused_targeted` | `0.516` | `0.532` | `1.000` | `0.169` | `0.500` | `62.71s` | succeeded |
+| `gemini:gemini-2.5-flash-lite` | `document_auto` | `0.831` | `0.831` | `0.976` | `0.000` | `0.000` | `16.77s` | succeeded |
+| `gemini:gemini-2.5-flash-lite` | `hybrid_targeted` | `0.815` | `0.839` | `1.000` | `0.556` | `0.823` | `48.50s` | succeeded |
+| `gemini:gemini-2.5-flash-lite` | `fused_targeted` | `0.524` | `0.524` | `1.000` | `0.185` | `0.500` | `27.64s` | succeeded |
+| `gemini:gemini-2.5-flash` | `document_auto` | `0.758` | `0.823` | `0.976` | `0.000` | `0.000` | `90.87s` | succeeded |
+| `gemini:gemini-2.5-flash` | `hybrid_targeted` | `0.823` | `0.823` | `1.000` | `0.492` | `0.806` | `187.00s` | succeeded |
+| `gemini:gemini-2.5-flash` | `fused_targeted` | `0.540` | `0.548` | `1.000` | `0.185` | `0.500` | `148.60s` | succeeded |
 
 Takeaway:
 - On the heavier melanoma case, `document_auto` is the strongest default.
-- `hybrid_targeted` is slower and does not beat `document_auto` here.
+- If page-level provenance matters, `hybrid_targeted` is the best option despite the latency cost.
 - `fused_targeted` is the weakest strategy.
 
 Run:

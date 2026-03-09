@@ -26,25 +26,29 @@
       "name": "nasal_melanoma_clean",
       "document": "generated/nasal_melanoma_clean.pdf",
       "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
-      "expected": "ground_truth.json"
+      "expected": "ground_truth.json",
+      "expected_sources": "expected_sources.json"
     },
     {
       "name": "nasal_melanoma_table",
       "document": "generated/nasal_melanoma_table.pdf",
       "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
-      "expected": "ground_truth.json"
+      "expected": "ground_truth.json",
+      "expected_sources": "expected_sources.json"
     },
     {
       "name": "nasal_melanoma_scanned",
       "document": "generated/nasal_melanoma_scanned.pdf",
       "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
-      "expected": "ground_truth.json"
+      "expected": "ground_truth.json",
+      "expected_sources": "expected_sources.json"
     },
     {
       "name": "nasal_melanoma_mixed",
       "document": "generated/nasal_melanoma_mixed.pdf",
       "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
-      "expected": "ground_truth.json"
+      "expected": "ground_truth.json",
+      "expected_sources": "expected_sources.json"
     }
   ]
 }

@@ -1,0 +1,11 @@
+{
+  "/patient_name": { "scope": "page", "pages": [1] },
+  "/patient_identifier": { "scope": "page", "pages": [1] },
+  "/diagnosis": { "scope": "page", "pages": [1] },
+  "/stage": { "scope": "page", "pages": [1] },
+  "/oncologist": { "scope": "page", "pages": [1] },
+  "/cancer_center": { "scope": "page", "pages": [1] },
+  "/hemoglobin_g_dl": { "scope": "page", "pages": [3] },
+  "/creatinine_mg_dl": { "scope": "page", "pages": [3] },
+  "/primary_medication": { "scope": "page", "pages": [4] }
+}

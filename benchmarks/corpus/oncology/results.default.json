@@ -8,6 +8,7 @@
             "additional_context": null,
             "document": "generated/oncology_clean.pdf",
             "expected": "snapshot_truth.json",
+            "expected_sources": "expected_sources.json",
             "name": "oncology_clean",
             "prompt": "",
             "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
@@ -16,7 +17,7 @@
           "config_name": "document_auto",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 2.1839766670018435,
+          "latency_s": 6.876460292027332,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 1.0,
@@ -24,7 +25,9 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 1.0,
             "fuzzy_matches": 9,
-            "predicted_fields": 9
+            "page_coverage": 0.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.0
           },
           "output": {
             "cancer_center": "North Valley Cancer Center",
@@ -45,6 +48,7 @@
             "additional_context": null,
             "document": "generated/oncology_table.pdf",
             "expected": "snapshot_truth.json",
+            "expected_sources": "expected_sources.json",
             "name": "oncology_table",
             "prompt": "",
             "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
@@ -53,7 +57,7 @@
           "config_name": "document_auto",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 1.5702297079842538,
+          "latency_s": 2.482725083013065,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 0.6666666666666666,
@@ -61,7 +65,9 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 0.6666666666666666,
             "fuzzy_matches": 6,
-            "predicted_fields": 9
+            "page_coverage": 0.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.0
           },
           "output": {
             "cancer_center": "not specified",
@@ -82,6 +88,7 @@
             "additional_context": null,
             "document": "generated/oncology_scanned.pdf",
             "expected": "snapshot_truth.json",
+            "expected_sources": "expected_sources.json",
             "name": "oncology_scanned",
             "prompt": "",
             "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
@@ -90,7 +97,7 @@
           "config_name": "document_auto",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 1.6651680830400437,
+          "latency_s": 2.944878041977063,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 0.0,
@@ -98,18 +105,20 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 0.0,
             "fuzzy_matches": 0,
-            "predicted_fields": 9
+            "page_coverage": 0.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.0
           },
           "output": {
-            "cancer_center": "St. Jude Oncology Institute",
-            "creatinine_mg_dl": 1.45,
+            "cancer_center": "St. Jude Comprehensive Cancer Center",
+            "creatinine_mg_dl": 2.1,
             "diagnosis": "Multiple Myeloma",
-            "hemoglobin_g_dl": 10.2,
-            "oncologist": "Dr. Aris Thorne",
-            "patient_identifier": "EV-99284-B",
-            "patient_name": "Eleanor Vance",
+            "hemoglobin_g_dl": 9.8,
+            "oncologist": "Dr. Elena Rodriguez",
+            "patient_identifier": "7729-AX-99",
+            "patient_name": "Sarah J. Miller",
             "primary_medication": "Daratumumab",
-            "stage": "R-ISS Stage II"
+            "stage": "Stage III"
           },
           "token_count": 93
         },
@@ -119,6 +128,7 @@
             "additional_context": null,
             "document": "generated/oncology_mixed.pdf",
             "expected": "snapshot_truth.json",
+            "expected_sources": "expected_sources.json",
             "name": "oncology_mixed",
             "prompt": "",
             "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
@@ -127,7 +137,7 @@
           "config_name": "document_auto",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 2.3887234159046784,
+          "latency_s": 6.863138957996853,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 0.8888888888888888,
@@ -135,7 +145,9 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 1.0,
             "fuzzy_matches": 9,
-            "predicted_fields": 9
+            "page_coverage": 0.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.0
           },
           "output": {
             "cancer_center": "North Valley Cancer Center",
@@ -169,7 +181,9 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 1.0,
             "fuzzy_matches": 9,
-            "predicted_fields": 9
+            "page_coverage": 0.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.0
           },
           {
             "completeness": 1.0,
@@ -178,7 +192,9 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 0.6666666666666666,
             "fuzzy_matches": 6,
-            "predicted_fields": 9
+            "page_coverage": 0.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.0
           },
           {
             "completeness": 1.0,
@@ -187,7 +203,9 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 0.0,
             "fuzzy_matches": 0,
-            "predicted_fields": 9
+            "page_coverage": 0.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.0
           },
           {
             "completeness": 1.0,
@@ -196,14 +214,18 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 1.0,
             "fuzzy_matches": 9,
-            "predicted_fields": 9
+            "page_coverage": 0.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.0
           }
         ],
         "completeness": 1.0,
         "estimated_cost_usd": 0.0,
         "exact_accuracy": 0.6388888888888888,
         "fuzzy_accuracy": 0.6666666666666666,
-        "latency_s": 7.808097873930819,
+        "latency_s": 19.167202375014313,
+        "page_coverage": 0.0,
+        "provenance_accuracy": 0.0,
         "token_count": 965
       }
     },
@@ -215,6 +237,7 @@
             "additional_context": null,
             "document": "generated/oncology_clean.pdf",
             "expected": "snapshot_truth.json",
+            "expected_sources": "expected_sources.json",
             "name": "oncology_clean",
             "prompt": "",
             "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
@@ -223,7 +246,7 @@
           "config_name": "hybrid_targeted",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 14.751120415981859,
+          "latency_s": 28.392563166911714,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 1.0,
@@ -231,7 +254,9 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 1.0,
             "fuzzy_matches": 9,
-            "predicted_fields": 9
+            "page_coverage": 1.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 1.0
           },
           "output": {
             "cancer_center": "North Valley Cancer Center",
@@ -252,6 +277,7 @@
             "additional_context": null,
             "document": "generated/oncology_table.pdf",
             "expected": "snapshot_truth.json",
+            "expected_sources": "expected_sources.json",
             "name": "oncology_table",
             "prompt": "",
             "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
@@ -260,7 +286,7 @@
           "config_name": "hybrid_targeted",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 13.993347499985248,
+          "latency_s": 50.53491004102398,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 0.6666666666666666,
@@ -268,18 +294,20 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 0.6666666666666666,
             "fuzzy_matches": 6,
-            "predicted_fields": 9
+            "page_coverage": 1.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 1.0
           },
           "output": {
-            "cancer_center": "Not specified",
+            "cancer_center": "null",
             "creatinine_mg_dl": 0.9,
-            "diagnosis": "Not specified",
+            "diagnosis": "null",
             "hemoglobin_g_dl": 11.2,
             "oncologist": "Dr. Priya Shah",
             "patient_identifier": "ONC-2026-0142",
             "patient_name": "Maya Hernandez",
             "primary_medication": "Capecitabine",
-            "stage": "Not specified"
+            "stage": "null"
           },
           "token_count": 633
         },
@@ -289,6 +317,7 @@
             "additional_context": null,
             "document": "generated/oncology_scanned.pdf",
             "expected": "snapshot_truth.json",
+            "expected_sources": "expected_sources.json",
             "name": "oncology_scanned",
             "prompt": "",
             "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
@@ -297,7 +326,7 @@
           "config_name": "hybrid_targeted",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 23.112308874959126,
+          "latency_s": 39.148758707917295,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 1.0,
@@ -305,7 +334,9 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 1.0,
             "fuzzy_matches": 9,
-            "predicted_fields": 9
+            "page_coverage": 0.6666666666666666,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.6666666666666666
           },
           "output": {
             "cancer_center": "North Valley Cancer Center",
@@ -326,6 +357,7 @@
             "additional_context": null,
             "document": "generated/oncology_mixed.pdf",
             "expected": "snapshot_truth.json",
+            "expected_sources": "expected_sources.json",
             "name": "oncology_mixed",
             "prompt": "",
             "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
@@ -334,7 +366,7 @@
           "config_name": "hybrid_targeted",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 14.810488417046145,
+          "latency_s": 23.114165000035428,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 1.0,
@@ -342,7 +374,9 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 1.0,
             "fuzzy_matches": 9,
-            "predicted_fields": 9
+            "page_coverage": 0.8888888888888888,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.6666666666666666
           },
           "output": {
             "cancer_center": "North Valley Cancer Center",
@@ -376,7 +410,9 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 1.0,
             "fuzzy_matches": 9,
-            "predicted_fields": 9
+            "page_coverage": 1.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 1.0
           },
           {
             "completeness": 1.0,
@@ -385,7 +421,9 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 0.6666666666666666,
             "fuzzy_matches": 6,
-            "predicted_fields": 9
+            "page_coverage": 1.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 1.0
           },
           {
             "completeness": 1.0,
@@ -394,7 +432,9 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 1.0,
             "fuzzy_matches": 9,
-            "predicted_fields": 9
+            "page_coverage": 0.6666666666666666,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.6666666666666666
           },
           {
             "completeness": 1.0,
@@ -403,14 +443,18 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 1.0,
             "fuzzy_matches": 9,
-            "predicted_fields": 9
+            "page_coverage": 0.8888888888888888,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.6666666666666666
           }
         ],
         "completeness": 1.0,
         "estimated_cost_usd": 0.0,
         "exact_accuracy": 0.9166666666666666,
         "fuzzy_accuracy": 0.9166666666666666,
-        "latency_s": 66.66726520797238,
+        "latency_s": 141.1903969158884,
+        "page_coverage": 0.8888888888888888,
+        "provenance_accuracy": 0.8333333333333333,
         "token_count": 2395
       }
     },
@@ -422,6 +466,7 @@
             "additional_context": null,
             "document": "generated/oncology_clean.pdf",
             "expected": "snapshot_truth.json",
+            "expected_sources": "expected_sources.json",
             "name": "oncology_clean",
             "prompt": "",
             "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
@@ -430,7 +475,7 @@
           "config_name": "fused_targeted",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 18.316361040924676,
+          "latency_s": 30.376186417066492,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 0.6666666666666666,
@@ -438,7 +483,9 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 0.6666666666666666,
             "fuzzy_matches": 6,
-            "predicted_fields": 9
+            "page_coverage": 1.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.6666666666666666
           },
           "output": {
             "cancer_center": "North Valley Cancer Center",
@@ -459,6 +506,7 @@
             "additional_context": null,
             "document": "generated/oncology_table.pdf",
             "expected": "snapshot_truth.json",
+            "expected_sources": "expected_sources.json",
             "name": "oncology_table",
             "prompt": "",
             "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
@@ -467,7 +515,7 @@
           "config_name": "fused_targeted",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 13.103780791978352,
+          "latency_s": 14.932101874961518,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 0.3333333333333333,
@@ -475,18 +523,20 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 0.3333333333333333,
             "fuzzy_matches": 3,
-            "predicted_fields": 9
+            "page_coverage": 1.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.6666666666666666
           },
           "output": {
-            "cancer_center": "not specified",
+            "cancer_center": "null",
             "creatinine_mg_dl": 0.0,
-            "diagnosis": "not specified",
+            "diagnosis": "null",
             "hemoglobin_g_dl": 0.0,
             "oncologist": "Dr. Priya Shah",
             "patient_identifier": "ONC-2026-0142",
             "patient_name": "Maya Hernandez",
-            "primary_medication": "not specified",
-            "stage": "not specified"
+            "primary_medication": "null",
+            "stage": "null"
           },
           "token_count": 561
         },
@@ -496,6 +546,7 @@
             "additional_context": null,
             "document": "generated/oncology_scanned.pdf",
             "expected": "snapshot_truth.json",
+            "expected_sources": "expected_sources.json",
             "name": "oncology_scanned",
             "prompt": "",
             "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
@@ -504,7 +555,7 @@
           "config_name": "fused_targeted",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 10.406837875023484,
+          "latency_s": 15.88415962504223,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 0.6666666666666666,
@@ -512,7 +563,9 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 0.6666666666666666,
             "fuzzy_matches": 6,
-            "predicted_fields": 9
+            "page_coverage": 1.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.6666666666666666
           },
           "output": {
             "cancer_center": "North Valley Cancer Center",
@@ -533,6 +586,7 @@
             "additional_context": null,
             "document": "generated/oncology_mixed.pdf",
             "expected": "snapshot_truth.json",
+            "expected_sources": "expected_sources.json",
             "name": "oncology_mixed",
             "prompt": "",
             "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
@@ -541,7 +595,7 @@
           "config_name": "fused_targeted",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 8.279453833005391,
+          "latency_s": 14.66637620900292,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 0.6666666666666666,
@@ -549,7 +603,9 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 0.6666666666666666,
             "fuzzy_matches": 6,
-            "predicted_fields": 9
+            "page_coverage": 1.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.6666666666666666
           },
           "output": {
             "cancer_center": "North Valley Cancer Center",
@@ -559,7 +615,7 @@
             "oncologist": "Dr. Priya Shah",
             "patient_identifier": "ONC-2026-0142",
             "patient_name": "Maya Hernandez",
-            "primary_medication": "null",
+            "primary_medication": "none",
             "stage": "Stage IV"
           },
           "token_count": 469
@@ -583,7 +639,9 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 0.6666666666666666,
             "fuzzy_matches": 6,
-            "predicted_fields": 9
+            "page_coverage": 1.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.6666666666666666
           },
           {
             "completeness": 1.0,
@@ -592,7 +650,9 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 0.3333333333333333,
             "fuzzy_matches": 3,
-            "predicted_fields": 9
+            "page_coverage": 1.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.6666666666666666
           },
           {
             "completeness": 1.0,
@@ -601,7 +661,9 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 0.6666666666666666,
             "fuzzy_matches": 6,
-            "predicted_fields": 9
+            "page_coverage": 1.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.6666666666666666
           },
           {
             "completeness": 1.0,
@@ -610,14 +672,18 @@
             "expected_fields": 9,
             "fuzzy_accuracy": 0.6666666666666666,
             "fuzzy_matches": 6,
-            "predicted_fields": 9
+            "page_coverage": 1.0,
+            "predicted_fields": 9,
+            "provenance_accuracy": 0.6666666666666666
           }
         ],
         "completeness": 1.0,
         "estimated_cost_usd": 0.0,
         "exact_accuracy": 0.5833333333333333,
         "fuzzy_accuracy": 0.5833333333333333,
-        "latency_s": 50.1064335409319,
+        "latency_s": 75.85882412607316,
+        "page_coverage": 1.0,
+        "provenance_accuracy": 0.6666666666666666,
         "token_count": 2106
       }
     }
@@ -628,6 +694,7 @@
         "additional_context": null,
         "document": "generated/oncology_clean.pdf",
         "expected": "snapshot_truth.json",
+        "expected_sources": "expected_sources.json",
         "name": "oncology_clean",
         "prompt": "",
         "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
@@ -637,6 +704,7 @@
         "additional_context": null,
         "document": "generated/oncology_table.pdf",
         "expected": "snapshot_truth.json",
+        "expected_sources": "expected_sources.json",
         "name": "oncology_table",
         "prompt": "",
         "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
@@ -646,6 +714,7 @@
         "additional_context": null,
         "document": "generated/oncology_scanned.pdf",
         "expected": "snapshot_truth.json",
+        "expected_sources": "expected_sources.json",
         "name": "oncology_scanned",
         "prompt": "",
         "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
@@ -655,6 +724,7 @@
         "additional_context": null,
         "document": "generated/oncology_mixed.pdf",
         "expected": "snapshot_truth.json",
+        "expected_sources": "expected_sources.json",
         "name": "oncology_mixed",
         "prompt": "",
         "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",

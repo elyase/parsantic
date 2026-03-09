@@ -61,6 +61,8 @@ class CaseMetrics:
     fuzzy_matches: int
     expected_fields: int
     predicted_fields: int
+    provenance_accuracy: float = 0.0
+    page_coverage: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +70,8 @@ class BenchmarkMetrics:
     exact_accuracy: float
     fuzzy_accuracy: float
     completeness: float
+    provenance_accuracy: float
+    page_coverage: float
     latency_s: float
     api_calls: int
     token_count: int
@@ -84,6 +88,8 @@ def score_case(expected: Any, actual: Any, *, fuzzy_threshold: float = 0.9) -> C
             exact_accuracy=1.0,
             fuzzy_accuracy=1.0,
             completeness=1.0,
+            provenance_accuracy=0.0,
+            page_coverage=0.0,
             exact_matches=0,
             fuzzy_matches=0,
             expected_fields=0,
@@ -109,11 +115,43 @@ def score_case(expected: Any, actual: Any, *, fuzzy_threshold: float = 0.9) -> C
         exact_accuracy=exact_matches / expected_fields,
         fuzzy_accuracy=fuzzy_matches / expected_fields,
         completeness=present_matches / expected_fields,
+        provenance_accuracy=0.0,
+        page_coverage=0.0,
         exact_matches=exact_matches,
         fuzzy_matches=fuzzy_matches,
         expected_fields=expected_fields,
         predicted_fields=len(actual_flat),
     )
+
+
+def score_provenance_case(
+    expected_sources: dict[str, dict[str, Any]],
+    actual_sources: dict[str, Any],
+) -> tuple[float, float]:
+    if not expected_sources:
+        return 0.0, 0.0
+    exact_matches = 0
+    page_expected = 0
+    page_present = 0
+    for path, expected in expected_sources.items():
+        actual = actual_sources.get(path)
+        expected_scope = expected.get("scope", "document")
+        expected_pages = tuple(expected.get("pages", ()))
+        if actual is not None:
+            actual_scope = getattr(actual, "scope", None)
+            actual_pages = tuple(getattr(actual, "pages", ()))
+            if actual_scope == expected_scope and actual_pages == expected_pages:
+                exact_matches += 1
+            if expected_scope == "page":
+                page_expected += 1
+                if actual_scope == "page":
+                    page_present += 1
+        elif expected_scope == "page":
+            page_expected += 1
+    total = len(expected_sources)
+    provenance_accuracy = exact_matches / total if total else 0.0
+    page_coverage = page_present / page_expected if page_expected else 0.0
+    return provenance_accuracy, page_coverage
 
 
 def summarize_cases(
@@ -129,6 +167,8 @@ def summarize_cases(
             exact_accuracy=0.0,
             fuzzy_accuracy=0.0,
             completeness=0.0,
+            provenance_accuracy=0.0,
+            page_coverage=0.0,
             latency_s=latency_s,
             api_calls=api_calls,
             token_count=token_count,
@@ -140,6 +180,8 @@ def summarize_cases(
         exact_accuracy=sum(case.exact_accuracy for case in cases) / count,
         fuzzy_accuracy=sum(case.fuzzy_accuracy for case in cases) / count,
         completeness=sum(case.completeness for case in cases) / count,
+        provenance_accuracy=sum(case.provenance_accuracy for case in cases) / count,
+        page_coverage=sum(case.page_coverage for case in cases) / count,
         latency_s=latency_s,
         api_calls=api_calls,
         token_count=token_count,
