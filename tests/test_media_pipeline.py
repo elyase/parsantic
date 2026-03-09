@@ -711,6 +711,27 @@ def test_extract_pdf_document_hybrid_mode_avoids_threaded_branch_overlap_for_asy
     assert provider.ainfer_media_calls == []
 
 
+def test_sync_media_extraction_bypasses_threaded_timeout_for_async_capable_provider(monkeypatch):
+    from parsantic.extract import pipeline as pipeline_mod
+
+    provider = _AsyncMediaProvider()
+    doc = Document.from_image(b"\x89PNG", text="extract totals")
+
+    def _unexpected_timeout(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("sync media path should not use threaded timeout wrapper here")
+
+    monkeypatch.setattr(pipeline_mod, "_run_sync_call_with_timeout", _unexpected_timeout)
+
+    result = extract(
+        doc,
+        Invoice,
+        model=provider,
+        options=ExtractOptions(per_call_timeout_s=1.0),
+    )
+
+    assert result.value.total == 99.0
+
+
 def test_extract_pdf_document_hybrid_mode_supports_root_array_targets(monkeypatch):
     provider = _RootArrayHybridMediaProvider()
     doc = Document.from_pdf(SAMPLE_INVOICE_PDF)

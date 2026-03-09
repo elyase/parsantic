@@ -6,7 +6,7 @@
           "api_calls": 1,
           "case": {
             "additional_context": null,
-            "document": "oncology_clean.pdf",
+            "document": "generated/oncology_clean.pdf",
             "expected": "snapshot_truth.json",
             "name": "oncology_clean",
             "prompt": "",
@@ -16,7 +16,7 @@
           "config_name": "document_auto",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 4.328161000041291,
+          "latency_s": 2.1839766670018435,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 1.0,
@@ -37,13 +37,13 @@
             "primary_medication": "Capecitabine",
             "stage": "Stage IV"
           },
-          "token_count": 340
+          "token_count": 373
         },
         {
           "api_calls": 1,
           "case": {
             "additional_context": null,
-            "document": "oncology_table.pdf",
+            "document": "generated/oncology_table.pdf",
             "expected": "snapshot_truth.json",
             "name": "oncology_table",
             "prompt": "",
@@ -53,34 +53,34 @@
           "config_name": "document_auto",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 1.0549144169781357,
+          "latency_s": 1.5702297079842538,
           "metrics": {
             "completeness": 1.0,
-            "exact_accuracy": 1.0,
-            "exact_matches": 9,
+            "exact_accuracy": 0.6666666666666666,
+            "exact_matches": 6,
             "expected_fields": 9,
-            "fuzzy_accuracy": 1.0,
-            "fuzzy_matches": 9,
+            "fuzzy_accuracy": 0.6666666666666666,
+            "fuzzy_matches": 6,
             "predicted_fields": 9
           },
           "output": {
-            "cancer_center": "North Valley Cancer Center",
+            "cancer_center": "not specified",
             "creatinine_mg_dl": 0.9,
-            "diagnosis": "Metastatic breast carcinoma",
+            "diagnosis": "Pathology and biomarker summary",
             "hemoglobin_g_dl": 11.2,
             "oncologist": "Dr. Priya Shah",
             "patient_identifier": "ONC-2026-0142",
             "patient_name": "Maya Hernandez",
             "primary_medication": "Capecitabine",
-            "stage": "Stage IV"
+            "stage": "not specified"
           },
-          "token_count": 411
+          "token_count": 258
         },
         {
           "api_calls": 1,
           "case": {
             "additional_context": null,
-            "document": "oncology_scanned.pdf",
+            "document": "generated/oncology_scanned.pdf",
             "expected": "snapshot_truth.json",
             "name": "oncology_scanned",
             "prompt": "",
@@ -90,34 +90,34 @@
           "config_name": "document_auto",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 6.8866677089827135,
+          "latency_s": 1.6651680830400437,
           "metrics": {
             "completeness": 1.0,
-            "exact_accuracy": 1.0,
-            "exact_matches": 9,
+            "exact_accuracy": 0.0,
+            "exact_matches": 0,
             "expected_fields": 9,
-            "fuzzy_accuracy": 1.0,
-            "fuzzy_matches": 9,
+            "fuzzy_accuracy": 0.0,
+            "fuzzy_matches": 0,
             "predicted_fields": 9
           },
           "output": {
-            "cancer_center": "North Valley Cancer Center",
-            "creatinine_mg_dl": 0.9,
-            "diagnosis": "Metastatic breast carcinoma",
-            "hemoglobin_g_dl": 11.2,
-            "oncologist": "Dr. Priya Shah",
-            "patient_identifier": "ONC-2026-0142",
-            "patient_name": "Maya Hernandez",
-            "primary_medication": "Capecitabine",
-            "stage": "Stage IV"
+            "cancer_center": "St. Jude Oncology Institute",
+            "creatinine_mg_dl": 1.45,
+            "diagnosis": "Multiple Myeloma",
+            "hemoglobin_g_dl": 10.2,
+            "oncologist": "Dr. Aris Thorne",
+            "patient_identifier": "EV-99284-B",
+            "patient_name": "Eleanor Vance",
+            "primary_medication": "Daratumumab",
+            "stage": "R-ISS Stage II"
           },
-          "token_count": 71
+          "token_count": 93
         },
         {
           "api_calls": 1,
           "case": {
             "additional_context": null,
-            "document": "oncology_mixed.pdf",
+            "document": "generated/oncology_mixed.pdf",
             "expected": "snapshot_truth.json",
             "name": "oncology_mixed",
             "prompt": "",
@@ -127,7 +127,7 @@
           "config_name": "document_auto",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 1.6503032919717953,
+          "latency_s": 2.3887234159046784,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 0.8888888888888888,
@@ -148,7 +148,7 @@
             "primary_medication": "capecitabine",
             "stage": "Stage IV"
           },
-          "token_count": 212
+          "token_count": 241
         }
       ],
       "config": {
@@ -173,20 +173,20 @@
           },
           {
             "completeness": 1.0,
-            "exact_accuracy": 1.0,
-            "exact_matches": 9,
+            "exact_accuracy": 0.6666666666666666,
+            "exact_matches": 6,
             "expected_fields": 9,
-            "fuzzy_accuracy": 1.0,
-            "fuzzy_matches": 9,
+            "fuzzy_accuracy": 0.6666666666666666,
+            "fuzzy_matches": 6,
             "predicted_fields": 9
           },
           {
             "completeness": 1.0,
-            "exact_accuracy": 1.0,
-            "exact_matches": 9,
+            "exact_accuracy": 0.0,
+            "exact_matches": 0,
             "expected_fields": 9,
-            "fuzzy_accuracy": 1.0,
-            "fuzzy_matches": 9,
+            "fuzzy_accuracy": 0.0,
+            "fuzzy_matches": 0,
             "predicted_fields": 9
           },
           {
@@ -201,10 +201,10 @@
         ],
         "completeness": 1.0,
         "estimated_cost_usd": 0.0,
-        "exact_accuracy": 0.9722222222222222,
-        "fuzzy_accuracy": 1.0,
-        "latency_s": 13.920046417973936,
-        "token_count": 1034
+        "exact_accuracy": 0.6388888888888888,
+        "fuzzy_accuracy": 0.6666666666666666,
+        "latency_s": 7.808097873930819,
+        "token_count": 965
       }
     },
     {
@@ -213,7 +213,7 @@
           "api_calls": 3,
           "case": {
             "additional_context": null,
-            "document": "oncology_clean.pdf",
+            "document": "generated/oncology_clean.pdf",
             "expected": "snapshot_truth.json",
             "name": "oncology_clean",
             "prompt": "",
@@ -223,7 +223,7 @@
           "config_name": "hybrid_targeted",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 13.81658504193183,
+          "latency_s": 14.751120415981859,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 1.0,
@@ -244,13 +244,13 @@
             "primary_medication": "Capecitabine",
             "stage": "Stage IV"
           },
-          "token_count": 715
+          "token_count": 748
         },
         {
-          "api_calls": 2,
+          "api_calls": 3,
           "case": {
             "additional_context": null,
-            "document": "oncology_table.pdf",
+            "document": "generated/oncology_table.pdf",
             "expected": "snapshot_truth.json",
             "name": "oncology_table",
             "prompt": "",
@@ -260,34 +260,34 @@
           "config_name": "hybrid_targeted",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 11.776887375046499,
+          "latency_s": 13.993347499985248,
           "metrics": {
             "completeness": 1.0,
-            "exact_accuracy": 1.0,
-            "exact_matches": 9,
+            "exact_accuracy": 0.6666666666666666,
+            "exact_matches": 6,
             "expected_fields": 9,
-            "fuzzy_accuracy": 1.0,
-            "fuzzy_matches": 9,
+            "fuzzy_accuracy": 0.6666666666666666,
+            "fuzzy_matches": 6,
             "predicted_fields": 9
           },
           "output": {
-            "cancer_center": "North Valley Cancer Center",
+            "cancer_center": "Not specified",
             "creatinine_mg_dl": 0.9,
-            "diagnosis": "Metastatic breast carcinoma",
+            "diagnosis": "Not specified",
             "hemoglobin_g_dl": 11.2,
             "oncologist": "Dr. Priya Shah",
             "patient_identifier": "ONC-2026-0142",
             "patient_name": "Maya Hernandez",
             "primary_medication": "Capecitabine",
-            "stage": "Stage IV"
+            "stage": "Not specified"
           },
-          "token_count": 637
+          "token_count": 633
         },
         {
           "api_calls": 3,
           "case": {
             "additional_context": null,
-            "document": "oncology_scanned.pdf",
+            "document": "generated/oncology_scanned.pdf",
             "expected": "snapshot_truth.json",
             "name": "oncology_scanned",
             "prompt": "",
@@ -297,7 +297,7 @@
           "config_name": "hybrid_targeted",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 17.488237291923724,
+          "latency_s": 23.112308874959126,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 1.0,
@@ -318,13 +318,13 @@
             "primary_medication": "Capecitabine",
             "stage": "Stage IV"
           },
-          "token_count": 432
+          "token_count": 472
         },
         {
-          "api_calls": 3,
+          "api_calls": 2,
           "case": {
             "additional_context": null,
-            "document": "oncology_mixed.pdf",
+            "document": "generated/oncology_mixed.pdf",
             "expected": "snapshot_truth.json",
             "name": "oncology_mixed",
             "prompt": "",
@@ -334,7 +334,7 @@
           "config_name": "hybrid_targeted",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 14.050716417026706,
+          "latency_s": 14.810488417046145,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 1.0,
@@ -355,7 +355,7 @@
             "primary_medication": "Capecitabine",
             "stage": "Stage IV"
           },
-          "token_count": 580
+          "token_count": 542
         }
       ],
       "config": {
@@ -380,11 +380,11 @@
           },
           {
             "completeness": 1.0,
-            "exact_accuracy": 1.0,
-            "exact_matches": 9,
+            "exact_accuracy": 0.6666666666666666,
+            "exact_matches": 6,
             "expected_fields": 9,
-            "fuzzy_accuracy": 1.0,
-            "fuzzy_matches": 9,
+            "fuzzy_accuracy": 0.6666666666666666,
+            "fuzzy_matches": 6,
             "predicted_fields": 9
           },
           {
@@ -408,10 +408,10 @@
         ],
         "completeness": 1.0,
         "estimated_cost_usd": 0.0,
-        "exact_accuracy": 1.0,
-        "fuzzy_accuracy": 1.0,
-        "latency_s": 57.13242612592876,
-        "token_count": 2364
+        "exact_accuracy": 0.9166666666666666,
+        "fuzzy_accuracy": 0.9166666666666666,
+        "latency_s": 66.66726520797238,
+        "token_count": 2395
       }
     },
     {
@@ -420,7 +420,7 @@
           "api_calls": 2,
           "case": {
             "additional_context": null,
-            "document": "oncology_clean.pdf",
+            "document": "generated/oncology_clean.pdf",
             "expected": "snapshot_truth.json",
             "name": "oncology_clean",
             "prompt": "",
@@ -430,81 +430,7 @@
           "config_name": "fused_targeted",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 10.023042250075378,
-          "metrics": {
-            "completeness": 1.0,
-            "exact_accuracy": 0.6666666666666666,
-            "exact_matches": 6,
-            "expected_fields": 9,
-            "fuzzy_accuracy": 0.6666666666666666,
-            "fuzzy_matches": 6,
-            "predicted_fields": 9
-          },
-          "output": {
-            "cancer_center": "North Valley Cancer Center",
-            "creatinine_mg_dl": 0.0,
-            "diagnosis": "Metastatic breast carcinoma",
-            "hemoglobin_g_dl": 0.0,
-            "oncologist": "Dr. Priya Shah",
-            "patient_identifier": "ONC-2026-0142",
-            "patient_name": "Maya Hernandez",
-            "primary_medication": "None specified",
-            "stage": "Stage IV"
-          },
-          "token_count": 643
-        },
-        {
-          "api_calls": 1,
-          "case": {
-            "additional_context": null,
-            "document": "oncology_table.pdf",
-            "expected": "snapshot_truth.json",
-            "name": "oncology_table",
-            "prompt": "",
-            "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
-            "tags": []
-          },
-          "config_name": "fused_targeted",
-          "error": null,
-          "estimated_cost_usd": 0.0,
-          "latency_s": 5.783577832975425,
-          "metrics": {
-            "completeness": 1.0,
-            "exact_accuracy": 0.6666666666666666,
-            "exact_matches": 6,
-            "expected_fields": 9,
-            "fuzzy_accuracy": 0.6666666666666666,
-            "fuzzy_matches": 6,
-            "predicted_fields": 9
-          },
-          "output": {
-            "cancer_center": "North Valley Cancer Center",
-            "creatinine_mg_dl": 0.0,
-            "diagnosis": "Metastatic breast carcinoma",
-            "hemoglobin_g_dl": 0.0,
-            "oncologist": "Dr. Priya Shah",
-            "patient_identifier": "ONC-2026-0142",
-            "patient_name": "Maya Hernandez",
-            "primary_medication": "None",
-            "stage": "Stage IV"
-          },
-          "token_count": 565
-        },
-        {
-          "api_calls": 2,
-          "case": {
-            "additional_context": null,
-            "document": "oncology_scanned.pdf",
-            "expected": "snapshot_truth.json",
-            "name": "oncology_scanned",
-            "prompt": "",
-            "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
-            "tags": []
-          },
-          "config_name": "fused_targeted",
-          "error": null,
-          "estimated_cost_usd": 0.0,
-          "latency_s": 10.02306104102172,
+          "latency_s": 18.316361040924676,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 0.6666666666666666,
@@ -525,15 +451,15 @@
             "primary_medication": "not documented",
             "stage": "Stage IV"
           },
-          "token_count": 355
+          "token_count": 676
         },
         {
           "api_calls": 2,
           "case": {
             "additional_context": null,
-            "document": "oncology_mixed.pdf",
+            "document": "generated/oncology_table.pdf",
             "expected": "snapshot_truth.json",
-            "name": "oncology_mixed",
+            "name": "oncology_table",
             "prompt": "",
             "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
             "tags": []
@@ -541,7 +467,44 @@
           "config_name": "fused_targeted",
           "error": null,
           "estimated_cost_usd": 0.0,
-          "latency_s": 9.910503332968801,
+          "latency_s": 13.103780791978352,
+          "metrics": {
+            "completeness": 1.0,
+            "exact_accuracy": 0.3333333333333333,
+            "exact_matches": 3,
+            "expected_fields": 9,
+            "fuzzy_accuracy": 0.3333333333333333,
+            "fuzzy_matches": 3,
+            "predicted_fields": 9
+          },
+          "output": {
+            "cancer_center": "not specified",
+            "creatinine_mg_dl": 0.0,
+            "diagnosis": "not specified",
+            "hemoglobin_g_dl": 0.0,
+            "oncologist": "Dr. Priya Shah",
+            "patient_identifier": "ONC-2026-0142",
+            "patient_name": "Maya Hernandez",
+            "primary_medication": "not specified",
+            "stage": "not specified"
+          },
+          "token_count": 561
+        },
+        {
+          "api_calls": 2,
+          "case": {
+            "additional_context": null,
+            "document": "generated/oncology_scanned.pdf",
+            "expected": "snapshot_truth.json",
+            "name": "oncology_scanned",
+            "prompt": "",
+            "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
+            "tags": []
+          },
+          "config_name": "fused_targeted",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 10.406837875023484,
           "metrics": {
             "completeness": 1.0,
             "exact_accuracy": 0.6666666666666666,
@@ -559,10 +522,47 @@
             "oncologist": "Dr. Priya Shah",
             "patient_identifier": "ONC-2026-0142",
             "patient_name": "Maya Hernandez",
-            "primary_medication": "Not specified",
+            "primary_medication": "null",
             "stage": "Stage IV"
           },
-          "token_count": 506
+          "token_count": 400
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/oncology_mixed.pdf",
+            "expected": "snapshot_truth.json",
+            "name": "oncology_mixed",
+            "prompt": "",
+            "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
+            "tags": []
+          },
+          "config_name": "fused_targeted",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 8.279453833005391,
+          "metrics": {
+            "completeness": 1.0,
+            "exact_accuracy": 0.6666666666666666,
+            "exact_matches": 6,
+            "expected_fields": 9,
+            "fuzzy_accuracy": 0.6666666666666666,
+            "fuzzy_matches": 6,
+            "predicted_fields": 9
+          },
+          "output": {
+            "cancer_center": "North Valley Cancer Center",
+            "creatinine_mg_dl": 0.0,
+            "diagnosis": "Metastatic breast carcinoma",
+            "hemoglobin_g_dl": 0.0,
+            "oncologist": "Dr. Priya Shah",
+            "patient_identifier": "ONC-2026-0142",
+            "patient_name": "Maya Hernandez",
+            "primary_medication": "null",
+            "stage": "Stage IV"
+          },
+          "token_count": 469
         }
       ],
       "config": {
@@ -587,11 +587,11 @@
           },
           {
             "completeness": 1.0,
-            "exact_accuracy": 0.6666666666666666,
-            "exact_matches": 6,
+            "exact_accuracy": 0.3333333333333333,
+            "exact_matches": 3,
             "expected_fields": 9,
-            "fuzzy_accuracy": 0.6666666666666666,
-            "fuzzy_matches": 6,
+            "fuzzy_accuracy": 0.3333333333333333,
+            "fuzzy_matches": 3,
             "predicted_fields": 9
           },
           {
@@ -615,10 +615,10 @@
         ],
         "completeness": 1.0,
         "estimated_cost_usd": 0.0,
-        "exact_accuracy": 0.6666666666666666,
-        "fuzzy_accuracy": 0.6666666666666666,
-        "latency_s": 35.74018445704132,
-        "token_count": 2069
+        "exact_accuracy": 0.5833333333333333,
+        "fuzzy_accuracy": 0.5833333333333333,
+        "latency_s": 50.1064335409319,
+        "token_count": 2106
       }
     }
   ],
@@ -626,7 +626,7 @@
     "cases": [
       {
         "additional_context": null,
-        "document": "oncology_clean.pdf",
+        "document": "generated/oncology_clean.pdf",
         "expected": "snapshot_truth.json",
         "name": "oncology_clean",
         "prompt": "",
@@ -635,7 +635,7 @@
       },
       {
         "additional_context": null,
-        "document": "oncology_table.pdf",
+        "document": "generated/oncology_table.pdf",
         "expected": "snapshot_truth.json",
         "name": "oncology_table",
         "prompt": "",
@@ -644,7 +644,7 @@
       },
       {
         "additional_context": null,
-        "document": "oncology_scanned.pdf",
+        "document": "generated/oncology_scanned.pdf",
         "expected": "snapshot_truth.json",
         "name": "oncology_scanned",
         "prompt": "",
@@ -653,7 +653,7 @@
       },
       {
         "additional_context": null,
-        "document": "oncology_mixed.pdf",
+        "document": "generated/oncology_mixed.pdf",
         "expected": "snapshot_truth.json",
         "name": "oncology_mixed",
         "prompt": "",

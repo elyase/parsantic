@@ -616,6 +616,12 @@ def _run_sync_call_with_timeout(
         return future.result(timeout=timeout_s)
 
 
+def _should_bypass_sync_thread_timeout(provider: Any, *, media: bool) -> bool:
+    if media:
+        return isinstance(provider, SupportsAsyncMediaInfer)
+    return hasattr(provider, "ainfer")
+
+
 async def _run_async_call_with_timeout(
     call: Callable[[], Awaitable[Any]],
     *,
@@ -938,11 +944,16 @@ def _infer_batch(
             _check_document_deadline(ctx)
             ctx.budget.ensure_api_budget(1)
             try:
-                outputs = normalize_text_outputs(
-                    _run_sync_call_with_timeout(
+                raw = (
+                    provider.infer(batch, **infer_kwargs)
+                    if _should_bypass_sync_thread_timeout(provider, media=False)
+                    else _run_sync_call_with_timeout(
                         lambda batch=batch: provider.infer(batch, **infer_kwargs),
                         timeout_s=ctx.opts.per_call_timeout_s,
-                    ),
+                    )
+                )
+                outputs = normalize_text_outputs(
+                    raw,
                     expected_count=len(batch),
                     context="provider.infer",
                 )
@@ -1179,11 +1190,16 @@ def _infer_media_batch(
             _check_document_deadline(ctx)
             ctx.budget.ensure_api_budget(1)
             try:
-                outputs = normalize_text_outputs(
-                    _run_sync_call_with_timeout(
+                raw = (
+                    provider.infer_media(batch, **infer_kwargs)
+                    if _should_bypass_sync_thread_timeout(provider, media=True)
+                    else _run_sync_call_with_timeout(
                         lambda batch=batch: provider.infer_media(batch, **infer_kwargs),
                         timeout_s=ctx.opts.per_call_timeout_s,
-                    ),
+                    )
+                )
+                outputs = normalize_text_outputs(
+                    raw,
                     expected_count=len(batch),
                     context="provider.infer_media",
                 )

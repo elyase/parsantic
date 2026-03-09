@@ -2,10 +2,10 @@
   "summary": [
     {
       "model": "gemini:gemini-3.1-flash-lite-preview",
-      "exact_accuracy": 0.8225806451612904,
-      "fuzzy_accuracy": 0.8225806451612904,
+      "exact_accuracy": 0.8225806451612903,
+      "fuzzy_accuracy": 0.8225806451612903,
       "completeness": 0.9758064516129032,
-      "total_latency_s": 17.630732541903853,
+      "total_latency_s": 19.707183833117597,
       "all_cases_succeeded": true
     },
     {
@@ -13,15 +13,15 @@
       "exact_accuracy": 0.8225806451612903,
       "fuzzy_accuracy": 0.8225806451612903,
       "completeness": 0.9758064516129032,
-      "total_latency_s": 14.720600209082477,
+      "total_latency_s": 16.251144334091805,
       "all_cases_succeeded": true
     },
     {
       "model": "gemini:gemini-2.5-flash",
-      "exact_accuracy": 0.8548387096774194,
-      "fuzzy_accuracy": 0.8629032258064516,
+      "exact_accuracy": 0.814516129032258,
+      "fuzzy_accuracy": 0.8225806451612903,
       "completeness": 0.9758064516129032,
-      "total_latency_s": 38.06470762391109,
+      "total_latency_s": 34.90763670695014,
       "all_cases_succeeded": true
     },
     {
@@ -29,7 +29,7 @@
       "exact_accuracy": 0.0,
       "fuzzy_accuracy": 0.0,
       "completeness": 0.0,
-      "total_latency_s": 9.625297459191643,
+      "total_latency_s": 9.960405541118234,
       "all_cases_succeeded": false
     }
   ],
@@ -37,10 +37,10 @@
     {
       "model": "gemini:gemini-3.1-flash-lite-preview",
       "pdf": "nasal_melanoma_clean.pdf",
-      "exact_accuracy": 0.8387096774193549,
-      "fuzzy_accuracy": 0.8387096774193549,
+      "exact_accuracy": 0.8064516129032258,
+      "fuzzy_accuracy": 0.8064516129032258,
       "completeness": 1.0,
-      "latency_s": 4.151618166011758,
+      "latency_s": 3.6057295000646263,
       "error": null,
       "output": {
         "age_years": 56,
@@ -51,7 +51,7 @@
         ],
         "presenting_symptom_month": "11/2025",
         "primary_site": "left nasal cavity",
-        "diagnosis": "mucosal malignant melanoma",
+        "diagnosis": "mucosal malignant melanoma of the left paranasal sinus, maxillary",
         "ct_sinus_date": "12/21/25",
         "ct_lesion_size_cm": [
           1.8,
@@ -90,7 +90,7 @@
       "exact_accuracy": 1.0,
       "fuzzy_accuracy": 1.0,
       "completeness": 1.0,
-      "latency_s": 3.286249958910048,
+      "latency_s": 3.6427302500233054,
       "error": null,
       "output": {
         "age_years": 56,
@@ -140,7 +140,7 @@
       "exact_accuracy": 0.8387096774193549,
       "fuzzy_accuracy": 0.8387096774193549,
       "completeness": 1.0,
-      "latency_s": 7.594030249980278,
+      "latency_s": 9.10963583306875,
       "error": null,
       "output": {
         "age_years": 56,
@@ -187,10 +187,10 @@
     {
       "model": "gemini:gemini-3.1-flash-lite-preview",
       "pdf": "nasal_melanoma_mixed.pdf",
-      "exact_accuracy": 0.6129032258064516,
-      "fuzzy_accuracy": 0.6129032258064516,
+      "exact_accuracy": 0.6451612903225806,
+      "fuzzy_accuracy": 0.6451612903225806,
       "completeness": 0.9032258064516129,
-      "latency_s": 2.598834167001769,
+      "latency_s": 3.3490882499609143,
       "error": null,
       "output": {
         "age_years": 56,
@@ -201,7 +201,7 @@
         ],
         "presenting_symptom_month": "11/2025",
         "primary_site": "left nasal cavity",
-        "diagnosis": "mucosal malignant melanoma of the left paranasal sinus, maxillary",
+        "diagnosis": "mucosal malignant melanoma",
         "ct_sinus_date": "12/21/25",
         "ct_lesion_size_cm": [
           1.8,
@@ -236,7 +236,7 @@
       "exact_accuracy": 0.8387096774193549,
       "fuzzy_accuracy": 0.8387096774193549,
       "completeness": 1.0,
-      "latency_s": 2.6415809170575812,
+      "latency_s": 2.935875292052515,
       "error": null,
       "output": {
         "age_years": 56,
@@ -286,7 +286,7 @@
       "exact_accuracy": 1.0,
       "fuzzy_accuracy": 1.0,
       "completeness": 1.0,
-      "latency_s": 2.724766208906658,
+      "latency_s": 3.1813069169875234,
       "error": null,
       "output": {
         "age_years": 56,
@@ -336,7 +336,7 @@
       "exact_accuracy": 0.8064516129032258,
       "fuzzy_accuracy": 0.8064516129032258,
       "completeness": 1.0,
-      "latency_s": 6.774071125080809,
+      "latency_s": 7.527321957983077,
       "error": null,
       "output": {
         "age_years": 56,
@@ -353,18 +353,18 @@
           1.8,
           1.4
         ],
-        "mri_face_date": "1/15/26",
+        "mri_face_date": "01/15/26",
         "mri_mass_size_cm": [
           3.0,
           1.3,
           2.5
         ],
         "left_submandibular_node_cm": 1.3,
-        "pet_ct_date": "2/3/26",
+        "pet_ct_date": "02/03/26",
         "pet_hypermetabolic_nasal_mass": true,
         "metastatic_disease_on_pet": false,
         "left_apical_lung_nodule_present": true,
-        "surgery_date": "2/16/26",
+        "surgery_date": "02/16/26",
         "surgery_procedures": [
           "left partial rhinectomy",
           "left maxillectomy",
@@ -386,7 +386,7 @@
       "exact_accuracy": 0.6451612903225806,
       "fuzzy_accuracy": 0.6451612903225806,
       "completeness": 0.9032258064516129,
-      "latency_s": 2.5801819580374286,
+      "latency_s": 2.60664016706869,
       "error": null,
       "output": {
         "age_years": 56,
@@ -403,10 +403,10 @@
           1.8,
           1.4
         ],
-        "mri_face_date": "",
+        "mri_face_date": "null",
         "mri_mass_size_cm": [],
         "left_submandibular_node_cm": 0.0,
-        "pet_ct_date": "",
+        "pet_ct_date": "null",
         "pet_hypermetabolic_nasal_mass": false,
         "metastatic_disease_on_pet": false,
         "left_apical_lung_nodule_present": false,
@@ -429,10 +429,10 @@
     {
       "model": "gemini:gemini-2.5-flash",
       "pdf": "nasal_melanoma_clean.pdf",
-      "exact_accuracy": 0.9032258064516129,
-      "fuzzy_accuracy": 0.9354838709677419,
+      "exact_accuracy": 0.7741935483870968,
+      "fuzzy_accuracy": 0.8064516129032258,
       "completeness": 1.0,
-      "latency_s": 6.46391270798631,
+      "latency_s": 6.083520707907155,
       "error": null,
       "output": {
         "age_years": 56,
@@ -442,25 +442,25 @@
           "tobacco abuse"
         ],
         "presenting_symptom_month": "11/2025",
-        "primary_site": "left paranasal sinus, maxillary",
+        "primary_site": "left paranasal sinus",
         "diagnosis": "mucosal malignant melanoma",
-        "ct_sinus_date": "2025-12-21",
+        "ct_sinus_date": "12/21/25",
         "ct_lesion_size_cm": [
           1.8,
           1.4
         ],
-        "mri_face_date": "2026-01-15",
+        "mri_face_date": "1/15/26",
         "mri_mass_size_cm": [
           3.0,
           1.3,
           2.5
         ],
         "left_submandibular_node_cm": 1.3,
-        "pet_ct_date": "2026-02-03",
+        "pet_ct_date": "2/3/26",
         "pet_hypermetabolic_nasal_mass": true,
         "metastatic_disease_on_pet": false,
         "left_apical_lung_nodule_present": true,
-        "surgery_date": "2026-02-16",
+        "surgery_date": "2/16/26",
         "surgery_procedures": [
           "left partial rhinectomy",
           "left maxillectomy",
@@ -482,7 +482,7 @@
       "exact_accuracy": 1.0,
       "fuzzy_accuracy": 1.0,
       "completeness": 1.0,
-      "latency_s": 7.588805374922231,
+      "latency_s": 6.525209457962774,
       "error": null,
       "output": {
         "age_years": 56,
@@ -532,7 +532,7 @@
       "exact_accuracy": 0.8064516129032258,
       "fuzzy_accuracy": 0.8064516129032258,
       "completeness": 1.0,
-      "latency_s": 16.061171666020527,
+      "latency_s": 11.709830124978907,
       "error": null,
       "output": {
         "age_years": 56,
@@ -579,10 +579,10 @@
     {
       "model": "gemini:gemini-2.5-flash",
       "pdf": "nasal_melanoma_mixed.pdf",
-      "exact_accuracy": 0.7096774193548387,
-      "fuzzy_accuracy": 0.7096774193548387,
+      "exact_accuracy": 0.6774193548387096,
+      "fuzzy_accuracy": 0.6774193548387096,
       "completeness": 0.9032258064516129,
-      "latency_s": 7.950817874982022,
+      "latency_s": 10.589076416101307,
       "error": null,
       "output": {
         "age_years": 56,
@@ -592,7 +592,7 @@
           "tobacco abuse"
         ],
         "presenting_symptom_month": "November",
-        "primary_site": "left nasal cavity",
+        "primary_site": "left paranasal sinus, maxillary",
         "diagnosis": "mucosal malignant melanoma",
         "ct_sinus_date": "2025-12-21",
         "ct_lesion_size_cm": [
@@ -628,7 +628,7 @@
       "exact_accuracy": 0.0,
       "fuzzy_accuracy": 0.0,
       "completeness": 0.0,
-      "latency_s": 1.1505472080316395,
+      "latency_s": 1.6228865410666913,
       "error": "ModelHTTPError: status_code: 404, model_name: gemini-3-flash, body: {'error': {'code': 404, 'message': 'models/gemini-3-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
       "output": {}
     },
@@ -638,7 +638,7 @@
       "exact_accuracy": 0.0,
       "fuzzy_accuracy": 0.0,
       "completeness": 0.0,
-      "latency_s": 1.157788334065117,
+      "latency_s": 1.4362779170041904,
       "error": "ModelHTTPError: status_code: 404, model_name: gemini-3-flash, body: {'error': {'code': 404, 'message': 'models/gemini-3-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
       "output": {}
     },
@@ -648,7 +648,7 @@
       "exact_accuracy": 0.0,
       "fuzzy_accuracy": 0.0,
       "completeness": 0.0,
-      "latency_s": 6.128543375059962,
+      "latency_s": 5.430014124955051,
       "error": "ModelHTTPError: status_code: 404, model_name: gemini-3-flash, body: {'error': {'code': 404, 'message': 'models/gemini-3-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
       "output": {}
     },
@@ -658,7 +658,7 @@
       "exact_accuracy": 0.0,
       "fuzzy_accuracy": 0.0,
       "completeness": 0.0,
-      "latency_s": 1.188418542034924,
+      "latency_s": 1.471226958092302,
       "error": "ModelHTTPError: status_code: 404, model_name: gemini-3-flash, body: {'error': {'code': 404, 'message': 'models/gemini-3-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
       "output": {}
     }

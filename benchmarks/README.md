@@ -1,87 +1,88 @@
 # Benchmarks
 
-The benchmark harness tracks:
+This folder keeps two maintained benchmarks:
 
-- Field-level exact accuracy
-- Field-level fuzzy accuracy
-- Schema completeness
-- Latency
-- Token count
-- API call count
+- `oncology`: strategy benchmark
+- `nasal_melanoma`: model and strategy benchmark
 
-Default maintained benchmarks:
-
-- Oncology strategy benchmark
-- Nasal melanoma model benchmark
-
-Default oncology benchmark:
-
-```bash
-uv run python benchmarks/run_oncology_default.py
-```
-
-This default benchmark uses:
-- Model: `gemini:gemini-2.5-flash-lite`
-- Real generated oncology PDFs under [`benchmarks/corpus/oncology`](/Users/yaser/parsantic/benchmarks/corpus/oncology)
-- Snapshot schema optimized for repeatable strategy comparisons
-
-Artifacts:
-- Default manifest: [`manifest.default.json`](/Users/yaser/parsantic/benchmarks/corpus/oncology/manifest.default.json)
-- Latest saved results: [`RESULTS.default.md`](/Users/yaser/parsantic/benchmarks/corpus/oncology/RESULTS.default.md)
-
-Default nasal melanoma model sweep:
-
-```bash
-uv run python benchmarks/run_nasal_melanoma_models.py
-```
-
-Artifacts:
-- Corpus: [`benchmarks/corpus/nasal_melanoma`](/Users/yaser/parsantic/benchmarks/corpus/nasal_melanoma)
-- Latest saved results: [`RESULTS.models.md`](/Users/yaser/parsantic/benchmarks/corpus/nasal_melanoma/RESULTS.models.md)
-
-## Default Rationale
-
-The library defaults are intentionally conservative:
+Default recommendation:
 
 - Default model: `gemini:gemini-2.5-flash-lite`
+- Default strategy: `document_auto`
 - Default repair mode: `targeted`
-- Default extraction strategy: automatic whole-document path (`document_auto` behavior)
-- `max_repair_attempts`: `2`
 
 Why:
+- `document_auto` is the most stable strategy and usually the fastest good option.
+- `hybrid_targeted` can improve quality, but it is slower and not the best default tradeoff.
+- `fused_targeted` was consistently weaker in the current benchmarks.
+- `gemini:gemini-2.5-flash-lite` matched the main alternative lite Gemini on quality and was faster.
 
-- On the oncology strategy benchmark, `hybrid_targeted` had the best quality, but `document_auto` had nearly the same quality with much lower latency.
-- On the more realistic nasal melanoma benchmark, `document_auto` was the most stable strategy family. `hybrid_targeted` hit timeouts and runtime bugs, and `fused_targeted` was materially worse.
-- On the nasal melanoma model sweep, `gemini:gemini-2.5-flash-lite` matched `gemini:gemini-3.1-flash-lite-preview` on quality and was faster, while `gemini:gemini-2.5-flash` was somewhat more accurate but much slower.
+Benchmarks in plain terms:
+- `oncology`: 4 generated PDFs, about 4-5 pages each, small oncology snapshot.
+- `nasal_melanoma`: 4 generated PDFs, about 2-3 pages each, more realistic imaging/surgery/pathology note.
 
-That combination makes `gemini:gemini-2.5-flash-lite` plus targeted repair the safest default, while leaving the strategy on the stable document-first path.
+What the strategy names mean:
+- `document_auto`: whole-document extraction first; uses text layer when available, otherwise media.
+- `hybrid_targeted`: whole-document pass plus page-level pass, merge, then validation-guided repair.
+- `fused_targeted`: page-level extraction with page image plus page-local text together, then repair.
 
-## Strategy Guide
+What the metrics mean:
+- `exact`: fields that match ground truth exactly.
+- `fuzzy`: fields that are acceptably close after normalization.
+- `completeness`: expected fields that were present at all.
+- `total latency`: wall-clock time for the whole benchmark slice.
 
-`document_auto`
-- The default behavior.
-- If the PDF has a text layer, extract from text first.
-- Otherwise fall back to media/image processing.
-- Best speed and best stability in the current benchmarks.
+### Oncology Strategy Benchmark
 
-`hybrid_targeted`
-- Whole-document extraction plus page-level extraction, then merge, then targeted repair.
-- Best quality on the oncology strategy benchmark.
-- Not the default because it is slower and currently less stable on heavier documents.
+Model used: `gemini:gemini-2.5-flash-lite`
 
-`fused_targeted`
-- Page-by-page extraction with page image plus page-local text in one prompt, then targeted repair.
-- Promising for some layouts, but underperformed on important local fields in the current benchmarks.
-- Not recommended as the default.
+| Strategy | Exact | Fuzzy | Completeness | Total latency |
+| --- | ---: | ---: | ---: | ---: |
+| `document_auto` | `0.639` | `0.667` | `1.000` | `7.81s` |
+| `hybrid_targeted` | `0.917` | `0.917` | `1.000` | `66.67s` |
+| `fused_targeted` | `0.583` | `0.583` | `1.000` | `50.11s` |
 
-When to use each:
+Takeaway:
+- Best quality: `hybrid_targeted`
+- Best default tradeoff: `document_auto`
 
-- Use `document_auto` when you want the best default tradeoff.
-- Use `hybrid_targeted` when you care most about quality and can afford more latency.
-- Use `fused_targeted` only when you are explicitly testing page-fused behavior.
+### Nasal Melanoma Model Benchmark
 
-For custom runs:
+Strategy used: `document_auto`
 
-```bash
-uv run python -m benchmarks.run_benchmarks path/to/manifest.json
-```
+| Model | Exact | Fuzzy | Completeness | Total latency | Status |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `gemini:gemini-3.1-flash-lite-preview` | `0.823` | `0.823` | `0.976` | `19.71s` | succeeded |
+| `gemini:gemini-2.5-flash-lite` | `0.823` | `0.823` | `0.976` | `16.25s` | succeeded |
+| `gemini:gemini-2.5-flash` | `0.815` | `0.823` | `0.976` | `34.91s` | succeeded |
+| `gemini:gemini-3-flash` | `0.000` | `0.000` | `0.000` | `9.96s` | unsupported (`404`) |
+
+Takeaway:
+- `gemini-2.5-flash-lite` and `gemini-3.1-flash-lite-preview` were tied on quality here.
+- `gemini-2.5-flash-lite` was faster, so it is the better default.
+
+### Nasal Melanoma Strategy Matrix
+
+| Model | Strategy | Exact | Fuzzy | Completeness | Total latency | Status |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| `gemini:gemini-3.1-flash-lite-preview` | `document_auto` | `0.823` | `0.823` | `0.976` | `21.00s` | succeeded |
+| `gemini:gemini-3.1-flash-lite-preview` | `hybrid_targeted` | `0.806` | `0.806` | `1.000` | `56.81s` | succeeded |
+| `gemini:gemini-3.1-flash-lite-preview` | `fused_targeted` | `0.500` | `0.516` | `1.000` | `33.75s` | succeeded |
+| `gemini:gemini-2.5-flash-lite` | `document_auto` | `0.831` | `0.831` | `0.976` | `16.17s` | succeeded |
+| `gemini:gemini-2.5-flash-lite` | `hybrid_targeted` | `0.815` | `0.815` | `1.000` | `49.90s` | succeeded |
+| `gemini:gemini-2.5-flash-lite` | `fused_targeted` | `0.484` | `0.492` | `1.000` | `26.23s` | succeeded |
+| `gemini:gemini-2.5-flash` | `document_auto` | `0.815` | `0.823` | `0.976` | `38.00s` | succeeded |
+| `gemini:gemini-2.5-flash` | `hybrid_targeted` | `0.766` | `0.790` | `1.000` | `181.73s` | succeeded |
+| `gemini:gemini-2.5-flash` | `fused_targeted` | `0.573` | `0.573` | `1.000` | `132.44s` | succeeded |
+
+Takeaway:
+- On the heavier melanoma case, `document_auto` is the strongest default.
+- `hybrid_targeted` is slower and does not beat `document_auto` here.
+- `fused_targeted` is the weakest strategy.
+
+Run:
+
+- `uv run python benchmarks/run_oncology_default.py`
+- `uv run python benchmarks/run_nasal_melanoma_models.py`
+- `uv run python benchmarks/run_nasal_melanoma_matrix.py`
+- `uv run python -m benchmarks.run_benchmarks path/to/manifest.json`

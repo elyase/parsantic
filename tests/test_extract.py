@@ -181,6 +181,17 @@ class ConcurrentHybridTextProvider:
         return outputs
 
 
+@dataclass
+class AsyncCapableTextProvider:
+    output: str = '{"name": "Ada", "age": 42}'
+
+    def infer(self, batch_prompts: Sequence[str]) -> Sequence[str]:
+        return [self.output for _ in batch_prompts]
+
+    async def ainfer(self, batch_prompts: Sequence[str]) -> Sequence[str]:
+        return [self.output for _ in batch_prompts]
+
+
 # ===========================================================================
 # Smoke tests (from test_extract_smoke.py)
 # ===========================================================================
@@ -434,6 +445,24 @@ def test_hybrid_text_runs_whole_and_chunk_branches_concurrently():
     assert result.value == "SETTLED"
     assert result.sources["/"].scope == "document"
     assert provider.overlap_detected is True
+
+
+def test_sync_text_extraction_bypasses_threaded_timeout_for_async_capable_provider(monkeypatch):
+    from parsantic.extract import pipeline as pipeline_mod
+
+    def _unexpected_timeout(*args, **kwargs):
+        raise AssertionError("sync text path should not use threaded timeout wrapper here")
+
+    monkeypatch.setattr(pipeline_mod, "_run_sync_call_with_timeout", _unexpected_timeout)
+
+    result = extract(
+        "Ada is 42 years old",
+        NameAge,
+        model=AsyncCapableTextProvider(),
+        options=ExtractOptions(per_call_timeout_s=1.0),
+    )
+
+    assert result.value == NameAge(name="Ada", age=42)
 
 
 def test_chunk_parsing_allows_partial_then_final_validates():
