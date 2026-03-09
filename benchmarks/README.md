@@ -1,9 +1,10 @@
 # Benchmarks
 
-This folder keeps two maintained benchmarks:
+This folder keeps three maintained benchmarks:
 
 - `oncology`: strategy benchmark
 - `nasal_melanoma`: model and strategy benchmark
+- `oncology_page_scale`: latency-vs-pages benchmark
 
 Default recommendation:
 
@@ -15,6 +16,7 @@ Default recommendation:
 Benchmarks:
 - `oncology`: 4 generated PDFs, about 4-5 pages each, small oncology snapshot.
 - `nasal_melanoma`: 4 generated PDFs, about 2-3 pages each, more realistic imaging/surgery/pathology note.
+- `oncology_page_scale`: 3 generated scanned PDFs at 5, 10, and 15 pages. The first 5 pages contain the oncology snapshot and the remaining pages are irrelevant appendices, so the benchmark isolates latency growth as total PDF pages increase.
 
 Strategies:
 - `document_auto`: this is the library default and is equivalent to calling `ExtractOptions()` with no explicit `mode` or `strategy`.
@@ -86,9 +88,28 @@ Takeaway:
 - If page-level provenance matters, `hybrid_targeted` is the best option despite the latency cost.
 - `fused_targeted` is the weakest strategy.
 
+### Oncology Page-Scale Benchmark
+
+Document type: scanned PDF with a fixed 5-page oncology core plus irrelevant appendix pages
+
+| Model | Strategy | 5 pages | 10 pages | 15 pages | Slope (s/page) | Status |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| `gemini:gemini-2.5-flash-lite` | `document_auto` | `6.86s` | `12.27s` | `18.20s` | `1.13` | succeeded |
+| `gemini:gemini-2.5-flash-lite` | `fused_targeted` | `12.16s` | `18.53s` | `41.87s` | `2.97` | succeeded |
+| `gemini:gemini-2.5-flash-lite` | `hybrid_targeted` | `17.15s` | `34.67s` | `47.74s` | `3.06` | succeeded |
+| `gemini:gemini-3.1-flash-lite-preview` | `document_auto` | `10.40s` | `16.75s` | `21.78s` | `1.14` | succeeded |
+| `gemini:gemini-3.1-flash-lite-preview` | `fused_targeted` | `11.91s` | `24.46s` | `39.94s` | `2.80` | succeeded |
+| `gemini:gemini-3.1-flash-lite-preview` | `hybrid_targeted` | `28.44s` | `42.97s` | `61.83s` | `3.34` | succeeded |
+
+Takeaway:
+- `document_auto` scales best with page count on scanned PDFs for both tested models, at about `1.1s` per added page in this setup.
+- `hybrid_targeted` remains the slowest strategy as pages increase, and its latency slope is about 3x `document_auto`.
+- `gemini:gemini-2.5-flash-lite` stayed faster than `gemini:gemini-3.1-flash-lite-preview` across every strategy in this benchmark.
+
 Run:
 
 - `uv run python benchmarks/run_oncology_default.py`
+- `uv run python benchmarks/run_oncology_page_scale.py`
 - `uv run python benchmarks/run_nasal_melanoma_models.py`
 - `uv run python benchmarks/run_nasal_melanoma_matrix.py`
 - `uv run python -m benchmarks.run_benchmarks path/to/manifest.json`

@@ -1,0 +1,74 @@
+{
+  "name": "oncology-page-scale",
+  "root": ".",
+  "configs": [
+    {
+      "name": "g31lite_document_auto",
+      "model": "provider_from_model('gemini:gemini-3.1-flash-lite-preview')",
+      "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=120, per_document_timeout_s=420)",
+      "prompt_prefix": "Extract the oncology snapshot into the flat schema. Use exact values from the document.",
+      "tags": ["model:gemini:gemini-3.1-flash-lite-preview", "strategy:document_auto"]
+    },
+    {
+      "name": "g31lite_hybrid_targeted",
+      "model": "provider_from_model('gemini:gemini-3.1-flash-lite-preview')",
+      "options": "ExtractOptions(mode='hybrid', document_input='native', page_input='image', repair='targeted', max_repair_attempts=1, per_call_timeout_s=120, per_document_timeout_s=420)",
+      "prompt_prefix": "Extract the oncology snapshot into the flat schema. Use exact values from the document.",
+      "tags": ["model:gemini:gemini-3.1-flash-lite-preview", "strategy:hybrid_targeted"]
+    },
+    {
+      "name": "g31lite_fused_targeted",
+      "model": "provider_from_model('gemini:gemini-3.1-flash-lite-preview')",
+      "options": "ExtractOptions(strategy=extract.Strategy(plan='fused'), repair='targeted', max_repair_attempts=1, per_call_timeout_s=120, per_document_timeout_s=420)",
+      "prompt_prefix": "Extract the oncology snapshot into the flat schema. Use exact values from the document.",
+      "tags": ["model:gemini:gemini-3.1-flash-lite-preview", "strategy:fused_targeted"]
+    },
+    {
+      "name": "g25lite_document_auto",
+      "model": "provider_from_model('gemini:gemini-2.5-flash-lite')",
+      "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=120, per_document_timeout_s=420)",
+      "prompt_prefix": "Extract the oncology snapshot into the flat schema. Use exact values from the document.",
+      "tags": ["model:gemini:gemini-2.5-flash-lite", "strategy:document_auto"]
+    },
+    {
+      "name": "g25lite_hybrid_targeted",
+      "model": "provider_from_model('gemini:gemini-2.5-flash-lite')",
+      "options": "ExtractOptions(mode='hybrid', document_input='native', page_input='image', repair='targeted', max_repair_attempts=1, per_call_timeout_s=120, per_document_timeout_s=420)",
+      "prompt_prefix": "Extract the oncology snapshot into the flat schema. Use exact values from the document.",
+      "tags": ["model:gemini:gemini-2.5-flash-lite", "strategy:hybrid_targeted"]
+    },
+    {
+      "name": "g25lite_fused_targeted",
+      "model": "provider_from_model('gemini:gemini-2.5-flash-lite')",
+      "options": "ExtractOptions(strategy=extract.Strategy(plan='fused'), repair='targeted', max_repair_attempts=1, per_call_timeout_s=120, per_document_timeout_s=420)",
+      "prompt_prefix": "Extract the oncology snapshot into the flat schema. Use exact values from the document.",
+      "tags": ["model:gemini:gemini-2.5-flash-lite", "strategy:fused_targeted"]
+    }
+  ],
+  "cases": [
+    {
+      "name": "oncology_scanned_05p",
+      "document": "generated/oncology_scanned_05p.pdf",
+      "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
+      "expected": "../oncology/snapshot_truth.json",
+      "expected_sources": "../oncology/expected_sources.json",
+      "tags": ["pages:5"]
+    },
+    {
+      "name": "oncology_scanned_10p",
+      "document": "generated/oncology_scanned_10p.pdf",
+      "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
+      "expected": "../oncology/snapshot_truth.json",
+      "expected_sources": "../oncology/expected_sources.json",
+      "tags": ["pages:10"]
+    },
+    {
+      "name": "oncology_scanned_15p",
+      "document": "generated/oncology_scanned_15p.pdf",
+      "schema": "benchmarks.corpus.oncology.snapshot_schema:OncologySnapshot",
+      "expected": "../oncology/snapshot_truth.json",
+      "expected_sources": "../oncology/expected_sources.json",
+      "tags": ["pages:15"]
+    }
+  ]
+}
