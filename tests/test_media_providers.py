@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -137,3 +138,43 @@ def test_build_message_parts_reads_path_bytes(tmp_path: Path):
     assert parts[0].data == b"%PDF-path"
     assert parts[0].media_type == "application/pdf"
     assert parts[1] == "from path"
+
+
+def test_sync_infer_runs_batch_prompts_concurrently(monkeypatch):
+    provider = _provider_without_init()
+
+    def _slow_run(prompt, **kwargs):
+        time.sleep(0.2)
+        return prompt
+
+    monkeypatch.setattr(type(provider), "_run_with_native_fallback", staticmethod(_slow_run))
+
+    started = time.perf_counter()
+    outputs = provider.infer(["a", "b", "c"], max_concurrency=3)
+    elapsed = time.perf_counter() - started
+
+    assert outputs == ["a", "b", "c"]
+    assert elapsed < 0.45
+
+
+def test_sync_infer_media_runs_requests_concurrently(monkeypatch):
+    provider = _provider_without_init()
+
+    def _slow_run(prompt, **kwargs):
+        time.sleep(0.2)
+        return prompt[-1]
+
+    monkeypatch.setattr(type(provider), "_run_with_native_fallback", staticmethod(_slow_run))
+
+    requests = [
+        InferenceRequest(prompt="p1"),
+        InferenceRequest(prompt="p2"),
+        InferenceRequest(prompt="p3"),
+    ]
+
+    started = time.perf_counter()
+    outputs = provider.infer_media(requests, max_concurrency=3)
+    elapsed = time.perf_counter() - started
+
+    assert outputs == ["p1", "p2", "p3"]
+    assert elapsed < 0.45

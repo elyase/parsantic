@@ -1075,11 +1075,9 @@ def test_merge_hybrid_keeps_ambiguous_repeated_array_duplicates():
                 "medicationCodeableConcept": {"text": "Capecitabine"},
                 "route": "intravenous",
             },
-            {
-                "medicationCodeableConcept": {"text": " Capecitabine "},
-            },
         ]
     }
+    assert any(conflict.resolution == "dropped_unmatched" for conflict in merged.conflicts)
 
 
 def test_merge_hybrid_backfills_exact_page_provenance_for_whole_selected_value():

@@ -20,6 +20,7 @@ class RepairContext:
     attempt_index: int = 0
     prior_output: str = ""
     validation_errors: list[str] = field(default_factory=list)
+    target_paths: list[str] = field(default_factory=list)
 
     def effective_output(self) -> str:
         return self.raw_output or self.prior_output
@@ -69,6 +70,14 @@ def build_repair_prompt(
         question.strip(),
         "",
     ]
+    if ctx.target_paths:
+        lines.extend(
+            [
+                "Only repair these JSON Pointer paths:",
+                *[f"- {path}" for path in ctx.target_paths],
+                "",
+            ]
+        )
     if ctx.original_document_text:
         lines.extend(["Document text:", ctx.original_document_text, ""])
     if rendered_context:
@@ -83,7 +92,11 @@ def build_repair_prompt(
             "Validation errors:",
             *[f"- {error}" for error in errors],
             "",
-            "Return the complete corrected JSON only.",
+            (
+                "Return only the corrected JSON fragment for the targeted paths."
+                if ctx.target_paths
+                else "Return the complete corrected JSON only."
+            ),
         ]
     )
     return "\n".join(lines)

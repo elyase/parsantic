@@ -31,6 +31,7 @@ type Representation = Literal[
 ]
 type ExecutionPlan = Literal[
     "auto",
+    "document_grounded",
     "whole_document",
     "page_map_reduce",
     "page_windows",
@@ -114,22 +115,44 @@ class Strategy:
     plan: ExecutionPlan = "auto"
     provenance: ProvenancePolicy = field(default_factory=ProvenancePolicy)
     field_scope: FieldScopePolicy = field(default_factory=FieldScopePolicy)
+    identity_keys: dict[str, tuple[str, ...] | str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if isinstance(self.represent, str):
-            return
-        self.represent = tuple(self.represent)
-        if not self.represent:
-            raise ValueError("strategy.represent must not be empty")
+        if not isinstance(self.represent, str):
+            self.represent = tuple(self.represent)
+            if not self.represent:
+                raise ValueError("strategy.represent must not be empty")
+        normalized_identity_keys: dict[str, tuple[str, ...]] = {}
+        for path, raw_value in self.identity_keys.items():
+            values = (raw_value,) if isinstance(raw_value, str) else tuple(raw_value)
+            normalized: list[str] = []
+            for value in values:
+                candidate = value.strip()
+                if not candidate:
+                    raise ValueError("strategy.identity_keys entries must not be empty")
+                normalized.append(candidate if candidate.startswith("/") else f"/{candidate}")
+            if isinstance(raw_value, str):
+                normalized_identity_keys[path] = tuple(normalized)
+            else:
+                normalized_identity_keys[path] = tuple(normalized)
+        self.identity_keys = normalized_identity_keys
 
 
 @dataclass(frozen=True, slots=True)
 class ResolvedStrategy:
     represent: Literal["auto", "native", "raster"]
-    plan: Literal["auto", "whole_document", "page_map_reduce", "hybrid", "fused"]
+    plan: Literal[
+        "auto",
+        "document_grounded",
+        "whole_document",
+        "page_map_reduce",
+        "hybrid",
+        "fused",
+    ]
     media: MediaOptions
     provenance: ProvenancePolicy
     field_scope: FieldScopePolicy
+    identity_keys: dict[str, tuple[str, ...]]
     mode: ExtractionMode = "auto"
     document_input: DocumentInput = "auto"
     page_input: PageInput = "auto"
@@ -180,6 +203,7 @@ def resolve_runtime_mode(
             media=media,
             provenance=default_provenance,
             field_scope=FieldScopePolicy(),
+            identity_keys={},
             mode="auto",
             document_input="auto",
             page_input="auto",
@@ -194,6 +218,7 @@ def resolve_runtime_mode(
             media=document_media,
             provenance=default_provenance,
             field_scope=FieldScopePolicy(),
+            identity_keys={},
             mode="document",
             document_input=document_input,
             page_input="auto",
@@ -209,6 +234,7 @@ def resolve_runtime_mode(
             media=page_media,
             provenance=default_provenance,
             field_scope=FieldScopePolicy(),
+            identity_keys={},
             mode="page",
             document_input="auto",
             page_input=page_input,
@@ -225,6 +251,7 @@ def resolve_runtime_mode(
             media=page_media,
             provenance=default_provenance,
             field_scope=FieldScopePolicy(),
+            identity_keys={},
             mode="hybrid",
             document_input=document_input,
             page_input=page_input,
@@ -261,22 +288,24 @@ def _strategy_from_preset(preset: StrategyPreset) -> Strategy:
 
 
 def _plan_to_page_strategy(
-    plan: Literal["auto", "whole_document", "page_map_reduce", "hybrid", "fused"],
+    plan: Literal[
+        "auto", "document_grounded", "whole_document", "page_map_reduce", "hybrid", "fused"
+    ],
 ) -> Literal["auto", "single", "map_reduce"]:
     if plan == "auto":
         return "auto"
-    if plan == "whole_document":
+    if plan in {"whole_document", "document_grounded"}:
         return "single"
     return "map_reduce"
 
 
 def _supports_structural_provenance(
     represent: Literal["auto", "native", "raster"],
-    plan: Literal["auto", "whole_document", "page_map_reduce", "hybrid", "fused"],
+    plan: Literal[
+        "auto", "document_grounded", "whole_document", "page_map_reduce", "hybrid", "fused"
+    ],
 ) -> bool:
-    # The current strategy runtime can preserve page-level media metadata, but it
-    # does not yet produce grounded spans/bboxes for media-side extraction.
-    return False
+    return plan == "document_grounded" and represent in {"auto", "native"}
 
 
 def _resolve_representation(
@@ -316,7 +345,9 @@ def _resolve_provenance(
     provenance: ProvenancePolicy,
     *,
     represent: Literal["auto", "native", "raster"],
-    plan: Literal["auto", "whole_document", "page_map_reduce", "hybrid", "fused"],
+    plan: Literal[
+        "auto", "document_grounded", "whole_document", "page_map_reduce", "hybrid", "fused"
+    ],
 ) -> ProvenancePolicy:
     if provenance.mode == "none":
         return ProvenancePolicy(mode="none", cite_by="none", strict=provenance.strict)
@@ -360,6 +391,7 @@ def resolve_runtime_strategy(
             media=MediaOptions(),
             provenance=ProvenancePolicy(mode="sidecar", cite_by="structural", strict=False),
             field_scope=FieldScopePolicy(),
+            identity_keys={},
             mode="auto",
             document_input="auto",
             page_input="auto",
@@ -372,6 +404,13 @@ def resolve_runtime_strategy(
     if declared.plan in {"page_windows", "retrieve_then_extract"}:
         raise NotImplementedError(
             f"strategy.plan={declared.plan!r} is not supported by the current runtime yet"
+        )
+    if declared.plan == "fused":
+        warnings.warn(
+            "strategy.plan='fused' is deprecated and will be removed in a future release; "
+            "prefer strategy.plan='document_grounded' or mode='hybrid'",
+            DeprecationWarning,
+            stacklevel=2,
         )
 
     resolved_represent, skipped = _resolve_representation(
@@ -416,9 +455,10 @@ def resolve_runtime_strategy(
         media=media,
         provenance=provenance,
         field_scope=declared.field_scope,
+        identity_keys=declared.identity_keys,
         mode=(
             "document"
-            if resolved_plan == "whole_document"
+            if resolved_plan in {"whole_document", "document_grounded"}
             else "page"
             if resolved_plan in {"page_map_reduce", "fused"}
             else "hybrid"
@@ -433,7 +473,9 @@ def resolve_runtime_strategy(
             else "auto"
         ),
         page_input="image" if resolved_plan in {"page_map_reduce", "hybrid", "fused"} else "auto",
-        document_media=media if resolved_plan in {"whole_document", "hybrid"} else None,
+        document_media=media
+        if resolved_plan in {"whole_document", "document_grounded", "hybrid"}
+        else None,
         page_media=media if resolved_plan in {"page_map_reduce", "hybrid", "fused"} else None,
         preset=preset,
     )
@@ -563,6 +605,7 @@ class ExtractOptions:
                 media=self.media,
                 provenance=provenance,
                 field_scope=FieldScopePolicy(),
+                identity_keys={},
                 mode=(
                     "document"
                     if self.media.page_strategy == "single"

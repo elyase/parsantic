@@ -11,9 +11,11 @@ pytest.importorskip("PIL")
 from PIL import Image  # noqa: E402
 
 from parsantic.extract.media.preprocessing import (  # noqa: E402
+    extract_pdf_page_texts,
     file_hash,
     has_text_layer,
     normalize_image,
+    prepare_pdf,
     rasterize_pdf,
 )
 
@@ -126,3 +128,24 @@ def test_file_hash_returns_consistent_hex_string():
     assert digest_a == digest_b
     assert len(digest_a) == 64
     assert all(char in string.hexdigits for char in digest_a)
+
+
+def test_prepare_pdf_caches_repeated_page_text_extraction(monkeypatch):
+    pdf = _make_multipage_text_pdf(pages=2)
+    open_calls = 0
+    original_open = fitz.open
+
+    def _counting_open(*args, **kwargs):
+        nonlocal open_calls
+        open_calls += 1
+        return original_open(*args, **kwargs)
+
+    monkeypatch.setattr(fitz, "open", _counting_open)
+
+    first = prepare_pdf(pdf)
+    second = prepare_pdf(pdf)
+    texts = extract_pdf_page_texts(pdf)
+
+    assert first is second
+    assert [text for _, text in texts] == ["Page 0", "Page 1"]
+    assert open_calls == 1

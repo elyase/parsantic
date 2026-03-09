@@ -5,19 +5,19 @@
     {
       "name": "document_auto",
       "model": "provider_from_model('gemini:gemini-3.1-flash-lite-preview')",
-      "options": "ExtractOptions(repair='targeted', max_repair_attempts=1)",
+      "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+      "prompt_prefix": "Extract the oncology snapshot into the flat schema. Use exact values from the document."
+    },
+    {
+      "name": "document_grounded",
+      "model": "provider_from_model('gemini:gemini-3.1-flash-lite-preview')",
+      "options": "ExtractOptions(strategy=extract.Strategy(plan='document_grounded'), repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
       "prompt_prefix": "Extract the oncology snapshot into the flat schema. Use exact values from the document."
     },
     {
       "name": "hybrid_targeted",
       "model": "provider_from_model('gemini:gemini-3.1-flash-lite-preview')",
-      "options": "ExtractOptions(mode='hybrid', document_input='native', page_input='image', repair='targeted', max_repair_attempts=1)",
-      "prompt_prefix": "Extract the oncology snapshot into the flat schema. Use exact values from the document."
-    },
-    {
-      "name": "fused_targeted",
-      "model": "provider_from_model('gemini:gemini-3.1-flash-lite-preview')",
-      "options": "ExtractOptions(strategy=extract.Strategy(plan='fused'), repair='targeted', max_repair_attempts=1)",
+      "options": "ExtractOptions(mode='hybrid', document_input='native', page_input='image', repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
       "prompt_prefix": "Extract the oncology snapshot into the flat schema. Use exact values from the document."
     }
   ],

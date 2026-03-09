@@ -107,6 +107,33 @@ def test_extract_options_strategy_preset_auditable_uses_page_aware_runtime_witho
     )
 
 
+def test_document_grounded_strategy_resolves_to_document_runtime_with_identity_keys():
+    options = ExtractOptions(
+        strategy=Strategy(
+            plan="document_grounded",
+            identity_keys={"/line_items": "code"},
+        )
+    )
+
+    resolved = options.resolve_runtime_strategy()
+
+    assert resolved.plan == "document_grounded"
+    assert resolved.mode == "document"
+    assert resolved.media == MediaOptions(
+        pdf_mode="auto",
+        page_strategy="single",
+        grounding="off",
+    )
+    assert resolved.identity_keys == {"/line_items": ("/code",)}
+
+
+def test_fused_strategy_emits_deprecation_warning():
+    with pytest.warns(DeprecationWarning, match="deprecated"):
+        resolved = ExtractOptions(strategy=Strategy(plan="fused")).resolve_runtime_strategy()
+
+    assert resolved.plan == "fused"
+
+
 def test_strategy_representation_fallback_skips_unsupported_backends_with_warning():
     options = ExtractOptions(
         strategy=Strategy(

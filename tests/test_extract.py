@@ -215,6 +215,9 @@ def test_extract_smoke():
     assert result.sources["/name"].pages == ()
     assert result.sources["/email"].scope == "document"
     assert result.sources["/email"].pages == ()
+    statuses = {item.path: item for item in result.field_statuses}
+    assert statuses["/name"].support.value == "exact"
+    assert statuses["/email"].support.value == "exact"
 
 
 def test_extract_accepts_single_string_provider_output():

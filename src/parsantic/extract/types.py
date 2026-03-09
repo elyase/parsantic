@@ -30,12 +30,28 @@ class AlignmentStatus(str, Enum):
     UNMATCHED = "unmatched"
 
 
+class SupportStatus(str, Enum):
+    EXACT = "exact"
+    FUZZY = "fuzzy"
+    INFERRED = "inferred"
+    UNSUPPORTED = "unsupported"
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentPageSpan:
+    attachment_index: int
+    page_index: int
+    start: int
+    end: int
+
+
 @dataclass(slots=True)
 class Document:
     text: str = ""
     document_id: str | None = None
     additional_context: str | None = None
     attachments: tuple[Attachment, ...] = ()
+    page_spans: tuple[DocumentPageSpan, ...] = ()
 
     @staticmethod
     def _is_url(text: str) -> bool:
@@ -188,6 +204,14 @@ class MergeConflict:
     existing_preview: str
     incoming_preview: str
     page_index: int | None = None
+    resolution: str | None = None
+
+
+@dataclass(slots=True)
+class FieldStatus:
+    path: str
+    support: SupportStatus
+    confidence: float
 
 
 @dataclass(slots=True)
@@ -204,6 +228,7 @@ class ExtractResult[T]:
     flags: tuple[str, ...]
     score: int
     evidence: list[FieldEvidence]
+    field_statuses: list[FieldStatus] = field(default_factory=list)
     sources: dict[str, SourceRef] = field(default_factory=dict)
     diagnostics: dict[str, FieldDiagnostic] = field(default_factory=dict)
     debug: ExtractDebug | None = None

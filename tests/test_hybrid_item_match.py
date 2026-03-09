@@ -45,8 +45,19 @@ def test_merge_hybrid_list_matching_is_order_invariant_for_ambiguous_identities(
                 "medicationCodeableConcept": {"text": "Capecitabine"},
                 "route": "intravenous",
             },
-            {
-                "medicationCodeableConcept": {"text": "capecitabine"},
-            },
         ]
     }
+    assert any(conflict.resolution == "dropped_unmatched" for conflict in merged.conflicts)
+
+
+def test_reconcile_hybrid_list_treats_near_duplicate_scalars_as_duplicates():
+    page_state = _DocumentState(merged_value={"sizes": [1.2]})
+    whole_state = _DocumentState(merged_value={"sizes": ["1.20"]})
+
+    merged = _merge_hybrid_states(
+        page_state=page_state,
+        whole_state=whole_state,
+        field_scope=FieldScopePolicy(),
+    )
+
+    assert merged.merged_value == {"sizes": [1.2]}

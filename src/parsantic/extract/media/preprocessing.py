@@ -2,7 +2,31 @@ from __future__ import annotations
 
 import hashlib
 import io
+from dataclasses import dataclass, field
 from pathlib import Path
+from threading import Lock
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedPdfPage:
+    page_index: int
+    text: str
+    has_images: bool
+    has_tables: bool
+
+
+@dataclass(slots=True)
+class PreparedPdf:
+    source_hash: str
+    page_count: int
+    pages: tuple[PreparedPdfPage, ...]
+    raster_cache: dict[
+        tuple[int, tuple[int, ...] | None, str, int], tuple[tuple[int, bytes], ...]
+    ] = field(default_factory=dict)
+
+
+_PREPARED_PDF_CACHE: dict[tuple[str, tuple[int, ...] | None], PreparedPdf] = {}
+_PREPARED_PDF_LOCK = Lock()
 
 
 def _check_pymupdf() -> None:
@@ -38,28 +62,75 @@ def score_text_quality(text: str) -> float:
     return max(0.0, min(score, 1.0))
 
 
-def extract_pdf_page_texts(
+def _page_has_tables(page: object, page_text: str) -> bool:
+    find_tables = getattr(page, "find_tables", None)
+    if callable(find_tables):
+        try:
+            tables = find_tables()
+            if bool(getattr(tables, "tables", ())):
+                return True
+        except Exception:
+            pass
+    lines = [line for line in page_text.splitlines() if line.strip()]
+    return sum(1 for line in lines if line.count("  ") >= 2 or "\t" in line) >= 3
+
+
+def prepare_pdf(
     source: Path | bytes,
     *,
     page_indices: tuple[int, ...] | None = None,
-) -> list[tuple[int, str]]:
+) -> PreparedPdf:
     _check_pymupdf()
     import fitz
 
     data = source if isinstance(source, bytes) else source.read_bytes()
+    key = (file_hash(data), tuple(page_indices) if page_indices is not None else None)
+    cached = _PREPARED_PDF_CACHE.get(key)
+    if cached is not None:
+        return cached
+
     doc = fitz.open(stream=data, filetype="pdf")
     try:
         selected_pages = list(page_indices) if page_indices is not None else list(range(len(doc)))
-        page_texts: list[tuple[int, str]] = []
+        pages: list[PreparedPdfPage] = []
         for page_index in selected_pages:
             if page_index < 0 or page_index >= len(doc):
                 raise ValueError(
                     f"Page index {page_index} out of range (document has {len(doc)} pages)"
                 )
-            page_texts.append((page_index, doc[page_index].get_text().strip()))
-        return page_texts
+            page = doc[page_index]
+            text = page.get_text().strip()
+            pages.append(
+                PreparedPdfPage(
+                    page_index=page_index,
+                    text=text,
+                    has_images=bool(page.get_images(full=True)),
+                    has_tables=_page_has_tables(page, text),
+                )
+            )
+        prepared = PreparedPdf(
+            source_hash=key[0],
+            page_count=len(selected_pages),
+            pages=tuple(pages),
+        )
     finally:
         doc.close()
+
+    with _PREPARED_PDF_LOCK:
+        cached = _PREPARED_PDF_CACHE.get(key)
+        if cached is not None:
+            return cached
+        _PREPARED_PDF_CACHE[key] = prepared
+    return prepared
+
+
+def extract_pdf_page_texts(
+    source: Path | bytes,
+    *,
+    page_indices: tuple[int, ...] | None = None,
+) -> list[tuple[int, str]]:
+    prepared = prepare_pdf(source, page_indices=page_indices)
+    return [(page.page_index, page.text) for page in prepared.pages]
 
 
 def score_pdf_text_quality(
@@ -67,15 +138,18 @@ def score_pdf_text_quality(
     *,
     page_indices: tuple[int, ...] | None = None,
 ) -> float:
-    page_texts = extract_pdf_page_texts(source, page_indices=page_indices)
-    if not page_texts:
+    prepared = prepare_pdf(source, page_indices=page_indices)
+    if not prepared.pages:
         return 0.0
-    return sum(score_text_quality(text) for _, text in page_texts) / len(page_texts)
+    return sum(score_text_quality(page.text) for page in prepared.pages) / len(prepared.pages)
 
 
 def has_text_layer(source: Path | bytes) -> bool:
     """Check if a PDF has a usable text layer."""
-    return score_pdf_text_quality(source) > 0.1
+    prepared = prepare_pdf(source)
+    if not prepared.pages:
+        return False
+    return any(score_text_quality(page.text) > 0.1 for page in prepared.pages)
 
 
 def rasterize_pdf(
@@ -94,6 +168,12 @@ def rasterize_pdf(
     import fitz
 
     data = source if isinstance(source, bytes) else source.read_bytes()
+    page_key = tuple(page_indices) if page_indices is not None else None
+    prepared = prepare_pdf(source, page_indices=page_indices)
+    cache_key = (dpi, page_key, raster_format, jpeg_quality)
+    cached = prepared.raster_cache.get(cache_key)
+    if cached is not None:
+        return list(cached)
     doc = fitz.open(stream=data, filetype="pdf")
     try:
         pages_to_render = list(page_indices) if page_indices is not None else list(range(len(doc)))
@@ -118,6 +198,7 @@ def rasterize_pdf(
                 results.append((page_idx, buf.getvalue()))
             else:
                 results.append((page_idx, pix.tobytes("png")))
+        prepared.raster_cache[cache_key] = tuple(results)
         return results
     finally:
         doc.close()

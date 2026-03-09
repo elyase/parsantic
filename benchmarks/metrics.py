@@ -57,6 +57,9 @@ class CaseMetrics:
     exact_accuracy: float
     fuzzy_accuracy: float
     completeness: float
+    wrong_present_rate: float
+    abstention_rate: float
+    selective_accuracy: float
     exact_matches: int
     fuzzy_matches: int
     expected_fields: int
@@ -70,6 +73,9 @@ class BenchmarkMetrics:
     exact_accuracy: float
     fuzzy_accuracy: float
     completeness: float
+    wrong_present_rate: float
+    abstention_rate: float
+    selective_accuracy: float
     provenance_accuracy: float
     page_coverage: float
     latency_s: float
@@ -88,6 +94,9 @@ def score_case(expected: Any, actual: Any, *, fuzzy_threshold: float = 0.9) -> C
             exact_accuracy=1.0,
             fuzzy_accuracy=1.0,
             completeness=1.0,
+            wrong_present_rate=0.0,
+            abstention_rate=0.0,
+            selective_accuracy=1.0,
             provenance_accuracy=0.0,
             page_coverage=0.0,
             exact_matches=0,
@@ -99,22 +108,42 @@ def score_case(expected: Any, actual: Any, *, fuzzy_threshold: float = 0.9) -> C
     exact_matches = 0
     fuzzy_matches = 0
     present_matches = 0
+    wrong_present = 0
+    abstentions = 0
     for path, expected_value in expected_flat.items():
         if path not in actual_flat:
+            abstentions += 1
             continue
         present_matches += 1
         actual_value = actual_flat[path]
+        if actual_value is None:
+            abstentions += 1
+            continue
         if expected_value == actual_value:
             exact_matches += 1
             fuzzy_matches += 1
             continue
         if _fuzzy_ratio(expected_value, actual_value) >= fuzzy_threshold:
             fuzzy_matches += 1
+        else:
+            wrong_present += 1
+    for path, actual_value in actual_flat.items():
+        if actual_value is None:
+            continue
+        if path not in expected_flat:
+            wrong_present += 1
+
+    selective_denominator = exact_matches + wrong_present
 
     return CaseMetrics(
         exact_accuracy=exact_matches / expected_fields,
         fuzzy_accuracy=fuzzy_matches / expected_fields,
         completeness=present_matches / expected_fields,
+        wrong_present_rate=wrong_present / max(len(actual_flat), 1),
+        abstention_rate=abstentions / expected_fields,
+        selective_accuracy=(
+            exact_matches / selective_denominator if selective_denominator else 1.0
+        ),
         provenance_accuracy=0.0,
         page_coverage=0.0,
         exact_matches=exact_matches,
@@ -167,6 +196,9 @@ def summarize_cases(
             exact_accuracy=0.0,
             fuzzy_accuracy=0.0,
             completeness=0.0,
+            wrong_present_rate=0.0,
+            abstention_rate=0.0,
+            selective_accuracy=0.0,
             provenance_accuracy=0.0,
             page_coverage=0.0,
             latency_s=latency_s,
@@ -180,6 +212,9 @@ def summarize_cases(
         exact_accuracy=sum(case.exact_accuracy for case in cases) / count,
         fuzzy_accuracy=sum(case.fuzzy_accuracy for case in cases) / count,
         completeness=sum(case.completeness for case in cases) / count,
+        wrong_present_rate=sum(case.wrong_present_rate for case in cases) / count,
+        abstention_rate=sum(case.abstention_rate for case in cases) / count,
+        selective_accuracy=sum(case.selective_accuracy for case in cases) / count,
         provenance_accuracy=sum(case.provenance_accuracy for case in cases) / count,
         page_coverage=sum(case.page_coverage for case in cases) / count,
         latency_s=latency_s,

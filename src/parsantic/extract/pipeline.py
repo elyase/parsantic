@@ -18,11 +18,13 @@ from collections.abc import (
     Sequence,
 )
 from dataclasses import dataclass, field, replace
+from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
 from pydantic import TypeAdapter, ValidationError
 from pydantic_core import to_jsonable_python
 
+from parsantic.ai import slice_doc_for_paths, slice_schema_for_paths, validation_error_paths
 from parsantic.api import ParseResult, parse
 from parsantic.api import parse_stream as make_stream_parser
 from parsantic.coerce import CoerceOptions
@@ -66,12 +68,15 @@ from .types import (
     AlignmentStatus,
     ChunkDebug,
     Document,
+    DocumentPageSpan,
     ExtractDebug,
     ExtractResult,
     ExtractStreamEvent,
     FieldEvidence,
+    FieldStatus,
     MergeConflict,
     SourceRef,
+    SupportStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -1458,39 +1463,25 @@ def _extract_pdf_page_texts(doc: Document) -> list[_PdfPageText]:
         return []
 
     try:
-        from .media.preprocessing import has_text_layer
+        from .media.preprocessing import extract_pdf_page_texts, has_text_layer
 
         if not any(has_text_layer(attachment.source) for attachment in doc.attachments):
             return []
-        import fitz
 
         texts: list[_PdfPageText] = []
         for attachment_index, attachment in enumerate(doc.attachments):
-            data = (
-                attachment.source
-                if isinstance(attachment.source, bytes)
-                else attachment.source.read_bytes()
-            )
-            pdf_doc = fitz.open(stream=data, filetype="pdf")
-            try:
-                page_indices = (
-                    attachment.page_indices
-                    if attachment.page_indices is not None
-                    else tuple(range(len(pdf_doc)))
-                )
-                for page_index in page_indices:
-                    if 0 <= page_index < len(pdf_doc):
-                        page_text = pdf_doc[page_index].get_text().strip()
-                        if page_text:
-                            texts.append(
-                                _PdfPageText(
-                                    attachment_index=attachment_index,
-                                    page_index=page_index + 1,
-                                    text=page_text,
-                                )
-                            )
-            finally:
-                pdf_doc.close()
+            for page_index, page_text in extract_pdf_page_texts(
+                attachment.source,
+                page_indices=attachment.page_indices,
+            ):
+                if page_text:
+                    texts.append(
+                        _PdfPageText(
+                            attachment_index=attachment_index,
+                            page_index=page_index + 1,
+                            text=page_text,
+                        )
+                    )
         return texts
     except ImportError:
         return []
@@ -1506,13 +1497,33 @@ def _try_pdf_text_extraction(doc: Document, media_options: Any) -> Document | No
     page_texts = _extract_pdf_page_texts(doc)
     if not page_texts:
         return None
-    extracted = "\n\n".join(page.text for page in page_texts)
+    page_parts: list[str] = []
+    page_spans: list[DocumentPageSpan] = []
+    offset = 0
+    if doc.text:
+        offset = len(doc.text)
+    for page in page_texts:
+        if doc.text or page_parts:
+            offset += 2
+        start = offset
+        page_parts.append(page.text)
+        offset += len(page.text)
+        page_spans.append(
+            DocumentPageSpan(
+                attachment_index=page.attachment_index,
+                page_index=page.page_index,
+                start=start,
+                end=offset,
+            )
+        )
+    extracted = "\n\n".join(page_parts)
     combined = f"{doc.text}\n\n{extracted}" if doc.text else extracted
     return Document(
         text=combined,
         document_id=doc.document_id,
         additional_context=doc.additional_context,
         attachments=(),
+        page_spans=tuple(page_spans),
     )
 
 
@@ -1658,27 +1669,151 @@ def _validation_errors_for_state(
     return []
 
 
+def _validation_error_paths_for_state(
+    ctx: _ExtractionContext,
+    state: _DocumentState,
+) -> list[str]:
+    try:
+        ctx.adapter.validate(state.merged_value)
+    except ValidationError as exc:
+        return validation_error_paths(exc) or ["/"]
+    except ValueError:
+        return ["/"]
+    return []
+
+
+def _slice_repair_value(value: Any, paths: Sequence[str]) -> Any:
+    if not paths or paths == ["/"] or not isinstance(value, dict):
+        return value
+    return slice_doc_for_paths(value, list(paths))
+
+
+def _pointer_value_or_missing(value: Any, path: str) -> Any:
+    if path in {"", "/"}:
+        return value
+    current = value
+    for token in _pointer_tokens(path):
+        if isinstance(current, dict):
+            if token not in current:
+                return _MISSING
+            current = current[token]
+        elif isinstance(current, list):
+            try:
+                index = int(token)
+            except ValueError:
+                return _MISSING
+            if index < 0 or index >= len(current):
+                return _MISSING
+            current = current[index]
+        else:
+            return _MISSING
+    return current
+
+
+def _set_pointer_value(value: Any, path: str, new_value: Any) -> Any:
+    if path in {"", "/"}:
+        return new_value
+    tokens = list(_pointer_tokens(path))
+    if isinstance(value, dict):
+        updated = dict(value)
+    elif isinstance(value, list):
+        updated = list(value)
+    else:
+        updated = {}
+    current = updated
+    for idx, token in enumerate(tokens[:-1]):
+        next_token = tokens[idx + 1]
+        if isinstance(current, dict):
+            child = current.get(token, [] if next_token.isdigit() else {})
+            if isinstance(child, dict):
+                child = dict(child)
+            elif isinstance(child, list):
+                child = list(child)
+            else:
+                child = [] if next_token.isdigit() else {}
+            current[token] = child
+            current = child
+        else:
+            token_index = int(token)
+            while len(current) <= token_index:
+                current.append([] if next_token.isdigit() else {})
+            child = current[token_index]
+            if isinstance(child, dict):
+                child = dict(child)
+            elif isinstance(child, list):
+                child = list(child)
+            else:
+                child = [] if next_token.isdigit() else {}
+            current[token_index] = child
+            current = child
+
+    last = tokens[-1]
+    if isinstance(current, dict):
+        current[last] = new_value
+    else:
+        last_index = int(last)
+        while len(current) <= last_index:
+            current.append(None)
+        current[last_index] = new_value
+    return updated
+
+
+def _apply_targeted_fragment(
+    base_value: Any,
+    fragment_value: Any,
+    target_paths: Sequence[str],
+) -> Any:
+    if not target_paths or target_paths == ["/"]:
+        return fragment_value
+    merged_value = base_value
+    for path in target_paths:
+        patched_value = _pointer_value_or_missing(fragment_value, path)
+        if patched_value is _MISSING:
+            continue
+        merged_value = _set_pointer_value(merged_value, path, patched_value)
+    return merged_value
+
+
+def _replace_evidence_for_paths(
+    existing: Sequence[FieldEvidence],
+    incoming: Sequence[FieldEvidence],
+    target_paths: Sequence[str],
+) -> list[FieldEvidence]:
+    if not target_paths:
+        return _dedupe_field_evidence([*existing, *incoming])
+    filtered_existing = [
+        item
+        for item in existing
+        if not any(_paths_overlap(item.path, {_pointer_path(path)}) for path in target_paths)
+    ]
+    return _dedupe_field_evidence([*filtered_existing, *incoming])
+
+
 def _build_targeted_repair_prompt(
     *,
     ctx: _ExtractionContext,
     doc: Document,
     state: _DocumentState,
     original_prompt: str,
-) -> str:
+) -> tuple[str, list[str]]:
     errors = _validation_errors_for_state(ctx, state)
-    raw_output = (
-        state.raw_outputs[-1] if state.raw_outputs else format_broken_output(state.merged_value)
-    )
+    target_paths = _validation_error_paths_for_state(ctx, state)
+    repair_value = _slice_repair_value(state.merged_value, target_paths)
     return build_repair_prompt(
         original_question=original_prompt or _caller_hints_text(doc),
         additional_context=doc.additional_context,
-        schema_text=ctx.schema_text,
+        schema_text=(
+            slice_schema_for_paths(ctx.schema_text, target_paths)
+            if ctx.schema_text and target_paths and target_paths != ["/"]
+            else ctx.schema_text
+        ),
         repair_context=RepairContext(
             attempt_index=max(len(state.raw_outputs) - 1, 0),
-            prior_output=raw_output,
+            prior_output=format_broken_output(repair_value),
             validation_errors=errors,
+            target_paths=target_paths,
         ),
-    )
+    ), target_paths
 
 
 def _default_merged_value(output_kind: _RootKind | None) -> Any:
@@ -1761,6 +1896,82 @@ def _build_sources(doc_evidence: Sequence[FieldEvidence]) -> dict[str, SourceRef
         else:
             sources[path] = SourceRef(scope="document")
     return sources
+
+
+def _assign_page_span(
+    evidence: FieldEvidence,
+    page_spans: Sequence[DocumentPageSpan],
+) -> FieldEvidence:
+    if evidence.page_index is not None or evidence.char_interval is None or not page_spans:
+        return evidence
+    start, end = evidence.char_interval
+    for span in page_spans:
+        if start >= span.start and end <= span.end:
+            return replace(
+                evidence,
+                attachment_index=span.attachment_index,
+                page_index=span.page_index,
+            )
+    for span in page_spans:
+        if start < span.end and end > span.start:
+            return replace(
+                evidence,
+                attachment_index=span.attachment_index,
+                page_index=span.page_index,
+            )
+    return evidence
+
+
+def _ground_document_evidence(
+    doc: Document,
+    evidence: Sequence[FieldEvidence],
+) -> list[FieldEvidence]:
+    if not doc.page_spans:
+        return list(evidence)
+    return [_assign_page_span(item, doc.page_spans) for item in evidence]
+
+
+def _support_for_evidence(path_evidence: Sequence[FieldEvidence]) -> tuple[SupportStatus, float]:
+    if not path_evidence:
+        return (SupportStatus.UNSUPPORTED, 0.0)
+    if any(item.alignment_status == AlignmentStatus.MATCH_EXACT for item in path_evidence):
+        return (SupportStatus.EXACT, 1.0)
+    if any(item.alignment_status == AlignmentStatus.MATCH_FUZZY for item in path_evidence):
+        return (SupportStatus.FUZZY, 0.8)
+    if any(
+        item.alignment_status == AlignmentStatus.MATCH_LESSER or item.source == "vision"
+        for item in path_evidence
+    ):
+        return (SupportStatus.INFERRED, 0.6)
+    return (SupportStatus.UNSUPPORTED, 0.0)
+
+
+def _build_field_statuses(
+    merged_value: Any,
+    doc_evidence: Sequence[FieldEvidence],
+    diagnostics: dict[str, FieldDiagnostic],
+) -> list[FieldStatus]:
+    evidence_by_path: dict[str, list[FieldEvidence]] = defaultdict(list)
+    for item in doc_evidence:
+        evidence_by_path[_pointer_path(item.path)].append(item)
+
+    statuses: list[FieldStatus] = []
+    for path, raw_value in _iter_leaf_values(merged_value):
+        pointer_path = _pointer_path(path)
+        support, confidence = _support_for_evidence(evidence_by_path.get(pointer_path, ()))
+        diagnostic = diagnostics.get(pointer_path)
+        if support == SupportStatus.UNSUPPORTED and diagnostic is not None:
+            confidence = diagnostic.confidence
+        if raw_value == "":
+            confidence = min(confidence, 0.5)
+        statuses.append(
+            FieldStatus(
+                path=pointer_path,
+                support=support,
+                confidence=confidence,
+            )
+        )
+    return statuses
 
 
 def _caller_hints_text(doc: Document) -> str:
@@ -2053,6 +2264,8 @@ def _build_extract_result[T](
     diagnostics: dict[str, FieldDiagnostic] | None = None,
 ) -> ExtractResult[T]:
     validated = ctx.adapter.validate(merged_value)
+    grounded_evidence = _ground_document_evidence(doc, doc_evidence)
+    resolved_diagnostics = diagnostics or _build_field_diagnostics(merged_value, grounded_evidence)
     debug_info = (
         ExtractDebug(
             prompt=ctx.prompt_obj.description,
@@ -2069,9 +2282,10 @@ def _build_extract_result[T](
         raw_text=raw_outputs[-1] if raw_outputs else None,
         flags=tuple(sorted(all_flags)),
         score=worst_score,
-        evidence=doc_evidence,
-        sources=_build_sources(doc_evidence),
-        diagnostics=diagnostics or _build_field_diagnostics(merged_value, doc_evidence),
+        evidence=grounded_evidence,
+        field_statuses=_build_field_statuses(merged_value, grounded_evidence, resolved_diagnostics),
+        sources=_build_sources(grounded_evidence),
+        diagnostics=resolved_diagnostics,
         debug=debug_info,
         conflicts=conflicts or [],
     )
@@ -2397,28 +2611,42 @@ def _run_text_targeted_repair[T](
     debug: bool,
     native_kwargs: dict[str, Any],
 ) -> None:
-    repair_chunk = TextChunk(text=doc.text, start=0, end=len(doc.text))
-    for attempt in range(_targeted_repair_attempts(ctx.opts)):
+    for _attempt in range(_targeted_repair_attempts(ctx.opts)):
         errors = _validation_errors_for_state(ctx, state)
         if not errors:
             return
-        repair_prompt = _build_targeted_repair_prompt(
+        repair_prompt, target_paths = _build_targeted_repair_prompt(
             ctx=ctx,
             doc=doc,
             state=state,
             original_prompt=original_prompt,
         )
         inferred = _infer_batch(ctx, ctx.provider, [repair_prompt], 1, **native_kwargs)
-        _accumulate_pass(
-            pass_index=attempt + 1,
-            state=state,
-            chunks=[repair_chunk],
-            inferred=inferred,
-            target=target,
-            ctx=ctx,
+        raw = inferred[0]
+        state.raw_outputs.append(raw)
+        parsed = parse(
+            raw,
+            TypeAdapter(Any),
             parse_options=parse_options,
-            coerce_options=coerce_options,
-            debug=debug,
+            is_done=True,
+        )
+        fragment_value = to_jsonable_python(parsed.value)
+        state.merged_value = _apply_targeted_fragment(
+            state.merged_value, fragment_value, target_paths
+        )
+        state.all_flags.update(parsed.flags)
+        state.worst_score = max(state.worst_score, parsed.score)
+        aligned_fragment = _align_evidence(
+            doc.text,
+            fragment_value,
+            tokenizer=ctx.opts.tokenizer,
+            alignment=ctx.opts.alignment,
+            offset=0,
+        )
+        state.doc_evidence = _replace_evidence_for_paths(
+            state.doc_evidence,
+            aligned_fragment,
+            target_paths,
         )
         state.diagnostics = _build_field_diagnostics(
             state.merged_value, state.doc_evidence, source="repair"
@@ -2437,28 +2665,42 @@ async def _arun_text_targeted_repair[T](
     debug: bool,
     native_kwargs: dict[str, Any],
 ) -> None:
-    repair_chunk = TextChunk(text=doc.text, start=0, end=len(doc.text))
-    for attempt in range(_targeted_repair_attempts(ctx.opts)):
+    for _attempt in range(_targeted_repair_attempts(ctx.opts)):
         errors = _validation_errors_for_state(ctx, state)
         if not errors:
             return
-        repair_prompt = _build_targeted_repair_prompt(
+        repair_prompt, target_paths = _build_targeted_repair_prompt(
             ctx=ctx,
             doc=doc,
             state=state,
             original_prompt=original_prompt,
         )
         inferred = await _ainfer_batch(ctx, ctx.provider, [repair_prompt], 1, **native_kwargs)
-        _accumulate_pass(
-            pass_index=attempt + 1,
-            state=state,
-            chunks=[repair_chunk],
-            inferred=inferred,
-            target=target,
-            ctx=ctx,
+        raw = inferred[0]
+        state.raw_outputs.append(raw)
+        parsed = parse(
+            raw,
+            TypeAdapter(Any),
             parse_options=parse_options,
-            coerce_options=coerce_options,
-            debug=debug,
+            is_done=True,
+        )
+        fragment_value = to_jsonable_python(parsed.value)
+        state.merged_value = _apply_targeted_fragment(
+            state.merged_value, fragment_value, target_paths
+        )
+        state.all_flags.update(parsed.flags)
+        state.worst_score = max(state.worst_score, parsed.score)
+        aligned_fragment = _align_evidence(
+            doc.text,
+            fragment_value,
+            tokenizer=ctx.opts.tokenizer,
+            alignment=ctx.opts.alignment,
+            offset=0,
+        )
+        state.doc_evidence = _replace_evidence_for_paths(
+            state.doc_evidence,
+            aligned_fragment,
+            target_paths,
         )
         state.diagnostics = _build_field_diagnostics(
             state.merged_value, state.doc_evidence, source="repair"
@@ -2479,11 +2721,11 @@ def _run_media_targeted_repair[T](
     debug: bool,
     native_kwargs: dict[str, Any],
 ) -> None:
-    for attempt in range(_targeted_repair_attempts(ctx.opts)):
+    for _attempt in range(_targeted_repair_attempts(ctx.opts)):
         errors = _validation_errors_for_state(ctx, state)
         if not errors:
             return
-        repair_prompt = _build_targeted_repair_prompt(
+        repair_prompt, target_paths = _build_targeted_repair_prompt(
             ctx=ctx,
             doc=doc,
             state=state,
@@ -2499,17 +2741,38 @@ def _run_media_targeted_repair[T](
             meta=request.meta,
         )
         inferred = _infer_media_batch(ctx, ctx.provider, [repair_request], 1, **native_kwargs)
-        _accumulate_media_pass(
-            pass_index=attempt + 1,
-            state=state,
-            media_requests=[repair_request],
-            media_chunks=[chunk],
-            inferred=inferred,
-            target=target,
-            ctx=ctx,
+        raw = inferred[0]
+        state.raw_outputs.append(raw)
+        parsed = parse(
+            raw,
+            TypeAdapter(Any),
             parse_options=parse_options,
-            coerce_options=coerce_options,
-            debug=debug,
+            is_done=True,
+        )
+        fragment_value = to_jsonable_python(parsed.value)
+        state.merged_value = _apply_targeted_fragment(
+            state.merged_value, fragment_value, target_paths
+        )
+        state.all_flags.update(parsed.flags)
+        state.worst_score = max(state.worst_score, parsed.score)
+        repair_evidence = [
+            FieldEvidence(
+                path=path,
+                value_preview=text[:80] if text else "",
+                char_interval=None,
+                token_interval=None,
+                alignment_status=AlignmentStatus.UNMATCHED,
+                source="vision",
+                attachment_index=request.attachment_index,
+                page_index=request.page_index,
+                grounding_method="unmatched",
+            )
+            for path, text in _iter_leaf_values(fragment_value)
+        ]
+        state.doc_evidence = _replace_evidence_for_paths(
+            state.doc_evidence,
+            repair_evidence,
+            target_paths,
         )
         state.diagnostics = _build_field_diagnostics(
             state.merged_value, state.doc_evidence, source="repair"
@@ -2530,11 +2793,11 @@ async def _arun_media_targeted_repair[T](
     debug: bool,
     native_kwargs: dict[str, Any],
 ) -> None:
-    for attempt in range(_targeted_repair_attempts(ctx.opts)):
+    for _attempt in range(_targeted_repair_attempts(ctx.opts)):
         errors = _validation_errors_for_state(ctx, state)
         if not errors:
             return
-        repair_prompt = _build_targeted_repair_prompt(
+        repair_prompt, target_paths = _build_targeted_repair_prompt(
             ctx=ctx,
             doc=doc,
             state=state,
@@ -2552,17 +2815,38 @@ async def _arun_media_targeted_repair[T](
         inferred = await _ainfer_media_batch(
             ctx, ctx.provider, [repair_request], 1, **native_kwargs
         )
-        _accumulate_media_pass(
-            pass_index=attempt + 1,
-            state=state,
-            media_requests=[repair_request],
-            media_chunks=[chunk],
-            inferred=inferred,
-            target=target,
-            ctx=ctx,
+        raw = inferred[0]
+        state.raw_outputs.append(raw)
+        parsed = parse(
+            raw,
+            TypeAdapter(Any),
             parse_options=parse_options,
-            coerce_options=coerce_options,
-            debug=debug,
+            is_done=True,
+        )
+        fragment_value = to_jsonable_python(parsed.value)
+        state.merged_value = _apply_targeted_fragment(
+            state.merged_value, fragment_value, target_paths
+        )
+        state.all_flags.update(parsed.flags)
+        state.worst_score = max(state.worst_score, parsed.score)
+        repair_evidence = [
+            FieldEvidence(
+                path=path,
+                value_preview=text[:80] if text else "",
+                char_interval=None,
+                token_interval=None,
+                alignment_status=AlignmentStatus.UNMATCHED,
+                source="vision",
+                attachment_index=request.attachment_index,
+                page_index=request.page_index,
+                grounding_method="unmatched",
+            )
+            for path, text in _iter_leaf_values(fragment_value)
+        ]
+        state.doc_evidence = _replace_evidence_for_paths(
+            state.doc_evidence,
+            repair_evidence,
+            target_paths,
         )
         state.diagnostics = _build_field_diagnostics(
             state.merged_value, state.doc_evidence, source="repair"
@@ -2611,6 +2895,7 @@ class _HybridMergeTrace:
     whole_paths: set[str] = field(default_factory=set)
     page_aliases: list[tuple[str, str]] = field(default_factory=list)
     whole_aliases: list[tuple[str, str]] = field(default_factory=list)
+    unmatched_secondary: list[MergeConflict] = field(default_factory=list)
 
     def include_page_value(self, value: Any, path: str) -> None:
         self.page_paths.update(_leaf_paths_for_value(value, path))
@@ -2623,6 +2908,7 @@ class _HybridMergeTrace:
         self.whole_paths.update(other.whole_paths)
         self.page_aliases.extend(other.page_aliases)
         self.whole_aliases.extend(other.whole_aliases)
+        self.unmatched_secondary.extend(other.unmatched_secondary)
 
 
 def _pointer_path(path: str) -> str:
@@ -2642,8 +2928,10 @@ def _leaf_paths_for_value(value: Any, path: str) -> set[str]:
     return set()
 
 
-def _evidence_preview(value: str) -> str:
-    return value[:80]
+def _evidence_preview(value: Any) -> str:
+    if isinstance(value, str):
+        return value[:80]
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)[:80]
 
 
 def _evidence_value_index(
@@ -2678,7 +2966,26 @@ def _relative_leaf_map(value: Any) -> dict[str, str]:
 def _normalize_leaf_preview(value: str) -> str:
     normalized = unicodedata.normalize("NFKC", value)
     normalized = re.sub(r"\s+", " ", normalized).strip()
-    return normalized.casefold()
+    lowered = normalized.casefold()
+    compact = lowered.replace(",", "")
+    try:
+        numeric = Decimal(compact)
+    except InvalidOperation:
+        numeric = None
+    if numeric is not None:
+        return format(numeric.normalize(), "f").rstrip("0").rstrip(".") or "0"
+
+    size_match = re.fullmatch(
+        r"([+-]?\d+(?:\.\d+)?)\s*(mm|millimeter|millimeters|cm|centimeter|centimeters)",
+        compact,
+    )
+    if size_match is not None:
+        magnitude = Decimal(size_match.group(1))
+        unit = size_match.group(2)
+        if unit.startswith("cm"):
+            magnitude *= Decimal("10")
+        return f"{format(magnitude.normalize(), 'f').rstrip('0').rstrip('.') or '0'}mm"
+    return lowered
 
 
 def _normalized_relative_leaf_map(value: Any) -> dict[str, str]:
@@ -2694,15 +3001,42 @@ def _join_relative_pointer(base_path: str, relative_path: str) -> str:
     return build_json_pointer([*_pointer_tokens(base_path), *_pointer_tokens(relative_path)])
 
 
+def _identity_relative_paths_for_item(
+    *,
+    item_path: str,
+    identity_keys: dict[str, tuple[str, ...]],
+) -> tuple[str, ...]:
+    path_tokens = _pointer_tokens(item_path)
+    best_match: tuple[str, ...] = ()
+    best_len = -1
+    for candidate_path, relative_paths in identity_keys.items():
+        candidate_tokens = _pointer_tokens(candidate_path)
+        if len(candidate_tokens) > len(path_tokens):
+            continue
+        for candidate_token, path_token in zip(candidate_tokens, path_tokens, strict=False):
+            if candidate_token != "*" and candidate_token != path_token:
+                break
+        else:
+            if len(candidate_tokens) > best_len:
+                best_match = relative_paths
+                best_len = len(candidate_tokens)
+    return best_match
+
+
 def _item_match_score(
     page_item: Any,
     whole_item: Any,
     *,
     page_item_path: str,
     field_scope: Any,
+    identity_keys: dict[str, tuple[str, ...]],
 ) -> float:
     if isinstance(page_item, (str, int, float, bool)) or page_item is None:
-        return 1.0 if page_item == whole_item else 0.0
+        return (
+            1.0
+            if _normalize_leaf_preview(str(page_item)) == _normalize_leaf_preview(str(whole_item))
+            else 0.0
+        )
     if type(page_item) is not type(whole_item):
         return 0.0
     page_leaves = _normalized_relative_leaf_map(page_item)
@@ -2713,7 +3047,15 @@ def _item_match_score(
     if not common_paths:
         return 0.0
 
-    identity_paths = {
+    configured_identity_paths = {
+        relative_path
+        for relative_path in _identity_relative_paths_for_item(
+            item_path=page_item_path,
+            identity_keys=identity_keys,
+        )
+        if relative_path in common_paths
+    }
+    identity_paths = configured_identity_paths or {
         relative_path
         for relative_path in common_paths
         if field_scope.scope_for(_join_relative_pointer(page_item_path, relative_path)) == "auto"
@@ -2721,7 +3063,7 @@ def _item_match_score(
     paths_to_compare = identity_paths or common_paths
     if any(page_leaves[path] != whole_leaves[path] for path in paths_to_compare):
         return 0.0
-    return len(paths_to_compare) / max(len(page_leaves), len(whole_leaves), 1)
+    return float(len(paths_to_compare)) + (max(len(page_leaves), len(whole_leaves)) / 100.0)
 
 
 def _item_identity_signature(
@@ -2729,14 +3071,22 @@ def _item_identity_signature(
     *,
     item_path: str,
     field_scope: Any,
+    identity_keys: dict[str, tuple[str, ...]],
 ) -> tuple[tuple[str, str], ...]:
     leaf_map = _normalized_relative_leaf_map(item)
     if not leaf_map:
         return ()
+    configured_identity_paths = set(
+        _identity_relative_paths_for_item(item_path=item_path, identity_keys=identity_keys)
+    )
     identity_items = [
         (relative_path, value)
         for relative_path, value in leaf_map.items()
-        if field_scope.scope_for(_join_relative_pointer(item_path, relative_path)) == "auto"
+        if relative_path in configured_identity_paths
+        or (
+            not configured_identity_paths
+            and field_scope.scope_for(_join_relative_pointer(item_path, relative_path)) == "auto"
+        )
     ]
     if identity_items:
         return tuple(sorted(identity_items))
@@ -2748,10 +3098,16 @@ def _item_sort_key(
     *,
     item_path: str,
     field_scope: Any,
-) -> tuple[tuple[tuple[str, str], ...], int, tuple[tuple[str, str], ...]]:
-    signature = _item_identity_signature(item, item_path=item_path, field_scope=field_scope)
+    identity_keys: dict[str, tuple[str, ...]],
+) -> tuple[int, tuple[tuple[str, str], ...], tuple[tuple[str, str], ...]]:
+    signature = _item_identity_signature(
+        item,
+        item_path=item_path,
+        field_scope=field_scope,
+        identity_keys=identity_keys,
+    )
     normalized = _normalized_relative_leaf_map(item)
-    return (signature, -len(normalized), tuple(sorted(normalized.items())))
+    return (-len(normalized), signature, tuple(sorted(normalized.items())))
 
 
 def _add_alias(aliases: list[tuple[str, str]], source_path: str, final_path: str) -> None:
@@ -2775,6 +3131,7 @@ def _remap_trace(
             (_apply_path_alias(source_path, aliases), _apply_path_alias(target_path, aliases))
             for source_path, target_path in trace.whole_aliases
         ],
+        unmatched_secondary=_remap_conflict_paths(trace.unmatched_secondary, aliases),
     )
 
 
@@ -2846,6 +3203,7 @@ def _reconcile_hybrid_value(
     whole_value: Any,
     path: str,
     field_scope: Any,
+    identity_keys: dict[str, tuple[str, ...]],
     page_diagnostics: dict[str, FieldDiagnostic],
     whole_diagnostics: dict[str, FieldDiagnostic],
     page_values_by_path: dict[str, set[str]],
@@ -2895,6 +3253,7 @@ def _reconcile_hybrid_value(
                 whole_value=whole_value.get(key),
                 path=child_path,
                 field_scope=field_scope,
+                identity_keys=identity_keys,
                 page_diagnostics=page_diagnostics,
                 whole_diagnostics=whole_diagnostics,
                 page_values_by_path=page_values_by_path,
@@ -2923,6 +3282,7 @@ def _reconcile_hybrid_value(
             whole_items=whole_value,
             path=path,
             field_scope=field_scope,
+            identity_keys=identity_keys,
             page_diagnostics=page_diagnostics,
             whole_diagnostics=whole_diagnostics,
             page_values_by_path=page_values_by_path,
@@ -2965,6 +3325,7 @@ def _reconcile_hybrid_list(
     whole_items: list[Any],
     path: str,
     field_scope: Any,
+    identity_keys: dict[str, tuple[str, ...]],
     page_diagnostics: dict[str, FieldDiagnostic],
     whole_diagnostics: dict[str, FieldDiagnostic],
     page_values_by_path: dict[str, set[str]],
@@ -2990,6 +3351,7 @@ def _reconcile_hybrid_list(
             secondary_items[idx],
             item_path=_pointer_with_child(path, idx),
             field_scope=field_scope,
+            identity_keys=identity_keys,
         ),
     )
 
@@ -3054,6 +3416,7 @@ def _reconcile_hybrid_list(
                 secondary_item if primary_branch == "page" else primary_item,
                 page_item_path=page_item_path,
                 field_scope=field_scope,
+                identity_keys=identity_keys,
             )
             if score <= 0:
                 continue
@@ -3065,6 +3428,7 @@ def _reconcile_hybrid_list(
                         secondary_item,
                         item_path=_pointer_with_child(path, secondary_index),
                         field_scope=field_scope,
+                        identity_keys=identity_keys,
                     ),
                     secondary_index,
                 )
@@ -3101,6 +3465,7 @@ def _reconcile_hybrid_list(
                     whole_value=None,
                     path=final_item_path,
                     field_scope=field_scope,
+                    identity_keys=identity_keys,
                     page_diagnostics=page_diagnostics,
                     whole_diagnostics=whole_diagnostics,
                     page_values_by_path=page_values_by_path,
@@ -3112,6 +3477,7 @@ def _reconcile_hybrid_list(
                     whole_value=primary_item,
                     path=final_item_path,
                     field_scope=field_scope,
+                    identity_keys=identity_keys,
                     page_diagnostics=page_diagnostics,
                     whole_diagnostics=whole_diagnostics,
                     page_values_by_path=page_values_by_path,
@@ -3128,6 +3494,7 @@ def _reconcile_hybrid_list(
                     whole_value=secondary_item,
                     path=final_item_path,
                     field_scope=field_scope,
+                    identity_keys=identity_keys,
                     page_diagnostics=page_diagnostics,
                     whole_diagnostics=whole_diagnostics,
                     page_values_by_path=page_values_by_path,
@@ -3140,6 +3507,7 @@ def _reconcile_hybrid_list(
                     whole_value=primary_item,
                     path=final_item_path,
                     field_scope=field_scope,
+                    identity_keys=identity_keys,
                     page_diagnostics=page_diagnostics,
                     whole_diagnostics=whole_diagnostics,
                     page_values_by_path=page_values_by_path,
@@ -3153,47 +3521,15 @@ def _reconcile_hybrid_list(
         secondary_item = secondary_items[secondary_index]
         if secondary_index in used_secondary:
             continue
-        final_index = len(merged_items)
-        final_item_path = _pointer_with_child(path, final_index)
         secondary_item_path = _pointer_with_child(path, secondary_index)
-        item_trace = _HybridMergeTrace()
-        if primary_branch == "page":
-            _add_alias(item_trace.whole_aliases, secondary_item_path, final_item_path)
-            item_value, value_trace = _reconcile_hybrid_value(
-                page_value=None,
-                whole_value=secondary_item,
-                path=final_item_path,
-                field_scope=field_scope,
-                page_diagnostics=page_diagnostics,
-                whole_diagnostics=whole_diagnostics,
-                page_values_by_path=page_values_by_path,
-                page_conflicts_by_path=page_conflicts_by_path,
+        trace.unmatched_secondary.append(
+            MergeConflict(
+                path=secondary_item_path,
+                existing_preview="",
+                incoming_preview=_evidence_preview(secondary_item),
+                resolution="dropped_unmatched",
             )
-        else:
-            _add_alias(item_trace.page_aliases, secondary_item_path, final_item_path)
-            item_value, value_trace = _reconcile_hybrid_value(
-                page_value=secondary_item,
-                whole_value=None,
-                path=final_item_path,
-                field_scope=field_scope,
-                page_diagnostics=page_diagnostics,
-                whole_diagnostics=whole_diagnostics,
-                page_values_by_path=page_values_by_path,
-                page_conflicts_by_path=page_conflicts_by_path,
-            )
-        item_trace.merge(value_trace)
-        duplicate = _find_safe_duplicate(item_value)
-        if duplicate is not None:
-            duplicate_index, relation = duplicate
-            duplicate_path = _pointer_with_child(path, duplicate_index)
-            item_trace = _remap_trace(item_trace, [(final_item_path, duplicate_path)])
-            if relation == "candidate_superset":
-                merged_items[duplicate_index] = item_value
-            trace.merge(item_trace)
-            continue
-
-        merged_items.append(item_value)
-        trace.merge(item_trace)
+        )
 
     return merged_items, trace
 
@@ -3269,7 +3605,7 @@ def _extract_pdf_page_texts_for_backfill(doc: Document | None) -> list[tuple[int
     if doc is None or not doc.attachments:
         return []
     try:
-        import fitz
+        from .media.preprocessing import extract_pdf_page_texts
     except ImportError:
         return []
 
@@ -3279,23 +3615,11 @@ def _extract_pdf_page_texts_for_backfill(doc: Document | None) -> list[tuple[int
     for attachment in doc.attachments:
         if attachment.kind is not AttachmentKind.PDF:
             continue
-        data = (
-            attachment.source
-            if isinstance(attachment.source, bytes)
-            else attachment.source.read_bytes()
-        )
-        pdf_doc = fitz.open(stream=data, filetype="pdf")
-        try:
-            page_indices = (
-                attachment.page_indices
-                if attachment.page_indices is not None
-                else tuple(range(len(pdf_doc)))
-            )
-            for page_index in page_indices:
-                if 0 <= page_index < len(pdf_doc):
-                    page_texts.append((page_index + 1, pdf_doc[page_index].get_text()))
-        finally:
-            pdf_doc.close()
+        for page_index, page_text in extract_pdf_page_texts(
+            attachment.source,
+            page_indices=attachment.page_indices,
+        ):
+            page_texts.append((page_index + 1, page_text))
     return page_texts
 
 
@@ -3364,8 +3688,9 @@ def _build_hybrid_conflicts(
     remapped_whole = _remap_conflict_paths(whole_conflicts, trace.whole_aliases)
     filtered = [
         conflict
-        for conflict in [*remapped_page, *remapped_whole]
-        if _paths_overlap(conflict.path, final_leaf_paths)
+        for conflict in [*remapped_page, *remapped_whole, *trace.unmatched_secondary]
+        if conflict.resolution == "dropped_unmatched"
+        or _paths_overlap(conflict.path, final_leaf_paths)
     ]
     return filtered
 
@@ -3418,9 +3743,11 @@ def _merge_hybrid_states(
     page_state: _DocumentState,
     whole_state: _DocumentState,
     field_scope: Any,
+    identity_keys: dict[str, tuple[str, ...]] | None = None,
     doc: Document | None = None,
     output_kind: _RootKind | None = None,
 ) -> _DocumentState:
+    resolved_identity_keys = identity_keys or {}
     page_values_by_path = _evidence_value_index(page_state.doc_evidence)
     page_conflicts_by_path = _conflicts_by_path(page_state.conflicts)
     merged_value, trace = _reconcile_hybrid_value(
@@ -3428,6 +3755,7 @@ def _merge_hybrid_states(
         whole_value=whole_state.merged_value,
         path="",
         field_scope=field_scope,
+        identity_keys=resolved_identity_keys,
         page_diagnostics=page_state.diagnostics,
         whole_diagnostics=whole_state.diagnostics,
         page_values_by_path=page_values_by_path,
@@ -3577,6 +3905,7 @@ def _run_hybrid_media_extraction[T](
         page_state=page_state,
         whole_state=whole_state,
         field_scope=ctx.resolved_strategy.field_scope,
+        identity_keys=ctx.resolved_strategy.identity_keys,
         doc=doc,
         output_kind=ctx.output_kind,
     )
@@ -3676,6 +4005,7 @@ async def _arun_hybrid_media_extraction[T](
         page_state=page_state,
         whole_state=whole_state,
         field_scope=ctx.resolved_strategy.field_scope,
+        identity_keys=ctx.resolved_strategy.identity_keys,
         doc=doc,
         output_kind=ctx.output_kind,
     )
@@ -3765,6 +4095,7 @@ def _run_hybrid_text_extraction[T](
         page_state=page_state,
         whole_state=whole_state,
         field_scope=ctx.resolved_strategy.field_scope,
+        identity_keys=ctx.resolved_strategy.identity_keys,
         doc=doc,
         output_kind=ctx.output_kind,
     )
@@ -3851,6 +4182,7 @@ async def _arun_hybrid_text_extraction[T](
         page_state=page_state,
         whole_state=whole_state,
         field_scope=ctx.resolved_strategy.field_scope,
+        identity_keys=ctx.resolved_strategy.identity_keys,
         doc=doc,
         output_kind=ctx.output_kind,
     )

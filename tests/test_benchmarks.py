@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from benchmarks.harness import BenchmarkCase, evaluate_case
+from benchmarks.metrics import score_case
 
 
 def test_benchmark_metrics_capture_accuracy_completeness_and_cost():
@@ -26,3 +27,16 @@ def test_benchmark_metrics_capture_accuracy_completeness_and_cost():
     assert metrics.latency_s == 1.25
     assert metrics.token_count == 321
     assert metrics.api_calls == 2
+
+
+def test_score_case_reports_abstentions_and_wrong_present_rate():
+    metrics = score_case(
+        {"a": 1, "b": 2, "c": 3},
+        {"a": 1, "b": 9, "extra": "x"},
+    )
+
+    assert metrics.exact_accuracy == 1 / 3
+    assert metrics.completeness == 2 / 3
+    assert metrics.abstention_rate == 1 / 3
+    assert metrics.wrong_present_rate == 2 / 3
+    assert metrics.selective_accuracy == 1 / 3

@@ -1,115 +1,178 @@
 # Benchmarks
 
-This folder keeps three maintained benchmarks:
+## Start Here
 
-- `oncology`: strategy benchmark
-- `nasal_melanoma`: model and strategy benchmark
-- `oncology_page_scale`: latency-vs-pages benchmark
+| Goal | Use |
+| --- | --- |
+| Best default | `gemini:gemini-2.5-flash-lite` + default `ExtractOptions(...)` |
+| Best provenance | `mode="hybrid"` with `document_input="native"` and `page_input="image"` |
+| Fastest | `gemini:gemini-2.5-flash-lite` + default path + fewer repair attempts |
 
-Default recommendation:
+Best default:
 
-- Default model: `gemini:gemini-2.5-flash-lite`
-- Default strategy: `document_auto`
-- Default repair mode: `targeted`
-- If page-level provenance matters, prefer `hybrid_targeted`
+```python
+from parsantic.extract import ExtractOptions, extract
 
-Benchmarks:
-- `oncology`: 4 generated PDFs, about 4-5 pages each, small oncology snapshot.
-- `nasal_melanoma`: 4 generated PDFs, about 2-3 pages each, more realistic imaging/surgery/pathology note.
-- `oncology_page_scale`: 3 generated scanned PDFs at 5, 10, and 15 pages. The first 5 pages contain the oncology snapshot and the remaining pages are irrelevant appendices, so the benchmark isolates latency growth as total PDF pages increase.
+result = extract(
+    document,
+    Schema,
+    model="gemini:gemini-2.5-flash-lite",
+    options=ExtractOptions(
+        repair="targeted",
+        max_repair_attempts=2,
+    ),
+)
+```
 
-Strategies:
-- `document_auto`: this is the library default and is equivalent to calling `ExtractOptions()` with no explicit `mode` or `strategy`.
-  For PDFs it picks the cheapest workable path in this order:
-  1. if the PDF has a text layer, extract the document as text and run one whole-document text extraction pass
-  2. otherwise, if the provider supports native PDF input, send the PDF natively
-  3. otherwise, rasterize the PDF to page images and process the image path
-  This is the default because it was the most stable strategy and usually the fastest good option.
-- `hybrid_targeted`: whole-document pass plus page-level pass, merge, then validation-guided repair.
-  This can improve quality, but it is slower and not the best default tradeoff.
-- `fused_targeted`: page-level extraction with page image plus page-local text together, then repair.
-  This was consistently weaker in the current benchmarks.
+Best provenance:
 
-Metrics:
-- `exact`: fields that match ground truth exactly.
-- `fuzzy`: fields that are acceptably close after normalization.
-- `completeness`: expected fields that were present at all.
-- `provenance`: fields whose source matched the expected scope/page exactly.
-- `page coverage`: expected page-local fields that came back with any page-local source.
-- `total latency`: wall-clock time for the whole benchmark slice.
+```python
+from parsantic.extract import ExtractOptions, extract
 
-### Oncology Strategy Benchmark
+result = extract(
+    document,
+    Schema,
+    model="gemini:gemini-2.5-flash-lite",
+    options=ExtractOptions(
+        mode="hybrid",
+        document_input="native",
+        page_input="image",
+        repair="targeted",
+        max_repair_attempts=2,
+    ),
+)
+```
 
-Model used: `gemini:gemini-2.5-flash-lite`
+Fastest:
 
-| Strategy | Exact | Fuzzy | Completeness | Provenance | Page coverage | Total latency |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `document_auto` | `0.639` | `0.667` | `1.000` | `0.000` | `0.000` | `19.17s` |
-| `hybrid_targeted` | `0.917` | `0.917` | `1.000` | `0.833` | `0.889` | `141.19s` |
-| `fused_targeted` | `0.583` | `0.583` | `1.000` | `0.667` | `1.000` | `75.86s` |
+```python
+from parsantic.extract import ExtractOptions, extract
 
-Takeaway:
-- Best quality: `hybrid_targeted`
-- Best default tradeoff: `document_auto`
-- Best provenance: `hybrid_targeted`
+result = extract(
+    document,
+    Schema,
+    model="gemini:gemini-2.5-flash-lite",
+    options=ExtractOptions(
+        repair="targeted",
+        max_repair_attempts=1,
+    ),
+)
+```
 
-### Nasal Melanoma Model Benchmark
+## What The Benchmark Labels Mean
 
-Strategy used: `document_auto`
+| Benchmark label | Library config |
+| --- | --- |
+| `document_auto` | default whole-document path from `ExtractOptions(...)` |
+| `document_grounded` | `ExtractOptions(strategy=Strategy(plan="document_grounded"))` |
+| `hybrid_targeted` | `ExtractOptions(mode="hybrid", document_input="native", page_input="image", repair="targeted")` |
 
-| Model | Exact | Fuzzy | Completeness | Provenance | Page coverage | Total latency | Status |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `gemini:gemini-3.1-flash-lite-preview` | `0.823` | `0.823` | `0.976` | `0.000` | `0.000` | `29.39s` | succeeded |
-| `gemini:gemini-2.5-flash-lite` | `0.831` | `0.831` | `0.976` | `0.000` | `0.000` | `17.01s` | succeeded |
-| `gemini:gemini-2.5-flash` | `0.315` | `0.395` | `0.476` | `0.000` | `0.000` | `45.63s` | degraded by transient connect errors |
-| `gemini:gemini-3-flash` | `0.000` | `0.000` | `0.000` | `0.000` | `0.000` | `7.51s` | unsupported (`404`) |
+## Strategies
 
-Takeaway:
-- `gemini-2.5-flash-lite` and `gemini-3.1-flash-lite-preview` are effectively tied on quality here.
-- `gemini-2.5-flash-lite` was faster, so it is the better default.
-- `document_auto` does not provide strong page-level provenance regardless of model.
+### `document_auto`
 
-### Nasal Melanoma Strategy Matrix
+Single-pass whole-document extraction.
 
-| Model | Strategy | Exact | Fuzzy | Completeness | Provenance | Page coverage | Total latency | Status |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `gemini:gemini-3.1-flash-lite-preview` | `document_auto` | `0.823` | `0.823` | `0.976` | `0.000` | `0.000` | `21.00s` | succeeded |
-| `gemini:gemini-3.1-flash-lite-preview` | `hybrid_targeted` | `0.581` | `0.581` | `0.750` | `0.427` | `0.573` | `109.48s` | partial failures |
-| `gemini:gemini-3.1-flash-lite-preview` | `fused_targeted` | `0.516` | `0.532` | `1.000` | `0.169` | `0.500` | `62.71s` | succeeded |
-| `gemini:gemini-2.5-flash-lite` | `document_auto` | `0.831` | `0.831` | `0.976` | `0.000` | `0.000` | `16.77s` | succeeded |
-| `gemini:gemini-2.5-flash-lite` | `hybrid_targeted` | `0.815` | `0.839` | `1.000` | `0.556` | `0.823` | `48.50s` | succeeded |
-| `gemini:gemini-2.5-flash-lite` | `fused_targeted` | `0.524` | `0.524` | `1.000` | `0.185` | `0.500` | `27.64s` | succeeded |
-| `gemini:gemini-2.5-flash` | `document_auto` | `0.758` | `0.823` | `0.976` | `0.000` | `0.000` | `90.87s` | succeeded |
-| `gemini:gemini-2.5-flash` | `hybrid_targeted` | `0.823` | `0.823` | `1.000` | `0.492` | `0.806` | `187.00s` | succeeded |
-| `gemini:gemini-2.5-flash` | `fused_targeted` | `0.540` | `0.548` | `1.000` | `0.185` | `0.500` | `148.60s` | succeeded |
+For PDFs it uses:
 
-Takeaway:
-- On the heavier melanoma case, `document_auto` is the strongest default.
-- If page-level provenance matters, `hybrid_targeted` is the best option despite the latency cost.
-- `fused_targeted` is the weakest strategy.
+1. extracted text if a usable text layer exists
+2. native PDF input if the provider supports it
+3. rasterized page images otherwise
 
-### Oncology Page-Scale Benchmark
+Choose this when you want the best overall tradeoff.
 
-Document type: scanned PDF with a fixed 5-page oncology core plus irrelevant appendix pages
+### `document_grounded`
 
-| Model | Strategy | 5 pages | 10 pages | 15 pages | Slope (s/page) | Status |
-| --- | --- | ---: | ---: | ---: | ---: | --- |
-| `gemini:gemini-2.5-flash-lite` | `document_auto` | `6.86s` | `12.27s` | `18.20s` | `1.13` | succeeded |
-| `gemini:gemini-2.5-flash-lite` | `fused_targeted` | `12.16s` | `18.53s` | `41.87s` | `2.97` | succeeded |
-| `gemini:gemini-2.5-flash-lite` | `hybrid_targeted` | `17.15s` | `34.67s` | `47.74s` | `3.06` | succeeded |
-| `gemini:gemini-3.1-flash-lite-preview` | `document_auto` | `10.40s` | `16.75s` | `21.78s` | `1.14` | succeeded |
-| `gemini:gemini-3.1-flash-lite-preview` | `fused_targeted` | `11.91s` | `24.46s` | `39.94s` | `2.80` | succeeded |
-| `gemini:gemini-3.1-flash-lite-preview` | `hybrid_targeted` | `28.44s` | `42.97s` | `61.83s` | `3.34` | succeeded |
+Whole-document extraction with page-aware evidence grounding when page text boundaries are available.
 
-Takeaway:
-- `document_auto` scales best with page count on scanned PDFs for both tested models, at about `1.1s` per added page in this setup.
-- `hybrid_targeted` remains the slowest strategy as pages increase, and its latency slope is about 3x `document_auto`.
-- `gemini:gemini-2.5-flash-lite` stayed faster than `gemini:gemini-3.1-flash-lite-preview` across every strategy in this benchmark.
+Choose this when you want the whole-document path with explicit page grounding.
 
-Run:
+### `hybrid_targeted`
 
-- `uv run python benchmarks/run_oncology_default.py`
-- `uv run python benchmarks/run_oncology_page_scale.py`
-- `uv run python benchmarks/run_nasal_melanoma_models.py`
-- `uv run python benchmarks/run_nasal_melanoma_matrix.py`
-- `uv run python -m benchmarks.run_benchmarks path/to/manifest.json`
+Runs a whole-document branch and a page-level branch, merges them, then applies targeted repair.
+
+Choose this when provenance matters more than latency.
+
+## Current Snapshot
+
+Columns:
+
+- `Accuracy`: exact field match rate
+- `Wrong values`: rate of returned fields that were wrong
+- `Source grounding`: correct source scope/page attribution
+- `Latency`: total runtime
+
+Higher is better for `Accuracy` and `Source grounding`. Lower is better for `Wrong values` and `Latency`.
+
+Why only two models here:
+
+- strategy snapshots keep the model fixed so strategy differences are easier to read
+- page-scale keeps the current default model fixed so latency growth is easier to read
+- if you want a different model, duplicate a manifest config and rerun
+
+### Oncology
+
+Model: `gemini:gemini-3.1-flash-lite-preview`
+
+| Strategy | Accuracy | Wrong values | Source grounding | Latency |
+| --- | ---: | ---: | ---: | ---: |
+| `document_auto` | `0.639` | `0.333` | `0.611` | `7.23s` |
+| `document_grounded` | `0.639` | `0.333` | `0.611` | `9.97s` |
+
+### Nasal Melanoma
+
+Model: `gemini:gemini-3.1-flash-lite-preview`
+
+| Strategy | Accuracy | Wrong values | Source grounding | Latency |
+| --- | ---: | ---: | ---: | ---: |
+| `document_auto` | `0.831` | `0.158` | `0.419` | `14.02s` |
+| `document_grounded` | `0.831` | `0.158` | `0.419` | `15.68s` |
+
+### Page Scale
+
+Model: `gemini:gemini-2.5-flash-lite`
+
+| Strategy | 5 pages | 10 pages | 15 pages | Slope (s/page) |
+| --- | ---: | ---: | ---: | ---: |
+| `document_auto` | `7.12s` | `10.79s` | `16.06s` | `0.89` |
+| `document_grounded` | `6.47s` | `10.57s` | `15.04s` | `0.86` |
+
+The compact tables above focus on the whole-document family. If you care most about provenance, benchmark the hybrid recipe on your own corpus, because the cost depends heavily on page count and document type.
+
+## Useful Knobs
+
+Quality:
+
+- `model`
+- prompt wording
+- prompt examples
+- `repair`
+- `max_repair_attempts`
+- `structured_output`
+
+Provenance:
+
+- `strategy` or `mode`
+- `document_input`
+- `page_input`
+
+Latency:
+
+- `model`
+- `max_repair_attempts`
+- `max_workers`
+- whether you use whole-document or hybrid extraction
+
+## Full Results
+
+Full metrics stay in the JSON result files:
+
+- [oncology results](corpus/oncology/results.default.json)
+- [nasal melanoma results](corpus/nasal_melanoma/results.default.json)
+- [page-scale results](corpus/oncology_page_scale/results.page_scale.json)
+
+## Run
+
+- `uv run python runner.py --manifest corpus/oncology/manifest.default.json --config document_auto --config document_grounded --output corpus/oncology/results.default.json`
+- `uv run python runner.py --manifest corpus/nasal_melanoma/manifest.default.json --config document_auto --config document_grounded --output corpus/nasal_melanoma/results.default.json`
+- `uv run python run_oncology_page_scale.py --model gemini:gemini-2.5-flash-lite --strategy document_auto --strategy document_grounded --skip-generate --output corpus/oncology_page_scale/results.page_scale.json`

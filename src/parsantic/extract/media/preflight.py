@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 from .attachments import Attachment
-from .preprocessing import extract_pdf_page_texts, score_text_quality
+from .preprocessing import prepare_pdf, score_text_quality
 
 
 @dataclass(slots=True)
@@ -34,48 +34,30 @@ def analyze_pdf(
     *,
     page_indices: tuple[int, ...] | None = None,
 ) -> PreflightResult:
-    try:
-        import fitz
-    except ImportError as exc:  # pragma: no cover
-        raise ImportError(
-            "PyMuPDF required for PDF preflight. Install with: pip install parsantic[vision]"
-        ) from exc
-
-    data = source if isinstance(source, bytes) else source.read_bytes()
-    pdf = fitz.open(stream=data, filetype="pdf")
-    try:
-        selected_pages = list(page_indices) if page_indices is not None else list(range(len(pdf)))
-        pages: list[PageQuality] = []
-        page_texts = dict(extract_pdf_page_texts(source, page_indices=page_indices))
-
-        for page_index in selected_pages:
-            page = pdf[page_index]
-            text = page_texts.get(page_index, "")
-            text_quality = score_text_quality(text)
-            has_images = bool(page.get_images(full=True))
-            has_tables = _page_has_tables(page, text)
-            is_scanned = has_images and text_quality < 0.15
-            if is_scanned:
-                recommended_mode: Literal["text_only", "image_only", "fused"] = "image_only"
-            elif text_quality >= 0.7 and not has_images and not has_tables:
-                recommended_mode = "text_only"
-            elif text_quality <= 0.25 and has_images:
-                recommended_mode = "image_only"
-            else:
-                recommended_mode = "fused"
-            pages.append(
-                PageQuality(
-                    page_index=page_index,
-                    text_char_count=len(text),
-                    text_quality_score=text_quality,
-                    has_tables=has_tables,
-                    has_images=has_images,
-                    is_scanned=is_scanned,
-                    recommended_mode=recommended_mode,
-                )
+    prepared = prepare_pdf(source, page_indices=page_indices)
+    pages: list[PageQuality] = []
+    for page in prepared.pages:
+        text_quality = score_text_quality(page.text)
+        is_scanned = page.has_images and text_quality < 0.15
+        if is_scanned:
+            recommended_mode: Literal["text_only", "image_only", "fused"] = "image_only"
+        elif text_quality >= 0.7 and not page.has_images and not page.has_tables:
+            recommended_mode = "text_only"
+        elif text_quality <= 0.25 and page.has_images:
+            recommended_mode = "image_only"
+        else:
+            recommended_mode = "fused"
+        pages.append(
+            PageQuality(
+                page_index=page.page_index,
+                text_char_count=len(page.text),
+                text_quality_score=text_quality,
+                has_tables=page.has_tables,
+                has_images=page.has_images,
+                is_scanned=is_scanned,
+                recommended_mode=recommended_mode,
             )
-    finally:
-        pdf.close()
+        )
 
     recommended_modes = {page.recommended_mode for page in pages}
     if recommended_modes == {"text_only"}:
@@ -114,16 +96,3 @@ def analyze_pdf_source(
 
 def analyze_pdf_attachment(attachment: Attachment) -> PreflightResult:
     return analyze_pdf(attachment.source, page_indices=attachment.page_indices)
-
-
-def _page_has_tables(page: object, page_text: str) -> bool:
-    find_tables = getattr(page, "find_tables", None)
-    if callable(find_tables):
-        try:
-            tables = find_tables()
-            if bool(getattr(tables, "tables", ())):
-                return True
-        except Exception:
-            pass
-    lines = [line for line in page_text.splitlines() if line.strip()]
-    return sum(1 for line in lines if line.count("  ") >= 2 or "\t" in line) >= 3

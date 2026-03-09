@@ -25,8 +25,8 @@ PDFS = [
 ]
 STRATEGIES = {
     "document_auto": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+    "document_grounded": "ExtractOptions(strategy=Strategy(plan='document_grounded'), repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
     "hybrid_targeted": "ExtractOptions(mode='hybrid', document_input='native', page_input='image', repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
-    "fused_targeted": "ExtractOptions(strategy=Strategy(plan='fused'), repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
 }
 
 

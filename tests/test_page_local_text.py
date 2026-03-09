@@ -3,10 +3,10 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel
 
-from parsantic.extract import Document, ExtractOptions
+from parsantic.extract import Document, ExtractOptions, extract
 from parsantic.extract.media.attachments import Attachment
 from parsantic.extract.media.chunking import chunk_attachments
-from parsantic.extract.options import MediaOptions
+from parsantic.extract.options import MediaOptions, Strategy
 from parsantic.extract.pipeline import _build_extraction_context, _build_media_inference_requests
 
 
@@ -64,3 +64,31 @@ def test_rasterized_pdf_chunks_use_page_local_text_and_preserve_caller_context()
     assert "Page two body" in requests[1].prompt
     assert "Extract diagnosis fields" in requests[0].prompt
     assert "Keep payer metadata when present." in requests[0].prompt
+
+
+@pytest.mark.skipif(pytest.importorskip("fitz") is None, reason="PyMuPDF not installed")
+def test_text_layer_pdf_extraction_assigns_page_level_sources():
+    import fitz
+
+    class _ExactProvider:
+        def infer(self, batch_prompts, **kwargs):
+            return ['{"field": "Page two body"}' for _ in batch_prompts]
+
+    pdf = fitz.open()
+    page_one = pdf.new_page()
+    page_one.insert_text((72, 72), "Page one body")
+    page_two = pdf.new_page()
+    page_two.insert_text((72, 72), "Page two body")
+    pdf_bytes = pdf.tobytes()
+    pdf.close()
+
+    result = extract(
+        Document.from_pdf(pdf_bytes, text="Extract the field"),
+        _PageModel,
+        model=_ExactProvider(),
+        options=ExtractOptions(strategy=Strategy(plan="document_grounded")),
+    )
+
+    assert result.value.field == "Page two body"
+    assert result.sources["/field"].scope == "page"
+    assert result.sources["/field"].pages == (2,)

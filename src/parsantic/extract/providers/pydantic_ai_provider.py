@@ -9,6 +9,7 @@ Supports model strings like ``openai:gpt-4o-mini``, ``anthropic:claude-sonnet``,
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import logging
 from collections.abc import AsyncIterator, Iterator, Sequence
@@ -442,16 +443,32 @@ class PydanticAIProvider:
         structured_output: Literal["auto", "native", "prompt"] = "prompt",
         **kwargs: Any,
     ) -> Sequence[str]:
-        results: list[str] = []
-        for prompt in batch_prompts:
-            output = self._run_with_native_fallback(
-                prompt,
-                target_type=target_type,
-                structured_output=structured_output,
-                **kwargs,
-            )
-            results.append(output)
-        return results
+        if len(batch_prompts) <= 1:
+            return [
+                self._run_with_native_fallback(
+                    prompt,
+                    target_type=target_type,
+                    structured_output=structured_output,
+                    **kwargs,
+                )
+                for prompt in batch_prompts
+            ]
+
+        max_concurrency = max(1, int(kwargs.pop("max_concurrency", self.max_concurrency)))
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(max_concurrency, len(batch_prompts))
+        ) as pool:
+            futures = [
+                pool.submit(
+                    self._run_with_native_fallback,
+                    prompt,
+                    target_type=target_type,
+                    structured_output=structured_output,
+                    **kwargs,
+                )
+                for prompt in batch_prompts
+            ]
+            return [future.result() for future in futures]
 
     def infer_stream(
         self,
@@ -503,17 +520,36 @@ class PydanticAIProvider:
         structured_output: Literal["auto", "native", "prompt"] = "prompt",
         **kwargs: Any,
     ) -> Sequence[str]:
-        results: list[str] = []
-        for request in batch:
+        if len(batch) <= 1:
+            results: list[str] = []
+            for request in batch:
+                parts = self._build_message_parts(request)
+                results.append(
+                    self._run_with_native_fallback(
+                        parts,
+                        target_type=target_type,
+                        structured_output=structured_output,
+                        **kwargs,
+                    )
+                )
+            return results
+
+        max_concurrency = max(1, int(kwargs.pop("max_concurrency", self.max_concurrency)))
+
+        def _run_request(request: InferenceRequest) -> str:
             parts = self._build_message_parts(request)
-            output = self._run_with_native_fallback(
+            return self._run_with_native_fallback(
                 parts,
                 target_type=target_type,
                 structured_output=structured_output,
                 **kwargs,
             )
-            results.append(output)
-        return results
+
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(max_concurrency, len(batch))
+        ) as pool:
+            futures = [pool.submit(_run_request, request) for request in batch]
+            return [future.result() for future in futures]
 
     def _make_semaphore(self, kwargs: dict[str, Any]) -> asyncio.Semaphore:
         concurrency = kwargs.pop("max_concurrency", self.max_concurrency)
