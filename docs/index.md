@@ -15,6 +15,9 @@ For LLM extraction and update features (OpenAI, Anthropic, Gemini, etc.):
 uv add "parsantic[ai]"
 ```
 
+!!! important
+    Use `parsantic[ai]` for extraction and update features. Use `parsantic[vision]` when you want local PDF rasterization or image preprocessing.
+
 ## What it does
 
 LLM output is messy. Models wrap JSON in markdown, add trailing commas, use
@@ -113,6 +116,10 @@ result.value
 # Every extracted value is grounded back to the source text
 result.evidence[0]
 # FieldEvidence(path='/name', value_preview='Sarah Chen', char_interval=(4, 14), ...)
+
+# Result-level support metadata is also available per field
+result.field_statuses[0]
+# FieldStatus(path='/name', support='exact', confidence=1.0)
 ```
 
 ## Coerce tool arguments
@@ -259,46 +266,63 @@ print(result.sources["/total"])   # SourceRef(scope="page", pages=(1,))
 print(result.sources["/vendor"])  # SourceRef(scope="document", pages=())
 ```
 
-For lower-level PDF/image control, `MediaOptions` is still available:
+Use `strategy` when you want the explicit whole-document grounded plan:
 
 ```python
-from parsantic.extract.options import ExtractOptions, MediaOptions
+from parsantic.extract import ExtractOptions, Strategy
 
 result = extract(
     Document.from_pdf(pdf_bytes),
     Invoice,
-    model="openai:gpt-4o-mini",
+    model="gemini:gemini-3.1-flash-lite-preview",
     options=ExtractOptions(
-        media=MediaOptions(pdf_mode="raster", page_strategy="map_reduce"),
+        strategy=Strategy(plan="document_grounded"),
     ),
 )
 ```
 
-| `mode` | Behavior |
-| :--- | :--- |
-| `"auto"` | Use text extraction for text-layer PDFs, otherwise rasterize pages (default) |
-| `"document"` | Run one whole-document extraction |
-| `"page"` | Run page-by-page extraction |
-| `"hybrid"` | Run both a whole-document branch and a page branch, then merge |
+??? note "Lower-level PDF and image control"
 
-| `document_input` | Behavior |
-| :--- | :--- |
-| `"auto"` | Let parsantic choose the whole-document representation |
-| `"native"` | Send the raw PDF binary to the model |
-| `"image"` | Rasterize the PDF and bundle page images into one whole-document request |
+    `MediaOptions` is still available when you want to force PDF representation details directly.
 
-| `page_input` | Behavior |
-| :--- | :--- |
-| `"auto"` | Use the default page-grounded representation |
-| `"image"` | Rasterize each PDF page to an image |
+    ```python
+    from parsantic.extract.options import ExtractOptions, MediaOptions
 
-Advanced `MediaOptions`:
+    result = extract(
+        Document.from_pdf(pdf_bytes),
+        Invoice,
+        model="openai:gpt-4o-mini",
+        options=ExtractOptions(
+            media=MediaOptions(pdf_mode="raster", page_strategy="map_reduce"),
+        ),
+    )
+    ```
 
-| `pdf_mode` | Behavior |
-| :--- | :--- |
-| `"auto"` | Text layer → text extraction; otherwise rasterize (default) |
-| `"native"` | Send raw PDF binary to the model |
-| `"raster"` | Convert every page to JPEG/PNG |
+    | `mode` | Behavior |
+    | :--- | :--- |
+    | `"auto"` | Use text extraction for text-layer PDFs, otherwise rasterize pages (default) |
+    | `"document"` | Run one whole-document extraction |
+    | `"page"` | Run page-by-page extraction |
+    | `"hybrid"` | Run both a whole-document branch and a page branch, then merge |
+
+    | `document_input` | Behavior |
+    | :--- | :--- |
+    | `"auto"` | Let parsantic choose the whole-document representation |
+    | `"native"` | Send the raw PDF binary to the model |
+    | `"image"` | Rasterize the PDF and bundle page images into one whole-document request |
+
+    | `page_input` | Behavior |
+    | :--- | :--- |
+    | `"auto"` | Use the default page-grounded representation |
+    | `"image"` | Rasterize each PDF page to an image |
+
+    Advanced `MediaOptions`:
+
+    | `pdf_mode` | Behavior |
+    | :--- | :--- |
+    | `"auto"` | Text layer → text extraction; otherwise rasterize (default) |
+    | `"native"` | Send raw PDF binary to the model |
+    | `"raster"` | Convert every page to JPEG/PNG |
 
 ## Vertex AI support
 

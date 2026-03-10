@@ -50,8 +50,22 @@
 
 ::: parsantic.extract.Document
 
+::: parsantic.extract.DocumentPageSpan
+
 ::: parsantic.extract.options.ExtractOptions
 
+::: parsantic.extract.options.Strategy
+
+::: parsantic.extract.options.FieldScopePolicy
+
+::: parsantic.extract.options.ProvenancePolicy
+
+::: parsantic.extract.options.ResolvedStrategy
+
 ::: parsantic.extract.SourceRef
+
+::: parsantic.extract.FieldStatus
+
+::: parsantic.extract.SupportStatus
 
 ::: parsantic.extract.options.MediaOptions

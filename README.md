@@ -21,6 +21,9 @@ For LLM extraction and update features (OpenAI, Anthropic, Gemini, etc.):
 uv add "parsantic[ai]"
 ```
 
+> [!IMPORTANT]
+> Use `parsantic[ai]` for extraction and update features. Use `parsantic[vision]` when you want local PDF rasterization or image preprocessing.
+
 ## What it does
 
 LLM output is messy. Models wrap JSON in markdown, add trailing commas, use
@@ -95,7 +98,7 @@ Every call to `parse_partial()` returns a valid Pydantic object (a generated
 `TaskPartial` with all-optional fields) with whatever values are available so far.
 No waiting for the full response.
 
-## Extract from text (requires `[ai]` extra)
+## Extract from text
 
 Turn unstructured text into typed objects — with source grounding:
 
@@ -119,6 +122,10 @@ result.value
 # Every extracted value is grounded back to the source text
 result.evidence[0]
 # FieldEvidence(path='/name', value_preview='Sarah Chen', char_interval=(4, 14), ...)
+
+# Per-field support metadata is available on the result
+result.field_statuses[0]
+# FieldStatus(path='/name', support='exact', confidence=1.0)
 ```
 
 ## Coerce tool arguments
@@ -140,7 +147,7 @@ The coercion engine handles case-insensitive and accent-insensitive enum
 matching, string-to-number conversion, key normalization, and more — each
 tracked with a penalty score so the least-edited interpretation always wins.
 
-## Update existing objects (requires `[ai]` extra)
+## Update existing objects
 
 Once you've extracted a large object, new information may arrive. Asking the
 LLM to regenerate all 50 fields risks silently dropping data it wasn't
@@ -186,7 +193,7 @@ applies the patches with safety rails (`remove` disabled by default), and
 validates the result with schema-aware coercion. If validation fails, it
 automatically retries with the error context.
 
-## Extract from PDFs and images (requires `[ai]` extra)
+## Extract from PDFs and images
 
 Pass a `Document` instead of a string to extract structured data from visual
 content — scanned invoices, screenshots, research papers:
@@ -265,6 +272,24 @@ print(result.sources["/total"])   # SourceRef(scope="page", pages=(1,))
 print(result.sources["/vendor"])  # SourceRef(scope="document", pages=())
 ```
 
+Use `strategy` when you want the explicit whole-document grounded plan:
+
+```python
+from parsantic.extract import ExtractOptions, Strategy
+
+result = extract(
+    Document.from_pdf(pdf_bytes),
+    Invoice,
+    model="gemini:gemini-3.1-flash-lite-preview",
+    options=ExtractOptions(
+        strategy=Strategy(plan="document_grounded"),
+    ),
+)
+```
+
+<details>
+<summary>Lower-level PDF and image control</summary>
+
 For lower-level PDF/image control, `MediaOptions` is still available:
 
 ```python
@@ -287,6 +312,13 @@ result = extract(
 | `"page"` | Run page-by-page extraction |
 | `"hybrid"` | Run both a whole-document branch and a page branch, then merge |
 
+Strategy plans:
+
+| `strategy` | Behavior |
+| :--- | :--- |
+| `"balanced"` | Default strategy preset; resolves to the `document_auto` path |
+| `Strategy(plan="document_grounded")` | Whole-document extraction with page-aware evidence grounding when page text boundaries are available |
+
 | `document_input` | Behavior |
 | :--- | :--- |
 | `"auto"` | Let parsantic choose the whole-document representation |
@@ -305,6 +337,8 @@ Advanced `MediaOptions`:
 | `"auto"` | Text layer → text extraction; otherwise rasterize (default) |
 | `"native"` | Send raw PDF binary to the model |
 | `"raster"` | Convert every page to JPEG/PNG |
+
+</details>
 
 ## Vertex AI support
 
@@ -534,11 +568,18 @@ source text with interactive HTML visualization.
 | Large-scale batch extraction with Vertex AI | **LangExtract** |
 | Streaming typed partial objects during generation | **parsantic** or **BAML** |
 
+## Benchmarks
+
+For current recommendations, strategy tradeoffs, and measured latency / provenance snapshots, see:
+
+- [docs benchmark guide](https://elyase.github.io/parsantic/benchmarks/)
+- [repo benchmark snapshot](benchmarks/README.md)
+
 ## Development
 
 ```bash
 uv sync
-make test        # 514 tests
+make test        # 530 tests
 make check       # lint + format
 make fmt         # auto-fix
 ```
