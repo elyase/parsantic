@@ -14,7 +14,7 @@ import json
 import logging
 from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import Any, ClassVar, Literal
+from typing import Any, Literal
 
 from pydantic_core import to_jsonable_python
 
@@ -34,10 +34,12 @@ logger = logging.getLogger(__name__)
 
 # Match any "provider:model" string for common providers, plus bare model names.
 _PATTERNS: tuple[str, ...] = (
-    r"^(openai|anthropic|gemini|ollama|vertex|mistral|groq|bedrock|deepseek):",
+    r"^(openai|anthropic|gemini|ollama|vertex|mistral|groq|bedrock|deepseek|xai|zai):",
     r"^gpt-",
     r"^claude-",
     r"^gemini-",
+    r"^grok-",
+    r"^glm-",
 )
 
 
@@ -55,6 +57,10 @@ def _parse_model_spec(model_spec: str) -> tuple[str, str]:
         return "anthropic", model_spec
     if model_spec.startswith("gemini-"):
         return "gemini", model_spec
+    if model_spec.startswith("grok-"):
+        return "xai", model_spec
+    if model_spec.startswith("glm-"):
+        return "zai", model_spec
     return "openai", model_spec
 
 
@@ -216,7 +222,7 @@ class PydanticAIProvider:
     region: str | None = None
     service_account_file: str | None = None
     max_concurrency: int = 8
-    supported_attachment_kinds: ClassVar[frozenset[str]] = frozenset({"image", "pdf"})
+    supported_attachment_kinds: frozenset[str] = frozenset({"image", "pdf"})
     _agent: Any = field(default=None, repr=False, init=False)
     _supports_native: bool = field(default=False, repr=False, init=False)
 
@@ -257,6 +263,23 @@ class PydanticAIProvider:
             self._supports_native = getattr(profile, "supports_json_schema_output", False)
         except AttributeError:
             self._supports_native = False
+
+        # Only advertise PDF support for providers that natively handle it
+        # (Gemini, Anthropic).  OpenAI-compatible gateways don't support PDF.
+        self.supported_attachment_kinds = self._detect_attachment_kinds()
+
+    def _detect_attachment_kinds(self) -> frozenset[str]:
+        """Detect which attachment kinds the underlying model supports."""
+        try:
+            model = self._agent.model
+            model_cls_name = type(model).__name__.lower()
+            # Only Google and Anthropic models support native PDF input.
+            # OpenAI-compatible models (including gateways) need rasterized images.
+            if "google" in model_cls_name or "anthropic" in model_cls_name:
+                return frozenset({"image", "pdf"})
+        except AttributeError:
+            pass
+        return frozenset({"image"})
 
     def supports_native_structured_output(self) -> bool:
         """Whether the underlying model supports native JSON schema output."""

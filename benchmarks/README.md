@@ -93,40 +93,43 @@ Runs a whole-document branch and a page-level branch, merges them, then applies 
 
 Choose this when provenance matters more than latency.
 
-## Current Snapshot
+## Multi-Model Results
 
-Columns:
+All models routed through a single OpenAI-compatible gateway. Each corpus includes clean, table, scanned, and mixed PDF variants. Accuracy is fuzzy field match rate across all variants.
 
-- `Accuracy`: exact field match rate
-- `Wrong values`: rate of returned fields that were wrong
-- `Source grounding`: correct source scope/page attribution
-- `Latency`: total runtime
+### Oncology (9 fields, 4 documents)
 
-Higher is better for `Accuracy` and `Source grounding`. Lower is better for `Wrong values` and `Latency`.
+| Model | Accuracy | Provenance | Latency |
+| --- | ---: | ---: | ---: |
+| grok-4.1-fast | 83.3% | 75.0% | 10.0s |
+| gemini-2.5-flash-lite | 83.3% | 75.0% | 10.7s |
+| gemini-3.1-flash-lite | 83.3% | 75.0% | 14.6s |
+| claude-haiku-4.5 | 83.3% | 75.0% | 20.5s |
+| claude-sonnet-4.6 | 83.3% | 75.0% | 32.6s |
+| gpt-5.1-instant | 83.3% | 75.0% | 38.4s |
+| gemini-2.5-flash | 83.3% | 75.0% | 48.2s |
+| gpt-5-mini | 83.3% | 75.0% | 75.5s |
+| gpt-5-nano | 83.3% | 75.0% | 99.0s |
+| gemini-3.1-pro | 83.3% | 75.0% | 140.1s |
+| glm-4.7-flash | 44.4% | 38.9% | 5.7s |
 
-Why only two models here:
+### Nasal Melanoma (31 fields, 4 documents)
 
-- strategy snapshots keep the model fixed so strategy differences are easier to read
-- page-scale keeps the current default model fixed so latency growth is easier to read
-- if you want a different model, duplicate a manifest config and rerun
+| Model | Accuracy | Provenance | Latency |
+| --- | ---: | ---: | ---: |
+| claude-sonnet-4.6 | 79.0% | 52.4% | 38.8s |
+| gpt-5.1-instant | 79.0% | 52.4% | 36.1s |
+| gpt-5-mini | 78.2% | 52.4% | 92.2s |
+| gpt-5-nano | 77.4% | 53.2% | 155.9s |
+| claude-haiku-4.5 | 77.4% | 51.6% | 22.7s |
+| gemini-3.1-pro | 76.6% | 49.2% | 85.8s |
+| gemini-2.5-flash-lite | 76.6% | 50.0% | 11.8s |
+| gemini-2.5-flash | 75.8% | 50.8% | 45.3s |
+| gemini-3.1-flash-lite | 74.2% | 46.8% | 14.9s |
+| grok-4.1-fast | 69.4% | 50.8% | 9.2s |
+| glm-4.7-flash | 48.4% | 28.2% | 7.9s |
 
-### Oncology
-
-Model: `gemini:gemini-3.1-flash-lite-preview`
-
-| Strategy | Accuracy | Wrong values | Source grounding | Latency |
-| --- | ---: | ---: | ---: | ---: |
-| `document_auto` | `0.639` | `0.333` | `0.611` | `7.23s` |
-| `document_grounded` | `0.639` | `0.333` | `0.611` | `9.97s` |
-
-### Nasal Melanoma
-
-Model: `gemini:gemini-3.1-flash-lite-preview`
-
-| Strategy | Accuracy | Wrong values | Source grounding | Latency |
-| --- | ---: | ---: | ---: | ---: |
-| `document_auto` | `0.831` | `0.158` | `0.419` | `14.02s` |
-| `document_grounded` | `0.831` | `0.158` | `0.419` | `15.68s` |
+Clean and table PDFs reach ~100% accuracy across all models. The overall numbers are brought down by scanned/mixed variants, which require vision-based extraction through rasterized images.
 
 ### Page Scale
 
@@ -134,10 +137,8 @@ Model: `gemini:gemini-2.5-flash-lite`
 
 | Strategy | 5 pages | 10 pages | 15 pages | Slope (s/page) |
 | --- | ---: | ---: | ---: | ---: |
-| `document_auto` | `7.12s` | `10.79s` | `16.06s` | `0.89` |
-| `document_grounded` | `6.47s` | `10.57s` | `15.04s` | `0.86` |
-
-The compact tables above focus on the whole-document family. If you care most about provenance, benchmark the hybrid recipe on your own corpus, because the cost depends heavily on page count and document type.
+| `document_auto` | 7.12s | 10.79s | 16.06s | 0.89 |
+| `document_grounded` | 6.47s | 10.57s | 15.04s | 0.86 |
 
 ## Useful Knobs
 
@@ -167,8 +168,10 @@ Latency:
 
 Full metrics stay in the JSON result files:
 
-- [oncology results](corpus/oncology/results.default.json)
-- [nasal melanoma results](corpus/nasal_melanoma/results.default.json)
+- [oncology multi-model](corpus/oncology/results_multimodel.json)
+- [nasal melanoma multi-model](corpus/nasal_melanoma/results_multimodel.json)
+- [oncology strategy comparison](corpus/oncology/results.default.json)
+- [nasal melanoma strategy comparison](corpus/nasal_melanoma/results.default.json)
 - [page-scale results](corpus/oncology_page_scale/results.page_scale.json)
 
 ## Run

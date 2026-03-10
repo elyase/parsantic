@@ -1,0 +1,102 @@
+{
+  "name": "nasal-melanoma-multimodel-gateway",
+  "root": ".",
+  "configs": [
+    {
+      "name": "gemini-3.1-flash-lite",
+      "model": "provider_from_model('openai:gemini-3.1-flash-lite-preview')",
+      "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+      "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document."
+    },
+    {
+      "name": "gemini-3.1-pro",
+      "model": "provider_from_model('openai:gemini-3.1-pro-preview')",
+      "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=120, per_document_timeout_s=300)",
+      "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document."
+    },
+    {
+      "name": "gemini-2.5-flash-lite",
+      "model": "provider_from_model('openai:gemini-2.5-flash-lite')",
+      "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+      "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document."
+    },
+    {
+      "name": "gemini-2.5-flash",
+      "model": "provider_from_model('openai:gemini-2.5-flash')",
+      "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=120, per_document_timeout_s=300)",
+      "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document."
+    },
+    {
+      "name": "claude-sonnet-4.6",
+      "model": "provider_from_model('openai:claude-sonnet-4-6')",
+      "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=120, per_document_timeout_s=300)",
+      "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document."
+    },
+    {
+      "name": "claude-haiku-4.5",
+      "model": "provider_from_model('openai:claude-haiku-4-5-20251001')",
+      "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+      "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document."
+    },
+    {
+      "name": "gpt-5-nano",
+      "model": "provider_from_model('openai:gpt-5-nano')",
+      "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+      "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document."
+    },
+    {
+      "name": "gpt-5-mini",
+      "model": "provider_from_model('openai:gpt-5-mini')",
+      "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=120, per_document_timeout_s=300)",
+      "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document."
+    },
+    {
+      "name": "gpt-5.1-instant",
+      "model": "provider_from_model('openai:gpt-5.1-instant')",
+      "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+      "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document."
+    },
+    {
+      "name": "glm-4.7-flash",
+      "model": "provider_from_model('openai:glm-4.7-flash')",
+      "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+      "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document."
+    },
+    {
+      "name": "grok-4.1-fast",
+      "model": "provider_from_model('openai:grok-4.1-fast-non-reasoning')",
+      "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+      "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document."
+    }
+  ],
+  "cases": [
+    {
+      "name": "nasal_melanoma_clean",
+      "document": "generated/nasal_melanoma_clean.pdf",
+      "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+      "expected": "ground_truth.json",
+      "expected_sources": "expected_sources.json"
+    },
+    {
+      "name": "nasal_melanoma_table",
+      "document": "generated/nasal_melanoma_table.pdf",
+      "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+      "expected": "ground_truth.json",
+      "expected_sources": "expected_sources.json"
+    },
+    {
+      "name": "nasal_melanoma_scanned",
+      "document": "generated/nasal_melanoma_scanned.pdf",
+      "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+      "expected": "ground_truth.json",
+      "expected_sources": "expected_sources.json"
+    },
+    {
+      "name": "nasal_melanoma_mixed",
+      "document": "generated/nasal_melanoma_mixed.pdf",
+      "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+      "expected": "ground_truth.json",
+      "expected_sources": "expected_sources.json"
+    }
+  ]
+}

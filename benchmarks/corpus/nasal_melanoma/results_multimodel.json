@@ -1,0 +1,4245 @@
+{
+  "configs": [
+    {
+      "cases": [
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_clean.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_clean",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gemini-3.1-flash-lite",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 2.379250332945958,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.8387096774193549,
+            "exact_matches": 26,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.7741935483870968,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7096774193548387,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "1/15/26",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2/3/26",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2/16/26",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 522
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_table.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_table",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gemini-3.1-flash-lite",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 1.9299833750119433,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.967741935483871,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "2025-12-21",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "2026-01-15",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2026-02-03",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "2025-11",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2026-02-16",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 413
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_scanned.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_scanned",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gemini-3.1-flash-lite",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 5.249515749979764,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.41935483870967744,
+            "exact_matches": 13,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.4838709677419355,
+            "fuzzy_matches": 15,
+            "page_coverage": 1.0,
+            "predicted_fields": 44,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 0.30952380952380953,
+            "wrong_present_rate": 0.6590909090909091
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse",
+              "Hypertension",
+              "Hypothyroidism",
+              "Hyperlipidemia"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4,
+              3.0,
+              1.5,
+              2.5
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "nasal melanoma",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "not documented",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "not documented",
+            "pathologic_t_stage": "not documented",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "not documented",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "anterior left naris",
+            "sex": "female",
+            "surgery_date": "not documented",
+            "surgery_procedures": [
+              "Endoscopic wide local excision of left nasal cavity mass",
+              "Left total ethmoidectomy",
+              "Left partial medial maxillectomy",
+              "Left inferior turbinectomy",
+              "Left sphenoidotomy",
+              "Left frontal sinusotomy",
+              "Left level I-III neck dissection",
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 237
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_mixed.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_mixed",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gemini-3.1-flash-lite",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 5.316504916059785,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.41935483870967744,
+            "exact_matches": 13,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.4838709677419355,
+            "fuzzy_matches": 15,
+            "page_coverage": 1.0,
+            "predicted_fields": 39,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 0.35135135135135137,
+            "wrong_present_rate": 0.6153846153846154
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse",
+              "hypertension"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4,
+              3.0,
+              1.5,
+              2.5
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "nasal melanoma",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "not documented",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "not documented",
+            "pathologic_t_stage": "not documented",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "not documented",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "anterior left naris",
+            "sex": "female",
+            "surgery_date": "not documented",
+            "surgery_procedures": [
+              "endoscopic medial maxillectomy",
+              "total ethmoidectomy",
+              "resection of anterior nasal septum",
+              "left level IB neck dissection",
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 564
+        }
+      ],
+      "config": {
+        "additional_context": null,
+        "model": "provider_from_model('openai:gemini-3.1-flash-lite-preview')",
+        "name": "gemini-3.1-flash-lite",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      "summary": {
+        "abstention_rate": 0.0,
+        "api_calls": 4,
+        "cases": [
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.8387096774193549,
+            "exact_matches": 26,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.7741935483870968,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7096774193548387,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.967741935483871,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.41935483870967744,
+            "exact_matches": 13,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.4838709677419355,
+            "fuzzy_matches": 15,
+            "page_coverage": 1.0,
+            "predicted_fields": 44,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 0.30952380952380953,
+            "wrong_present_rate": 0.6590909090909091
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.41935483870967744,
+            "exact_matches": 13,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.4838709677419355,
+            "fuzzy_matches": 15,
+            "page_coverage": 1.0,
+            "predicted_fields": 39,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 0.35135135135135137,
+            "wrong_present_rate": 0.6153846153846154
+          }
+        ],
+        "completeness": 1.0,
+        "estimated_cost_usd": 0.0,
+        "exact_accuracy": 0.6693548387096775,
+        "fuzzy_accuracy": 0.7419354838709677,
+        "latency_s": 14.87525437399745,
+        "page_coverage": 0.935483870967742,
+        "provenance_accuracy": 0.467741935483871,
+        "selective_accuracy": 0.6652187902187903,
+        "token_count": 1736,
+        "wrong_present_rate": 0.31861888111888115
+      }
+    },
+    {
+      "cases": [
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_clean.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_clean",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gemini-3.1-pro",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 26.070666291052476,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.8387096774193549,
+            "exact_matches": 26,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.7741935483870968,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7096774193548387,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "1/15/26",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2/3/26",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2/16/26",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 518
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_table.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_table",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gemini-3.1-pro",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 30.763339249999262,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.967741935483871,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "2025-12-21",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "2026-01-15",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2026-02-03",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "2025-11",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2026-02-16",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 409
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_scanned.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_scanned",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gemini-3.1-pro",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 16.793909999891184,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.41935483870967744,
+            "exact_matches": 13,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.4838709677419355,
+            "fuzzy_matches": 15,
+            "page_coverage": 1.0,
+            "predicted_fields": 41,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 0.3333333333333333,
+            "wrong_present_rate": 0.6341463414634146
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse",
+              "Osteoporosis",
+              "Hypertension",
+              "Hyperlipidemia",
+              "GERD"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4,
+              2.5,
+              1.1,
+              2.0
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "not explicitly stated in the provided text, but consistent with nasal mass/lesion",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "not provided",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "not provided",
+            "pathologic_t_stage": "not provided",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "not provided",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "left naris",
+            "sex": "female",
+            "surgery_date": "not provided",
+            "surgery_procedures": [
+              "Endoscopic wide local excision",
+              "Left modified radical neck dissection",
+              "Sural nerve graft",
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 228
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_mixed.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_mixed",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gemini-3.1-pro",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 12.170654999907129,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5517241379310345,
+            "wrong_present_rate": 0.41935483870967744
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "mass",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "null",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "null",
+            "pathologic_t_stage": "null",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "null",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "anterior left naris",
+            "sex": "female",
+            "surgery_date": "null",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 553
+        }
+      ],
+      "config": {
+        "additional_context": null,
+        "model": "provider_from_model('openai:gemini-3.1-pro-preview')",
+        "name": "gemini-3.1-pro",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=120, per_document_timeout_s=300)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      "summary": {
+        "abstention_rate": 0.0,
+        "api_calls": 4,
+        "cases": [
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.8387096774193549,
+            "exact_matches": 26,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.7741935483870968,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7096774193548387,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.967741935483871,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.41935483870967744,
+            "exact_matches": 13,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.4838709677419355,
+            "fuzzy_matches": 15,
+            "page_coverage": 1.0,
+            "predicted_fields": 41,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 0.3333333333333333,
+            "wrong_present_rate": 0.6341463414634146
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5517241379310345,
+            "wrong_present_rate": 0.41935483870967744
+          }
+        ],
+        "completeness": 1.0,
+        "estimated_cost_usd": 0.0,
+        "exact_accuracy": 0.6935483870967742,
+        "fuzzy_accuracy": 0.7661290322580645,
+        "latency_s": 85.79857054085005,
+        "page_coverage": 0.935483870967742,
+        "provenance_accuracy": 0.49193548387096775,
+        "selective_accuracy": 0.7212643678160919,
+        "token_count": 1708,
+        "wrong_present_rate": 0.263375295043273
+      }
+    },
+    {
+      "cases": [
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_clean.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_clean",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gemini-2.5-flash-lite",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 1.8390344580402598,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.8387096774193549,
+            "exact_matches": 26,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.7741935483870968,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7096774193548387,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "1/15/26",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2/3/26",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2/16/26",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 522
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_table.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_table",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gemini-2.5-flash-lite",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 2.458189958939329,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.967741935483871,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "2025-12-21",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "2026-01-15",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2026-02-03",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "2025-11",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2026-02-16",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 413
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_scanned.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_scanned",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gemini-2.5-flash-lite",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 4.211726333014667,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.41935483870967744,
+            "exact_matches": 13,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.4838709677419355,
+            "fuzzy_matches": 15,
+            "page_coverage": 1.0,
+            "predicted_fields": 34,
+            "provenance_accuracy": 0.41935483870967744,
+            "selective_accuracy": 0.40625,
+            "wrong_present_rate": 0.5588235294117647
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse",
+              "melanoma"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "polypoid lesion",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "null",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "null",
+            "pathologic_t_stage": "null",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "null",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "left naris",
+            "sex": "female",
+            "surgery_date": "null",
+            "surgery_procedures": [
+              "wide local excision of nasal mass",
+              "left neck dissection",
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 237
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_mixed.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_mixed",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gemini-2.5-flash-lite",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 3.305300208972767,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5517241379310345,
+            "wrong_present_rate": 0.41935483870967744
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "polypoid lesion",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "null",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "null",
+            "pathologic_t_stage": "null",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "null",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "left naris",
+            "sex": "female",
+            "surgery_date": "null",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 564
+        }
+      ],
+      "config": {
+        "additional_context": null,
+        "model": "provider_from_model('openai:gemini-2.5-flash-lite')",
+        "name": "gemini-2.5-flash-lite",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      "summary": {
+        "abstention_rate": 0.0,
+        "api_calls": 4,
+        "cases": [
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.8387096774193549,
+            "exact_matches": 26,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.7741935483870968,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7096774193548387,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.967741935483871,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.41935483870967744,
+            "exact_matches": 13,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.4838709677419355,
+            "fuzzy_matches": 15,
+            "page_coverage": 1.0,
+            "predicted_fields": 34,
+            "provenance_accuracy": 0.41935483870967744,
+            "selective_accuracy": 0.40625,
+            "wrong_present_rate": 0.5588235294117647
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5517241379310345,
+            "wrong_present_rate": 0.41935483870967744
+          }
+        ],
+        "completeness": 1.0,
+        "estimated_cost_usd": 0.0,
+        "exact_accuracy": 0.6935483870967742,
+        "fuzzy_accuracy": 0.7661290322580645,
+        "latency_s": 11.814250958967023,
+        "page_coverage": 0.935483870967742,
+        "provenance_accuracy": 0.5,
+        "selective_accuracy": 0.7394935344827587,
+        "token_count": 1736,
+        "wrong_present_rate": 0.24454459203036055
+      }
+    },
+    {
+      "cases": [
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_clean.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_clean",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gemini-2.5-flash",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 7.848091291030869,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.8064516129032258,
+            "exact_matches": 25,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.9354838709677419,
+            "fuzzy_matches": 29,
+            "page_coverage": 0.7419354838709677,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.6774193548387096,
+            "selective_accuracy": 0.9259259259259259,
+            "wrong_present_rate": 0.06451612903225806
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/2025",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "01/15/2026",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "02/03/2026",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "November",
+            "primary_site": "nasal cavity",
+            "sex": "female",
+            "surgery_date": "02/16/2026",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 519
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_table.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_table",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gemini-2.5-flash",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 7.119046958978288,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.967741935483871,
+            "exact_matches": 30,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.967741935483871,
+            "fuzzy_matches": 30,
+            "page_coverage": 0.967741935483871,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 0.967741935483871,
+            "wrong_present_rate": 0.03225806451612903
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "2025-12-21",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "2026-01-15",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2026-02-03",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "11",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2026-02-16",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 410
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_scanned.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_scanned",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gemini-2.5-flash",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 16.86680850002449,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5483870967741935,
+            "fuzzy_matches": 17,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5333333333333333,
+            "wrong_present_rate": 0.45161290322580644
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/2025",
+            "diagnosis": "Nasal Melanoma",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "null",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "null",
+            "pathologic_t_stage": "null",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "null",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "November",
+            "primary_site": "anterior left naris",
+            "sex": "female",
+            "surgery_date": "null",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 231
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_mixed.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_mixed",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gemini-2.5-flash",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 13.507763584027998,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5517241379310345,
+            "wrong_present_rate": 0.41935483870967744
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "",
+            "pathologic_t_stage": "",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "anterior left naris",
+            "sex": "female",
+            "surgery_date": "",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 556
+        }
+      ],
+      "config": {
+        "additional_context": null,
+        "model": "provider_from_model('openai:gemini-2.5-flash')",
+        "name": "gemini-2.5-flash",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=120, per_document_timeout_s=300)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      "summary": {
+        "abstention_rate": 0.0,
+        "api_calls": 4,
+        "cases": [
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.8064516129032258,
+            "exact_matches": 25,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.9354838709677419,
+            "fuzzy_matches": 29,
+            "page_coverage": 0.7419354838709677,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.6774193548387096,
+            "selective_accuracy": 0.9259259259259259,
+            "wrong_present_rate": 0.06451612903225806
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.967741935483871,
+            "exact_matches": 30,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.967741935483871,
+            "fuzzy_matches": 30,
+            "page_coverage": 0.967741935483871,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 0.967741935483871,
+            "wrong_present_rate": 0.03225806451612903
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5483870967741935,
+            "fuzzy_matches": 17,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5333333333333333,
+            "wrong_present_rate": 0.45161290322580644
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5517241379310345,
+            "wrong_present_rate": 0.41935483870967744
+          }
+        ],
+        "completeness": 1.0,
+        "estimated_cost_usd": 0.0,
+        "exact_accuracy": 0.7016129032258065,
+        "fuzzy_accuracy": 0.7580645161290323,
+        "latency_s": 45.341710334061645,
+        "page_coverage": 0.9274193548387097,
+        "provenance_accuracy": 0.5080645161290323,
+        "selective_accuracy": 0.7446813331685411,
+        "token_count": 1716,
+        "wrong_present_rate": 0.24193548387096775
+      }
+    },
+    {
+      "cases": [
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_clean.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_clean",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "claude-sonnet-4.6",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 6.164629999897443,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.8387096774193549,
+            "exact_matches": 26,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.8064516129032258,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7419354838709677,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "1/15/26",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2/3/26",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2/16/26",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 520
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_table.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_table",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "claude-sonnet-4.6",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 6.022565416060388,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "2025-12-21",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "2026-01-15",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2026-02-03",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "2025-11",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2026-02-16",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 411
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_scanned.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_scanned",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "claude-sonnet-4.6",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 10.858401500037871,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5517241379310345,
+            "wrong_present_rate": 0.41935483870967744
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "nasal melanoma",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "<UNKNOWN>",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "<UNKNOWN>",
+            "pathologic_t_stage": "<UNKNOWN>",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "<UNKNOWN>",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "anterior left naris",
+            "sex": "female",
+            "surgery_date": "<UNKNOWN>",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 231
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_mixed.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_mixed",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "claude-sonnet-4.6",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 15.71414624992758,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5517241379310345,
+            "wrong_present_rate": 0.41935483870967744
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "<UNKNOWN>",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "<UNKNOWN>",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "<UNKNOWN>",
+            "pathologic_t_stage": "<UNKNOWN>",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "<UNKNOWN>",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "left nasal ala and lateral nasal sidewall",
+            "sex": "female",
+            "surgery_date": "<UNKNOWN>",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 558
+        }
+      ],
+      "config": {
+        "additional_context": null,
+        "model": "provider_from_model('openai:claude-sonnet-4-6')",
+        "name": "claude-sonnet-4.6",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=120, per_document_timeout_s=300)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      "summary": {
+        "abstention_rate": 0.0,
+        "api_calls": 4,
+        "cases": [
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.8387096774193549,
+            "exact_matches": 26,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.8064516129032258,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7419354838709677,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5517241379310345,
+            "wrong_present_rate": 0.41935483870967744
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5517241379310345,
+            "wrong_present_rate": 0.41935483870967744
+          }
+        ],
+        "completeness": 1.0,
+        "estimated_cost_usd": 0.0,
+        "exact_accuracy": 0.717741935483871,
+        "fuzzy_accuracy": 0.7903225806451613,
+        "latency_s": 38.75974316592328,
+        "page_coverage": 0.9516129032258065,
+        "provenance_accuracy": 0.5241935483870968,
+        "selective_accuracy": 0.7758620689655172,
+        "token_count": 1720,
+        "wrong_present_rate": 0.20967741935483872
+      }
+    },
+    {
+      "cases": [
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_clean.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_clean",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "claude-haiku-4.5",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 3.7235135830705985,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.8387096774193549,
+            "exact_matches": 26,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.8064516129032258,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7096774193548387,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/2025",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "01/15/2026",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "02/03/2026",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "02/16/2026",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 519
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_table.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_table",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "claude-haiku-4.5",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 2.902618416934274,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "2025-12-21",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "2026-01-15",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2026-02-03",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "2025-11",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2026-02-16",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 410
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_scanned.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_scanned",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "claude-haiku-4.5",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 8.195677666924894,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5483870967741935,
+            "fuzzy_matches": 17,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5333333333333333,
+            "wrong_present_rate": 0.45161290322580644
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/2025",
+            "diagnosis": "nasal melanoma",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "2025-01-01",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "Nx",
+            "pathologic_t_stage": "Tx",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "2025-01-01",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "November",
+            "primary_site": "nasal",
+            "sex": "female",
+            "surgery_date": "2025-01-01",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 231
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_mixed.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_mixed",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "claude-haiku-4.5",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 7.832265499979258,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.4838709677419355,
+            "exact_matches": 15,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5483870967741935,
+            "fuzzy_matches": 17,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5172413793103449,
+            "wrong_present_rate": 0.45161290322580644
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/2025",
+            "diagnosis": "nasal melanoma",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "unknown",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "unknown",
+            "pathologic_t_stage": "unknown",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "unknown",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "November",
+            "primary_site": "left naris",
+            "sex": "Female",
+            "surgery_date": "unknown",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 556
+        }
+      ],
+      "config": {
+        "additional_context": null,
+        "model": "provider_from_model('openai:claude-haiku-4-5-20251001')",
+        "name": "claude-haiku-4.5",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      "summary": {
+        "abstention_rate": 0.0,
+        "api_calls": 4,
+        "cases": [
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.8387096774193549,
+            "exact_matches": 26,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.8064516129032258,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7096774193548387,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5483870967741935,
+            "fuzzy_matches": 17,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5333333333333333,
+            "wrong_present_rate": 0.45161290322580644
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.4838709677419355,
+            "exact_matches": 15,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5483870967741935,
+            "fuzzy_matches": 17,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5172413793103449,
+            "wrong_present_rate": 0.45161290322580644
+          }
+        ],
+        "completeness": 1.0,
+        "estimated_cost_usd": 0.0,
+        "exact_accuracy": 0.7096774193548387,
+        "fuzzy_accuracy": 0.7741935483870968,
+        "latency_s": 22.654075166909024,
+        "page_coverage": 0.9516129032258065,
+        "provenance_accuracy": 0.5161290322580645,
+        "selective_accuracy": 0.7626436781609196,
+        "token_count": 1716,
+        "wrong_present_rate": 0.22580645161290322
+      }
+    },
+    {
+      "cases": [
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_clean.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_clean",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gpt-5-nano",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 24.704854457988404,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.7741935483870968,
+            "exact_matches": 24,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.9354838709677419,
+            "fuzzy_matches": 29,
+            "page_coverage": 0.8064516129032258,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7741935483870968,
+            "selective_accuracy": 0.9230769230769231,
+            "wrong_present_rate": 0.06451612903225806
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "mucosal malignant melanoma of the left paranasal sinus, maxillary",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "1/15/26",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2/3/26",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "left nasal cavity (nasal ala and lateral nasal sidewall)",
+            "sex": "female",
+            "surgery_date": "2/16/26",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 516
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_table.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_table",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gpt-5-nano",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 20.3129950419534,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "2025-12-21",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "2026-01-15",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2026-02-03",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "2025-11",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2026-02-16",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 407
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_scanned.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_scanned",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gpt-5-nano",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 60.02366149995942,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 34,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5,
+            "wrong_present_rate": 0.47058823529411764
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4,
+              3.0,
+              1.3,
+              2.5
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "nasal melanoma",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "",
+            "pathologic_t_stage": "",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "anterior left naris",
+            "sex": "female",
+            "surgery_date": "",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 222
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_mixed.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_mixed",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gpt-5-nano",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 50.890835000085644,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5517241379310345,
+            "wrong_present_rate": 0.41935483870967744
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "nasal melanoma",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "",
+            "pathologic_t_stage": "",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "anterior left naris",
+            "sex": "female",
+            "surgery_date": "",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 547
+        }
+      ],
+      "config": {
+        "additional_context": null,
+        "model": "provider_from_model('openai:gpt-5-nano')",
+        "name": "gpt-5-nano",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      "summary": {
+        "abstention_rate": 0.0,
+        "api_calls": 4,
+        "cases": [
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.7741935483870968,
+            "exact_matches": 24,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.9354838709677419,
+            "fuzzy_matches": 29,
+            "page_coverage": 0.8064516129032258,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7741935483870968,
+            "selective_accuracy": 0.9230769230769231,
+            "wrong_present_rate": 0.06451612903225806
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 34,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5,
+            "wrong_present_rate": 0.47058823529411764
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5517241379310345,
+            "wrong_present_rate": 0.41935483870967744
+          }
+        ],
+        "completeness": 1.0,
+        "estimated_cost_usd": 0.0,
+        "exact_accuracy": 0.7016129032258065,
+        "fuzzy_accuracy": 0.7741935483870968,
+        "latency_s": 155.93234599998686,
+        "page_coverage": 0.9516129032258065,
+        "provenance_accuracy": 0.532258064516129,
+        "selective_accuracy": 0.7437002652519894,
+        "token_count": 1692,
+        "wrong_present_rate": 0.23861480075901328
+      }
+    },
+    {
+      "cases": [
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_clean.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_clean",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gpt-5-mini",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 22.74809791590087,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.8064516129032258,
+            "exact_matches": 25,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.967741935483871,
+            "fuzzy_matches": 30,
+            "page_coverage": 0.8064516129032258,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7419354838709677,
+            "selective_accuracy": 0.9615384615384616,
+            "wrong_present_rate": 0.03225806451612903
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "mucosal malignant melanoma of the left paranasal sinus, maxillary",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "1/15/26",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2/3/26",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2/16/26",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 516
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_table.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_table",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gpt-5-mini",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 8.975491208955646,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "2025-12-21",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "2026-01-15",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2026-02-03",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "2025-11",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2026-02-16",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 407
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_scanned.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_scanned",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gpt-5-mini",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 28.953351042000577,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 34,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5,
+            "wrong_present_rate": 0.47058823529411764
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4,
+              3.0,
+              1.3,
+              2.5
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "polypoid lesion",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "",
+            "pathologic_t_stage": "",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "anterior left naris",
+            "sex": "female",
+            "surgery_date": "",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 222
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_mixed.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_mixed",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gpt-5-mini",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 31.51197095902171,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 34,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5,
+            "wrong_present_rate": 0.47058823529411764
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4,
+              3.0,
+              1.3,
+              2.5
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "polypoid lesion",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "",
+            "pathologic_t_stage": "",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "anterior left naris",
+            "sex": "female",
+            "surgery_date": "",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 547
+        }
+      ],
+      "config": {
+        "additional_context": null,
+        "model": "provider_from_model('openai:gpt-5-mini')",
+        "name": "gpt-5-mini",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=120, per_document_timeout_s=300)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      "summary": {
+        "abstention_rate": 0.0,
+        "api_calls": 4,
+        "cases": [
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.8064516129032258,
+            "exact_matches": 25,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.967741935483871,
+            "fuzzy_matches": 30,
+            "page_coverage": 0.8064516129032258,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7419354838709677,
+            "selective_accuracy": 0.9615384615384616,
+            "wrong_present_rate": 0.03225806451612903
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 34,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5,
+            "wrong_present_rate": 0.47058823529411764
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 34,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5,
+            "wrong_present_rate": 0.47058823529411764
+          }
+        ],
+        "completeness": 1.0,
+        "estimated_cost_usd": 0.0,
+        "exact_accuracy": 0.7096774193548387,
+        "fuzzy_accuracy": 0.782258064516129,
+        "latency_s": 92.1889111258788,
+        "page_coverage": 0.9516129032258065,
+        "provenance_accuracy": 0.5241935483870968,
+        "selective_accuracy": 0.7403846153846154,
+        "token_count": 1692,
+        "wrong_present_rate": 0.24335863377609107
+      }
+    },
+    {
+      "cases": [
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_clean.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_clean",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gpt-5.1-instant",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 4.979832874960266,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.8387096774193549,
+            "exact_matches": 26,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.8064516129032258,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7419354838709677,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/2025",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "1/15/2026",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2/3/2026",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2/16/2026",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 519
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_table.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_table",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gpt-5.1-instant",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 7.734048082958907,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "2025-12-21",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "2026-01-15",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2026-02-03",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "2025-11",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2026-02-16",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 410
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_scanned.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_scanned",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gpt-5.1-instant",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 8.13625554193277,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5517241379310345,
+            "wrong_present_rate": 0.41935483870967744
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "not stated",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "",
+            "pathologic_t_stage": "",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "anterior left naris",
+            "sex": "female",
+            "surgery_date": "",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 228
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_mixed.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_mixed",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "gpt-5.1-instant",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 15.223080500029027,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5517241379310345,
+            "wrong_present_rate": 0.41935483870967744
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "",
+            "pathologic_t_stage": "",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "anterior left naris",
+            "sex": "female",
+            "surgery_date": "",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 555
+        }
+      ],
+      "config": {
+        "additional_context": null,
+        "model": "provider_from_model('openai:gpt-5.1-instant')",
+        "name": "gpt-5.1-instant",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      "summary": {
+        "abstention_rate": 0.0,
+        "api_calls": 4,
+        "cases": [
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.8387096774193549,
+            "exact_matches": 26,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.8064516129032258,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7419354838709677,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5517241379310345,
+            "wrong_present_rate": 0.41935483870967744
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.5161290322580645,
+            "exact_matches": 16,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5806451612903226,
+            "fuzzy_matches": 18,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.4838709677419355,
+            "selective_accuracy": 0.5517241379310345,
+            "wrong_present_rate": 0.41935483870967744
+          }
+        ],
+        "completeness": 1.0,
+        "estimated_cost_usd": 0.0,
+        "exact_accuracy": 0.717741935483871,
+        "fuzzy_accuracy": 0.7903225806451613,
+        "latency_s": 36.07321699988097,
+        "page_coverage": 0.9516129032258065,
+        "provenance_accuracy": 0.5241935483870968,
+        "selective_accuracy": 0.7758620689655172,
+        "token_count": 1712,
+        "wrong_present_rate": 0.20967741935483872
+      }
+    },
+    {
+      "cases": [
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_clean.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_clean",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "glm-4.7-flash",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 2.1333116251043975,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.7096774193548387,
+            "exact_matches": 22,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.9354838709677419,
+            "fuzzy_matches": 29,
+            "page_coverage": 0.8064516129032258,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7419354838709677,
+            "selective_accuracy": 0.9166666666666666,
+            "wrong_present_rate": 0.06451612903225806
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "mucosal malignant melanoma of the left paranasal sinus, maxillary",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "1/15/26",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2/3/26",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "2025",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2/16/26",
+            "surgery_procedures": [
+              "Left partial rhinectomy",
+              "Left maxillectomy",
+              "Cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 518
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_table.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_table",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "glm-4.7-flash",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 2.048841958050616,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "2025-12-21",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "2026-01-15",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2026-02-03",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "2025-11",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2026-02-16",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 409
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_scanned.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_scanned",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "glm-4.7-flash",
+          "error": "status_code: 400, model_name: glm-4.7-flash, body: {'message': 'Invalid API parameter, please check the documentation.', 'type': 'AI_APICallError', 'param': {'error': 'Invalid API parameter, please check the documentation.', 'statusCode': 400, 'name': 'AI_APICallError', 'message': 'Invalid API parameter, please check the documentation.', 'url': 'https://api.z.ai/api/paas/v4/chat/completions', 'isRetryable': False, 'type': 'AI_APICallError'}}",
+          "estimated_cost_usd": 0.0,
+          "latency_s": 1.8105204170569777,
+          "metrics": {
+            "abstention_rate": 1.0,
+            "completeness": 0.0,
+            "exact_accuracy": 0.0,
+            "exact_matches": 0,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.0,
+            "fuzzy_matches": 0,
+            "page_coverage": 0.0,
+            "predicted_fields": 1,
+            "provenance_accuracy": 0.0,
+            "selective_accuracy": 0.0,
+            "wrong_present_rate": 1.0
+          },
+          "output": {},
+          "token_count": 225
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_mixed.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_mixed",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "glm-4.7-flash",
+          "error": "status_code: 400, model_name: glm-4.7-flash, body: {'message': 'Invalid API parameter, please check the documentation.', 'type': 'AI_APICallError', 'param': {'error': 'Invalid API parameter, please check the documentation.', 'statusCode': 400, 'name': 'AI_APICallError', 'message': 'Invalid API parameter, please check the documentation.', 'url': 'https://api.z.ai/api/paas/v4/chat/completions', 'isRetryable': False, 'type': 'AI_APICallError'}}",
+          "estimated_cost_usd": 0.0,
+          "latency_s": 1.910232292022556,
+          "metrics": {
+            "abstention_rate": 1.0,
+            "completeness": 0.0,
+            "exact_accuracy": 0.0,
+            "exact_matches": 0,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.0,
+            "fuzzy_matches": 0,
+            "page_coverage": 0.0,
+            "predicted_fields": 1,
+            "provenance_accuracy": 0.0,
+            "selective_accuracy": 0.0,
+            "wrong_present_rate": 1.0
+          },
+          "output": {},
+          "token_count": 552
+        }
+      ],
+      "config": {
+        "additional_context": null,
+        "model": "provider_from_model('openai:glm-4.7-flash')",
+        "name": "glm-4.7-flash",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      "summary": {
+        "abstention_rate": 0.5,
+        "api_calls": 4,
+        "cases": [
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.7096774193548387,
+            "exact_matches": 22,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.9354838709677419,
+            "fuzzy_matches": 29,
+            "page_coverage": 0.8064516129032258,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7419354838709677,
+            "selective_accuracy": 0.9166666666666666,
+            "wrong_present_rate": 0.06451612903225806
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          {
+            "abstention_rate": 1.0,
+            "completeness": 0.0,
+            "exact_accuracy": 0.0,
+            "exact_matches": 0,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.0,
+            "fuzzy_matches": 0,
+            "page_coverage": 0.0,
+            "predicted_fields": 1,
+            "provenance_accuracy": 0.0,
+            "selective_accuracy": 0.0,
+            "wrong_present_rate": 1.0
+          },
+          {
+            "abstention_rate": 1.0,
+            "completeness": 0.0,
+            "exact_accuracy": 0.0,
+            "exact_matches": 0,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.0,
+            "fuzzy_matches": 0,
+            "page_coverage": 0.0,
+            "predicted_fields": 1,
+            "provenance_accuracy": 0.0,
+            "selective_accuracy": 0.0,
+            "wrong_present_rate": 1.0
+          }
+        ],
+        "completeness": 0.5,
+        "estimated_cost_usd": 0.0,
+        "exact_accuracy": 0.4274193548387097,
+        "fuzzy_accuracy": 0.4838709677419355,
+        "latency_s": 7.902906292234547,
+        "page_coverage": 0.45161290322580644,
+        "provenance_accuracy": 0.282258064516129,
+        "selective_accuracy": 0.47916666666666663,
+        "token_count": 1704,
+        "wrong_present_rate": 0.5161290322580645
+      }
+    },
+    {
+      "cases": [
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_clean.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_clean",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "grok-4.1-fast",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 1.573653250001371,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.8387096774193549,
+            "exact_matches": 26,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.8064516129032258,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7419354838709677,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "1/15/26",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2/3/26",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2/16/26",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 518
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_table.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_table",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "grok-4.1-fast",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 1.870167874963954,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4
+            ],
+            "ct_sinus_date": "2025-12-21",
+            "diagnosis": "mucosal malignant melanoma",
+            "left_apical_lung_nodule_present": true,
+            "left_submandibular_node_cm": 1.3,
+            "lymphovascular_invasion": false,
+            "margins_negative": true,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "2026-01-15",
+            "mri_mass_size_cm": [
+              3.0,
+              1.3,
+              2.5
+            ],
+            "nodes_examined": 27,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "pN0",
+            "pathologic_t_stage": "pT4a",
+            "pathology_size_cm": 3.1,
+            "perineural_invasion": false,
+            "pet_ct_date": "2026-02-03",
+            "pet_hypermetabolic_nasal_mass": true,
+            "presenting_symptom_month": "2025-11",
+            "primary_site": "left nasal cavity",
+            "sex": "female",
+            "surgery_date": "2026-02-16",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 409
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_scanned.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_scanned",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "grok-4.1-fast",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 2.536197084002197,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.25806451612903225,
+            "exact_matches": 8,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.25806451612903225,
+            "fuzzy_matches": 8,
+            "page_coverage": 1.0,
+            "predicted_fields": 32,
+            "provenance_accuracy": 0.45161290322580644,
+            "selective_accuracy": 0.25,
+            "wrong_present_rate": 0.75
+          },
+          "output": {
+            "age_years": 55,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.0,
+              3.1
+            ],
+            "ct_sinus_date": "12/21",
+            "diagnosis": "melanoma",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 1.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "",
+            "mri_mass_size_cm": [
+              3.2,
+              2.5,
+              3.1
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "",
+            "pathologic_t_stage": "",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "12/21",
+            "primary_site": "nasal",
+            "sex": "female",
+            "surgery_date": "",
+            "surgery_procedures": [
+              "partial maxillectomy",
+              "left medial maxillectomy",
+              "nasal lymphadenectomy"
+            ]
+          },
+          "token_count": 225
+        },
+        {
+          "api_calls": 1,
+          "case": {
+            "additional_context": null,
+            "document": "generated/nasal_melanoma_mixed.pdf",
+            "expected": "ground_truth.json",
+            "expected_sources": "expected_sources.json",
+            "name": "nasal_melanoma_mixed",
+            "prompt": "",
+            "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+            "tags": []
+          },
+          "config_name": "grok-4.1-fast",
+          "error": null,
+          "estimated_cost_usd": 0.0,
+          "latency_s": 3.1997726659756154,
+          "metrics": {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.45161290322580644,
+            "exact_matches": 14,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5161290322580645,
+            "fuzzy_matches": 16,
+            "page_coverage": 1.0,
+            "predicted_fields": 36,
+            "provenance_accuracy": 0.45161290322580644,
+            "selective_accuracy": 0.4117647058823529,
+            "wrong_present_rate": 0.5555555555555556
+          },
+          "output": {
+            "age_years": 56,
+            "comorbidities": [
+              "hyperlipidemia",
+              "tobacco abuse"
+            ],
+            "ct_lesion_size_cm": [
+              1.8,
+              1.4,
+              3.0,
+              2.0,
+              4.2,
+              3.8
+            ],
+            "ct_sinus_date": "12/21/25",
+            "diagnosis": "nasal melanoma",
+            "left_apical_lung_nodule_present": false,
+            "left_submandibular_node_cm": 0.0,
+            "lymphovascular_invasion": false,
+            "margins_negative": false,
+            "metastatic_disease_on_pet": false,
+            "mri_face_date": "",
+            "mri_mass_size_cm": [
+              3.0,
+              2.0,
+              3.5,
+              3.2
+            ],
+            "nodes_examined": 0,
+            "nodes_positive": 0,
+            "pathologic_n_stage": "",
+            "pathologic_t_stage": "",
+            "pathology_size_cm": 0.0,
+            "perineural_invasion": false,
+            "pet_ct_date": "",
+            "pet_hypermetabolic_nasal_mass": false,
+            "presenting_symptom_month": "11/2025",
+            "primary_site": "left nasal ala and lateral nasal sidewall",
+            "sex": "female",
+            "surgery_date": "",
+            "surgery_procedures": [
+              "left partial rhinectomy",
+              "left maxillectomy",
+              "cervical lymphadenectomy"
+            ]
+          },
+          "token_count": 552
+        }
+      ],
+      "config": {
+        "additional_context": null,
+        "model": "provider_from_model('openai:grok-4.1-fast-non-reasoning')",
+        "name": "grok-4.1-fast",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      "summary": {
+        "abstention_rate": 0.0,
+        "api_calls": 4,
+        "cases": [
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.8387096774193549,
+            "exact_matches": 26,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 0.8064516129032258,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.7419354838709677,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 1.0,
+            "exact_matches": 31,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 1.0,
+            "fuzzy_matches": 31,
+            "page_coverage": 1.0,
+            "predicted_fields": 31,
+            "provenance_accuracy": 0.3870967741935484,
+            "selective_accuracy": 1.0,
+            "wrong_present_rate": 0.0
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.25806451612903225,
+            "exact_matches": 8,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.25806451612903225,
+            "fuzzy_matches": 8,
+            "page_coverage": 1.0,
+            "predicted_fields": 32,
+            "provenance_accuracy": 0.45161290322580644,
+            "selective_accuracy": 0.25,
+            "wrong_present_rate": 0.75
+          },
+          {
+            "abstention_rate": 0.0,
+            "completeness": 1.0,
+            "exact_accuracy": 0.45161290322580644,
+            "exact_matches": 14,
+            "expected_fields": 31,
+            "fuzzy_accuracy": 0.5161290322580645,
+            "fuzzy_matches": 16,
+            "page_coverage": 1.0,
+            "predicted_fields": 36,
+            "provenance_accuracy": 0.45161290322580644,
+            "selective_accuracy": 0.4117647058823529,
+            "wrong_present_rate": 0.5555555555555556
+          }
+        ],
+        "completeness": 1.0,
+        "estimated_cost_usd": 0.0,
+        "exact_accuracy": 0.6370967741935484,
+        "fuzzy_accuracy": 0.6935483870967742,
+        "latency_s": 9.179790874943137,
+        "page_coverage": 0.9516129032258065,
+        "provenance_accuracy": 0.5080645161290323,
+        "selective_accuracy": 0.6654411764705882,
+        "token_count": 1704,
+        "wrong_present_rate": 0.3263888888888889
+      }
+    }
+  ],
+  "manifest": {
+    "cases": [
+      {
+        "additional_context": null,
+        "document": "generated/nasal_melanoma_clean.pdf",
+        "expected": "ground_truth.json",
+        "expected_sources": "expected_sources.json",
+        "name": "nasal_melanoma_clean",
+        "prompt": "",
+        "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+        "tags": []
+      },
+      {
+        "additional_context": null,
+        "document": "generated/nasal_melanoma_table.pdf",
+        "expected": "ground_truth.json",
+        "expected_sources": "expected_sources.json",
+        "name": "nasal_melanoma_table",
+        "prompt": "",
+        "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+        "tags": []
+      },
+      {
+        "additional_context": null,
+        "document": "generated/nasal_melanoma_scanned.pdf",
+        "expected": "ground_truth.json",
+        "expected_sources": "expected_sources.json",
+        "name": "nasal_melanoma_scanned",
+        "prompt": "",
+        "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+        "tags": []
+      },
+      {
+        "additional_context": null,
+        "document": "generated/nasal_melanoma_mixed.pdf",
+        "expected": "ground_truth.json",
+        "expected_sources": "expected_sources.json",
+        "name": "nasal_melanoma_mixed",
+        "prompt": "",
+        "schema": "benchmarks.corpus.nasal_melanoma.snapshot_schema:NasalMelanomaSnapshot",
+        "tags": []
+      }
+    ],
+    "configs": [
+      {
+        "additional_context": null,
+        "model": "provider_from_model('openai:gemini-3.1-flash-lite-preview')",
+        "name": "gemini-3.1-flash-lite",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      {
+        "additional_context": null,
+        "model": "provider_from_model('openai:gemini-3.1-pro-preview')",
+        "name": "gemini-3.1-pro",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=120, per_document_timeout_s=300)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      {
+        "additional_context": null,
+        "model": "provider_from_model('openai:gemini-2.5-flash-lite')",
+        "name": "gemini-2.5-flash-lite",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      {
+        "additional_context": null,
+        "model": "provider_from_model('openai:gemini-2.5-flash')",
+        "name": "gemini-2.5-flash",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=120, per_document_timeout_s=300)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      {
+        "additional_context": null,
+        "model": "provider_from_model('openai:claude-sonnet-4-6')",
+        "name": "claude-sonnet-4.6",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=120, per_document_timeout_s=300)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      {
+        "additional_context": null,
+        "model": "provider_from_model('openai:claude-haiku-4-5-20251001')",
+        "name": "claude-haiku-4.5",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      {
+        "additional_context": null,
+        "model": "provider_from_model('openai:gpt-5-nano')",
+        "name": "gpt-5-nano",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      {
+        "additional_context": null,
+        "model": "provider_from_model('openai:gpt-5-mini')",
+        "name": "gpt-5-mini",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=120, per_document_timeout_s=300)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      {
+        "additional_context": null,
+        "model": "provider_from_model('openai:gpt-5.1-instant')",
+        "name": "gpt-5.1-instant",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      {
+        "additional_context": null,
+        "model": "provider_from_model('openai:glm-4.7-flash')",
+        "name": "glm-4.7-flash",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      },
+      {
+        "additional_context": null,
+        "model": "provider_from_model('openai:grok-4.1-fast-non-reasoning')",
+        "name": "grok-4.1-fast",
+        "options": "ExtractOptions(repair='targeted', max_repair_attempts=1, per_call_timeout_s=60, per_document_timeout_s=180)",
+        "prompt_prefix": "Extract the nasal melanoma snapshot into the flat schema. Use exact values from the document.",
+        "tags": []
+      }
+    ],
+    "name": "nasal-melanoma-multimodel-gateway",
+    "root": "/Users/yaser/parsantic/benchmarks/corpus/nasal_melanoma"
+  }
+}

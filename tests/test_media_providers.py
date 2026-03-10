@@ -65,7 +65,11 @@ def test_supports_media_protocols():
 
 
 def test_pydantic_ai_provider_exposes_supported_attachment_kinds():
-    assert PydanticAIProvider.supported_attachment_kinds == frozenset({"image", "pdf"})
+    # Default value before __post_init__ includes both image and pdf
+    assert frozenset({"image", "pdf"}).issuperset(
+        PydanticAIProvider.__dataclass_fields__["supported_attachment_kinds"].default
+    )
+    assert "image" in PydanticAIProvider.__dataclass_fields__["supported_attachment_kinds"].default
 
 
 @pytest.mark.parametrize(

@@ -76,14 +76,20 @@ def _page_has_tables(page: object, page_text: str) -> bool:
 
 
 def prepare_pdf(
-    source: Path | bytes,
+    source: Path | str | bytes,
     *,
     page_indices: tuple[int, ...] | None = None,
 ) -> PreparedPdf:
     _check_pymupdf()
     import fitz
 
-    data = source if isinstance(source, bytes) else source.read_bytes()
+    data = (
+        source
+        if isinstance(source, bytes)
+        else Path(source).read_bytes()
+        if isinstance(source, str)
+        else source.read_bytes()
+    )
     key = (file_hash(data), tuple(page_indices) if page_indices is not None else None)
     cached = _PREPARED_PDF_CACHE.get(key)
     if cached is not None:
@@ -125,7 +131,7 @@ def prepare_pdf(
 
 
 def extract_pdf_page_texts(
-    source: Path | bytes,
+    source: Path | str | bytes,
     *,
     page_indices: tuple[int, ...] | None = None,
 ) -> list[tuple[int, str]]:
@@ -134,7 +140,7 @@ def extract_pdf_page_texts(
 
 
 def score_pdf_text_quality(
-    source: Path | bytes,
+    source: Path | str | bytes,
     *,
     page_indices: tuple[int, ...] | None = None,
 ) -> float:
@@ -144,7 +150,7 @@ def score_pdf_text_quality(
     return sum(score_text_quality(page.text) for page in prepared.pages) / len(prepared.pages)
 
 
-def has_text_layer(source: Path | bytes) -> bool:
+def has_text_layer(source: Path | str | bytes) -> bool:
     """Check if a PDF has a usable text layer."""
     prepared = prepare_pdf(source)
     if not prepared.pages:
@@ -153,7 +159,7 @@ def has_text_layer(source: Path | bytes) -> bool:
 
 
 def rasterize_pdf(
-    source: Path | bytes,
+    source: Path | str | bytes,
     *,
     dpi: int = 200,
     page_indices: tuple[int, ...] | None = None,
@@ -167,7 +173,13 @@ def rasterize_pdf(
     _check_pymupdf()
     import fitz
 
-    data = source if isinstance(source, bytes) else source.read_bytes()
+    data = (
+        source
+        if isinstance(source, bytes)
+        else Path(source).read_bytes()
+        if isinstance(source, str)
+        else source.read_bytes()
+    )
     page_key = tuple(page_indices) if page_indices is not None else None
     prepared = prepare_pdf(source, page_indices=page_indices)
     cache_key = (dpi, page_key, raster_format, jpeg_quality)
@@ -231,6 +243,129 @@ def normalize_image(
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         return buf.getvalue()
+
+
+@dataclass(frozen=True, slots=True)
+class PdfTextSpan:
+    """A text span extracted from a PDF page with its bounding box."""
+
+    page_index: int
+    text: str
+    bbox: tuple[float, float, float, float]  # (x0, y0, x1, y1) in points
+    bbox_norm: tuple[float, float, float, float]  # normalized to [0, 1]
+
+
+def extract_pdf_text_spans(
+    source: Path | str | bytes,
+    *,
+    page_indices: tuple[int, ...] | None = None,
+) -> list[PdfTextSpan]:
+    """Extract text spans with bounding boxes from PDF pages.
+
+    Uses PyMuPDF's ``get_text("dict")`` to obtain per-span positions.
+    Returns spans sorted by page then vertical position.
+    """
+    _check_pymupdf()
+    import fitz
+
+    data = (
+        source
+        if isinstance(source, bytes)
+        else Path(source).read_bytes()
+        if isinstance(source, str)
+        else source.read_bytes()
+    )
+    doc = fitz.open(stream=data, filetype="pdf")
+    try:
+        pages = list(page_indices) if page_indices is not None else list(range(len(doc)))
+        spans: list[PdfTextSpan] = []
+        for page_idx in pages:
+            page = doc[page_idx]
+            page_w, page_h = page.rect.width, page.rect.height
+            if page_w <= 0 or page_h <= 0:
+                continue
+            text_dict = page.get_text("dict")
+            for block in text_dict.get("blocks", []):
+                if block.get("type") != 0:  # text blocks only
+                    continue
+                for line in block.get("lines", []):
+                    for span in line.get("spans", []):
+                        text = span.get("text", "").strip()
+                        if not text:
+                            continue
+                        bbox = span.get("bbox", (0, 0, 0, 0))
+                        bbox_norm = (
+                            bbox[0] / page_w,
+                            bbox[1] / page_h,
+                            bbox[2] / page_w,
+                            bbox[3] / page_h,
+                        )
+                        spans.append(
+                            PdfTextSpan(
+                                page_index=page_idx,
+                                text=text,
+                                bbox=tuple(bbox),
+                                bbox_norm=bbox_norm,
+                            )
+                        )
+        return spans
+    finally:
+        doc.close()
+
+
+def find_bbox_for_value(
+    spans: list[PdfTextSpan],
+    value: str,
+    *,
+    page_index: int | None = None,
+) -> tuple[int, tuple[float, float, float, float]] | None:
+    """Find the bounding box of a value in the PDF text spans.
+
+    Returns ``(page_index, bbox_norm)`` or None if not found.
+    Tries exact substring match first, then case-insensitive match.
+    """
+    if not value or not spans:
+        return None
+
+    value_stripped = value.strip()
+    candidates = spans if page_index is None else [s for s in spans if s.page_index == page_index]
+
+    # Exact substring match
+    for span in candidates:
+        if value_stripped in span.text:
+            return (span.page_index, span.bbox_norm)
+
+    # Case-insensitive match
+    value_lower = value_stripped.lower()
+    for span in candidates:
+        if value_lower in span.text.lower():
+            return (span.page_index, span.bbox_norm)
+
+    # Multi-span: concatenate adjacent spans on same line and search
+    if page_index is not None:
+        page_spans = [s for s in spans if s.page_index == page_index]
+    else:
+        page_spans = spans
+
+    # Group by page and approximate line (y-position)
+    from collections import defaultdict
+
+    lines: dict[tuple[int, int], list[PdfTextSpan]] = defaultdict(list)
+    for span in page_spans:
+        line_key = (span.page_index, int(span.bbox[1] * 10))  # group by ~0.1pt y
+        lines[line_key].append(span)
+
+    for line_spans in lines.values():
+        line_text = " ".join(s.text for s in line_spans)
+        if value_lower in line_text.lower():
+            # Return bounding box of the full line
+            x0 = min(s.bbox_norm[0] for s in line_spans)
+            y0 = min(s.bbox_norm[1] for s in line_spans)
+            x1 = max(s.bbox_norm[2] for s in line_spans)
+            y1 = max(s.bbox_norm[3] for s in line_spans)
+            return (line_spans[0].page_index, (x0, y0, x1, y1))
+
+    return None
 
 
 def file_hash(data: bytes) -> str:

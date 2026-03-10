@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import importlib
 import json
 import sys
@@ -9,7 +10,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from parsantic.extract import Document, ExtractOptions, extract
+from parsantic.extract import Document, ExtractOptions, aextract
 from parsantic.extract.providers.base import InferenceRequest
 
 if __package__ in {None, ""}:
@@ -255,7 +256,7 @@ def _zero_metrics(expected: Any) -> CaseMetrics:
     return score_case(expected, {})
 
 
-def run_suite(
+async def run_suite(
     manifest: BenchmarkManifest,
     *,
     configs: list[BenchmarkConfig] | None = None,
@@ -289,7 +290,7 @@ def run_suite(
             error: str | None = None
             output: Any = {}
             try:
-                result = extract(document, target, model=provider, options=options)
+                result = await aextract(document, target, model=provider, options=options)
                 output = (
                     result.value.model_dump(mode="json")
                     if hasattr(result.value, "model_dump")
@@ -427,7 +428,9 @@ def main() -> None:
         if missing:
             raise SystemExit(f"Unknown config(s): {', '.join(sorted(missing))}")
 
-    report = run_suite(manifest, configs=selected_configs, fuzzy_threshold=args.fuzzy_threshold)
+    report = asyncio.run(
+        run_suite(manifest, configs=selected_configs, fuzzy_threshold=args.fuzzy_threshold)
+    )
     payload = _report_to_json(report)
 
     if args.output:

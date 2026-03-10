@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
+from datetime import date
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -44,7 +46,38 @@ def _normalize_scalar(value: Any) -> str:
     return json.dumps(value, sort_keys=True, ensure_ascii=True)
 
 
+def _try_parse_date(value: str) -> date | None:
+    """Try to parse a string as a date in common formats."""
+    value = value.strip()
+    for fmt in ("%Y-%m-%d", "%m/%d/%y", "%m/%d/%Y", "%d/%m/%Y", "%Y/%m/%d"):
+        try:
+            return date(*__import__("time").strptime(value, fmt)[:3])
+        except ValueError:
+            continue
+    # Try partial date like "2025-11" or "11/2025"
+    m = re.match(r"^(\d{4})-(\d{1,2})$", value)
+    if m:
+        return date(int(m.group(1)), int(m.group(2)), 1)
+    m = re.match(r"^(\d{1,2})/(\d{4})$", value)
+    if m:
+        return date(int(m.group(2)), int(m.group(1)), 1)
+    return None
+
+
+def _dates_equivalent(expected: Any, actual: Any) -> bool:
+    """Check if two values represent the same date."""
+    if not isinstance(expected, str) or not isinstance(actual, str):
+        return False
+    d1 = _try_parse_date(expected)
+    d2 = _try_parse_date(actual)
+    if d1 is not None and d2 is not None:
+        return d1 == d2
+    return False
+
+
 def _fuzzy_ratio(expected: Any, actual: Any) -> float:
+    if _dates_equivalent(expected, actual):
+        return 1.0
     return SequenceMatcher(
         None,
         _normalize_scalar(expected),

@@ -39,6 +39,12 @@ def _kwargs_with_environment_defaults(
             if "groq" in lowered:
                 if value := os.getenv("GROQ_API_KEY"):
                     env_sources.insert(0, ("GROQ_API_KEY", value))
+            if "xai" in lowered or "grok" in lowered:
+                if value := os.getenv("XAI_API_KEY"):
+                    env_sources.insert(0, ("XAI_API_KEY", value))
+            if "zai" in lowered or "glm" in lowered:
+                if value := os.getenv("ZAI_API_KEY"):
+                    env_sources.insert(0, ("ZAI_API_KEY", value))
 
         if env_sources:
             resolved["api_key"] = env_sources[0][1]

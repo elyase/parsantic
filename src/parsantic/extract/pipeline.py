@@ -396,6 +396,13 @@ def _render_prompt(
         lines.append("")
 
     if not native_mode:
+        # Extraction quality instructions
+        lines.append(
+            "Use exact values as they appear in the source. "
+            "Normalize dates to ISO 8601 format (YYYY-MM-DD). "
+            "If a value cannot be clearly identified, use null."
+        )
+        lines.append("")
         # E5: Add explicit output format instructions
         fmt = format_handler.options.format.lower() if format_handler.options else "json"
         if fmt == "json":
@@ -574,6 +581,7 @@ class _ExtractionContext:
     budget: _BudgetState
     target_type: type[Any] | None = None
     use_native_schema: bool = False
+    original_pdf_attachments: tuple[Any, ...] = ()
 
 
 @dataclass(slots=True)
@@ -756,6 +764,14 @@ def _build_extraction_context(
         logger.debug("Native structured output enabled for %s", type(provider).__name__)
         schema_text = None  # redundant when provider constrains output via its own schema
 
+    # Capture original PDF attachments for post-extraction bbox enrichment
+    # (text extraction may strip them from the working document).
+    original_pdf_atts: tuple[Any, ...] = ()
+    for doc in documents:
+        if doc.attachments:
+            original_pdf_atts = doc.attachments
+            break
+
     return _ExtractionContext(
         documents=documents,
         prompt_obj=prompt_obj,
@@ -773,6 +789,7 @@ def _build_extraction_context(
         ),
         target_type=target_type,
         use_native_schema=use_native,
+        original_pdf_attachments=original_pdf_atts,
     )
 
 
@@ -1435,8 +1452,19 @@ def _build_single_inference_request(
     )
 
 
-def _resolve_page_strategy(strategy: str, media_chunks: list[MediaChunk]) -> str:
-    """Resolve 'auto' page_strategy to concrete strategy."""
+def _resolve_page_strategy(
+    strategy: str,
+    media_chunks: list[MediaChunk],
+    *,
+    preflights: dict[int, PreflightResult] | None = None,
+) -> str:
+    """Resolve 'auto' page_strategy to concrete strategy.
+
+    For native PDFs with a usable text layer, ``"single"`` sends the whole
+    document in one request (faster).  For scanned / image-only PDFs, we
+    switch to ``"map_reduce"`` so each page is processed separately and we
+    get per-page provenance.
+    """
     if strategy != "auto":
         return strategy
     if not media_chunks:
@@ -1444,7 +1472,15 @@ def _resolve_page_strategy(strategy: str, media_chunks: list[MediaChunk]) -> str
     from .media.attachments import AttachmentKind
 
     all_native_pdf = all(chunk.attachment.kind is AttachmentKind.PDF for chunk in media_chunks)
-    return "single" if all_native_pdf else "map_reduce"
+    if not all_native_pdf:
+        return "map_reduce"
+
+    # Note: for scanned PDFs, "single" is still preferred for flat-schema
+    # extraction since per-page extraction would fragment the data.
+    # Provenance for scanned PDFs is handled by bbox enrichment when a
+    # text layer is available, or left at document scope otherwise.
+
+    return "single"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1490,13 +1526,43 @@ def _extract_pdf_page_texts(doc: Document) -> list[_PdfPageText]:
         return []
 
 
+_MIN_TEXT_CHARS_WITH_IMAGES = 50  # min avg chars when PDF pages also have images
+
+
 def _try_pdf_text_extraction(doc: Document, media_options: Any) -> Document | None:
-    """If pdf_mode='auto' and PDF has text layer, return a text-only Document."""
+    """If pdf_mode='auto' and PDF has text layer, return a text-only Document.
+
+    When PDF pages contain embedded images *and* the text layer is very short
+    the text is likely just watermarks or page labels.  In that case we return
+    ``None`` so the caller falls back to the media/vision path.
+    """
     if media_options.pdf_mode != "auto":
         return None
     page_texts = _extract_pdf_page_texts(doc)
     if not page_texts:
         return None
+
+    # If any PDF page contains embedded images and has very short text,
+    # the "text layer" is probably just watermarks/page-labels on those pages.
+    # Fall back to the media/vision path so the model can read the images.
+    if doc.attachments:
+        try:
+            from .media.preprocessing import prepare_pdf
+
+            for att in doc.attachments:
+                prepared = prepare_pdf(att.source, page_indices=att.page_indices)
+                for p in prepared.pages:
+                    if p.has_images and len(p.text.strip()) < _MIN_TEXT_CHARS_WITH_IMAGES:
+                        logger.debug(
+                            "Page %d has images and only %d chars of text; "
+                            "falling back to media path",
+                            p.page_index,
+                            len(p.text.strip()),
+                        )
+                        return None
+        except ImportError:
+            pass
+
     page_parts: list[str] = []
     page_spans: list[DocumentPageSpan] = []
     offset = 0
@@ -2248,6 +2314,82 @@ async def _afinalize_result_with_targeted_repair[T](
     )
 
 
+def _enrich_evidence_with_bboxes(
+    attachments: tuple[Any, ...],
+    evidence: list[FieldEvidence],
+) -> list[FieldEvidence]:
+    """Add bounding boxes to evidence items from PDF text spans.
+
+    *attachments* should be the original PDF attachments (possibly preserved
+    from before text-layer extraction stripped them).
+
+    For each evidence item that already has a page_index but no bbox_norm,
+    searches the PDF text layer for a matching span and assigns coordinates.
+    """
+    if not attachments:
+        return evidence
+
+    from .media.attachments import AttachmentKind
+
+    pdf_attachments = [att for att in attachments if att.kind is AttachmentKind.PDF]
+    if not pdf_attachments:
+        return evidence
+
+    try:
+        from .media.preprocessing import extract_pdf_text_spans, find_bbox_for_value
+    except ImportError:
+        return evidence
+
+    # Build span index keyed by attachment
+    spans_by_attachment: dict[int, list] = {}
+    for att_idx, attachment in enumerate(attachments):
+        if attachment.kind is not AttachmentKind.PDF:
+            continue
+        try:
+            spans = extract_pdf_text_spans(attachment.source, page_indices=attachment.page_indices)
+            spans_by_attachment[att_idx] = spans
+        except Exception:
+            logger.debug("Failed to extract PDF text spans for bbox enrichment", exc_info=True)
+
+    if not spans_by_attachment:
+        return evidence
+
+    enriched: list[FieldEvidence] = []
+    for ev in evidence:
+        if ev.bbox_norm is not None or not ev.value_preview:
+            enriched.append(ev)
+            continue
+
+        att_idx = ev.attachment_index if ev.attachment_index is not None else 0
+        spans = spans_by_attachment.get(att_idx)
+        if not spans:
+            enriched.append(ev)
+            continue
+
+        # Convert 1-indexed page_index to 0-indexed for lookup
+        page_0 = (ev.page_index - 1) if ev.page_index is not None else None
+        result = find_bbox_for_value(spans, ev.value_preview, page_index=page_0)
+        if result:
+            found_page, bbox_norm = result
+            enriched.append(
+                FieldEvidence(
+                    path=ev.path,
+                    value_preview=ev.value_preview,
+                    char_interval=ev.char_interval,
+                    token_interval=ev.token_interval,
+                    alignment_status=ev.alignment_status,
+                    source=ev.source,
+                    attachment_index=ev.attachment_index,
+                    page_index=ev.page_index,
+                    bbox_norm=bbox_norm,
+                    grounding_method="ocr_align",
+                )
+            )
+        else:
+            enriched.append(ev)
+    return enriched
+
+
 def _build_extract_result[T](
     *,
     ctx: _ExtractionContext,
@@ -2265,6 +2407,9 @@ def _build_extract_result[T](
 ) -> ExtractResult[T]:
     validated = ctx.adapter.validate(merged_value)
     grounded_evidence = _ground_document_evidence(doc, doc_evidence)
+    # Use original PDF attachments from context (may have been stripped by text extraction)
+    pdf_atts = ctx.original_pdf_attachments or doc.attachments
+    grounded_evidence = _enrich_evidence_with_bboxes(pdf_atts, grounded_evidence)
     resolved_diagnostics = diagnostics or _build_field_diagnostics(merged_value, grounded_evidence)
     debug_info = (
         ExtractDebug(
@@ -5049,7 +5194,9 @@ def extract_iter[T](
                     media_options=ctx.opts.media,
                     provider_supports_native_pdf=native_pdf,
                 )
-                strategy = _resolve_page_strategy(ctx.opts.media.page_strategy, media_chunks)
+                strategy = _resolve_page_strategy(
+                    ctx.opts.media.page_strategy, media_chunks, preflights=preflights
+                )
                 state = _DocumentState()
                 batch_length = max(1, ctx.opts.batch_length)
                 max_workers = max(1, min(ctx.opts.max_workers, ctx.budget.network_workers))
@@ -5434,7 +5581,9 @@ async def extract_aiter[T](
                     media_options=ctx.opts.media,
                     provider_supports_native_pdf=native_pdf,
                 )
-                strategy = _resolve_page_strategy(ctx.opts.media.page_strategy, media_chunks)
+                strategy = _resolve_page_strategy(
+                    ctx.opts.media.page_strategy, media_chunks, preflights=preflights
+                )
                 state = _DocumentState()
                 batch_length = max(1, ctx.opts.batch_length)
                 max_workers = max(1, min(ctx.opts.max_workers, ctx.budget.network_workers))
