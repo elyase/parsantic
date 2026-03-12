@@ -62,7 +62,7 @@ from .repair import (
     collect_validation_errors,
     format_broken_output,
 )
-from .schema import PydanticSchemaAdapter
+from .schema import PydanticSchemaAdapter, partial_target_type
 from .tokenizer import Tokenizer, TokenizerName, get_tokenizer
 from .types import (
     AlignmentStatus,
@@ -793,6 +793,16 @@ def _build_extraction_context(
     )
 
 
+def _partial_native_kwargs(native_kwargs: dict[str, Any]) -> dict[str, Any]:
+    target_type = native_kwargs.get("target_type")
+    if target_type is None:
+        return native_kwargs
+    partial_type = partial_target_type(target_type)
+    if partial_type is target_type:
+        return native_kwargs
+    return {**native_kwargs, "target_type": partial_type}
+
+
 @dataclass(slots=True)
 class Extractor:
     model: str | Any | None = None
@@ -1142,6 +1152,23 @@ def _check_media_capability(provider: Any, *, is_async: bool = False) -> None:
             )
 
 
+def _pdf_attachment_count(doc: Document) -> int:
+    from .media.attachments import AttachmentKind
+
+    return sum(1 for attachment in doc.attachments if attachment.kind is AttachmentKind.PDF)
+
+
+def _ensure_multi_pdf_attachment_safe(doc: Document) -> None:
+    pdf_count = _pdf_attachment_count(doc)
+    if pdf_count <= 1:
+        return
+    raise NotImplementedError(
+        "Multi-PDF extraction on a single Document is temporarily disabled while "
+        "attachment-aware provenance is being implemented. Use one Document per PDF "
+        "and combine them with extract_batch()/aextract_batch() for now."
+    )
+
+
 def _build_media_inference_requests(
     ctx: _ExtractionContext,
     doc: Document,
@@ -1460,10 +1487,9 @@ def _resolve_page_strategy(
 ) -> str:
     """Resolve 'auto' page_strategy to concrete strategy.
 
-    For native PDFs with a usable text layer, ``"single"`` sends the whole
-    document in one request (faster).  For scanned / image-only PDFs, we
-    switch to ``"map_reduce"`` so each page is processed separately and we
-    get per-page provenance.
+    ``"single"`` bundles all pages into one request (best accuracy / lowest
+    latency for flat schemas). ``"map_reduce"`` processes each page separately
+    (needed for per-page provenance, and as a fallback for very long docs).
     """
     if strategy != "auto":
         return strategy
@@ -1472,15 +1498,19 @@ def _resolve_page_strategy(
     from .media.attachments import AttachmentKind
 
     all_native_pdf = all(chunk.attachment.kind is AttachmentKind.PDF for chunk in media_chunks)
-    if not all_native_pdf:
-        return "map_reduce"
+    if all_native_pdf:
+        return "single"
 
-    # Note: for scanned PDFs, "single" is still preferred for flat-schema
-    # extraction since per-page extraction would fragment the data.
-    # Provenance for scanned PDFs is handled by bbox enrichment when a
-    # text layer is available, or left at document scope otherwise.
-
-    return "single"
+    # Rasterized PDFs (and multi-image documents) are generally best handled
+    # as a single bundled request to avoid schema-driven hallucinations for
+    # required fields that don't appear on every page.
+    #
+    # Guardrail: some providers impose per-request media limits, so for very
+    # long documents we fall back to per-page processing.
+    max_single_chunks = 20
+    if len(media_chunks) <= max_single_chunks:
+        return "single"
+    return "map_reduce"
 
 
 @dataclass(frozen=True, slots=True)
@@ -3986,6 +4016,7 @@ def _run_hybrid_media_extraction[T](
 
     media_requests = _build_media_inference_requests(ctx, doc, page_media_chunks)
     single_req = _build_single_inference_request(ctx, doc, whole_media_chunks)
+    page_native_kwargs = _partial_native_kwargs(native_kwargs)
     rendered_prompt_preview = single_req.prompt[:500] if debug else None
     batch_length = max(1, ctx.opts.batch_length)
     max_workers = max(1, min(ctx.opts.max_workers, ctx.budget.network_workers))
@@ -4004,7 +4035,7 @@ def _run_hybrid_media_extraction[T](
     def _run_page_branch() -> list[str]:
         if max_workers <= 1:
             return _infer_media_batch(
-                ctx, ctx.provider, media_requests, batch_length, **native_kwargs
+                ctx, ctx.provider, media_requests, batch_length, **page_native_kwargs
             )
         return _infer_media_batch_parallel(
             ctx,
@@ -4012,7 +4043,7 @@ def _run_hybrid_media_extraction[T](
             media_requests,
             batch_length,
             max_workers,
-            **native_kwargs,
+            **page_native_kwargs,
         )
 
     if isinstance(ctx.provider, SupportsAsyncMediaInfer):
@@ -4087,6 +4118,7 @@ async def _arun_hybrid_media_extraction[T](
 
     media_requests = _build_media_inference_requests(ctx, doc, page_media_chunks)
     single_req = _build_single_inference_request(ctx, doc, whole_media_chunks)
+    page_native_kwargs = _partial_native_kwargs(native_kwargs)
     rendered_prompt_preview = single_req.prompt[:500] if debug else None
     batch_length = max(1, ctx.opts.batch_length)
     max_workers = max(1, min(ctx.opts.max_workers, ctx.budget.network_workers))
@@ -4105,7 +4137,7 @@ async def _arun_hybrid_media_extraction[T](
     def _run_page_branch() -> Any:
         if max_workers <= 1:
             return _ainfer_media_batch(
-                ctx, ctx.provider, media_requests, batch_length, **native_kwargs
+                ctx, ctx.provider, media_requests, batch_length, **page_native_kwargs
             )
         return _ainfer_media_batch_parallel(
             ctx,
@@ -4113,7 +4145,7 @@ async def _arun_hybrid_media_extraction[T](
             media_requests,
             batch_length,
             max_workers,
-            **native_kwargs,
+            **page_native_kwargs,
         )
 
     whole_inferred, page_inferred = await _arun_parallel_pair(
@@ -4185,6 +4217,9 @@ def _run_hybrid_text_extraction[T](
 
     chunks, chunk_prompts = _prepare_document_chunks_and_prompts(ctx, doc)
     whole_prompt = _build_single_text_prompt(ctx, doc)
+    page_native_kwargs = (
+        native_kwargs if len(chunk_prompts) == 1 else _partial_native_kwargs(native_kwargs)
+    )
     rendered_prompt_preview = whole_prompt[:500] if debug else None
     batch_length = max(1, ctx.opts.batch_length)
     max_workers = max(1, min(ctx.opts.max_workers, ctx.budget.network_workers))
@@ -4197,14 +4232,16 @@ def _run_hybrid_text_extraction[T](
 
     def _run_page_branch() -> list[str]:
         if max_workers <= 1:
-            return _infer_batch(ctx, ctx.provider, chunk_prompts, batch_length, **native_kwargs)
+            return _infer_batch(
+                ctx, ctx.provider, chunk_prompts, batch_length, **page_native_kwargs
+            )
         return _infer_batch_parallel(
             ctx,
             ctx.provider,
             chunk_prompts,
             batch_length,
             max_workers,
-            **native_kwargs,
+            **page_native_kwargs,
         )
 
     if _provider_supports_async_text(ctx.provider):
@@ -4273,6 +4310,9 @@ async def _arun_hybrid_text_extraction[T](
 
     chunks, chunk_prompts = _prepare_document_chunks_and_prompts(ctx, doc)
     whole_prompt = _build_single_text_prompt(ctx, doc)
+    page_native_kwargs = (
+        native_kwargs if len(chunk_prompts) == 1 else _partial_native_kwargs(native_kwargs)
+    )
     rendered_prompt_preview = whole_prompt[:500] if debug else None
     batch_length = max(1, ctx.opts.batch_length)
     max_workers = max(1, min(ctx.opts.max_workers, ctx.budget.network_workers))
@@ -4285,14 +4325,16 @@ async def _arun_hybrid_text_extraction[T](
 
     def _run_page_branch() -> Any:
         if max_workers <= 1:
-            return _ainfer_batch(ctx, ctx.provider, chunk_prompts, batch_length, **native_kwargs)
+            return _ainfer_batch(
+                ctx, ctx.provider, chunk_prompts, batch_length, **page_native_kwargs
+            )
         return _ainfer_batch_parallel(
             ctx,
             ctx.provider,
             chunk_prompts,
             batch_length,
             max_workers,
-            **native_kwargs,
+            **page_native_kwargs,
         )
 
     whole_inferred, page_inferred = await _arun_parallel_pair(
@@ -4361,6 +4403,7 @@ def _run_fused_media_extraction[T](
     media_mode_chunks = [chunk for chunk in media_chunks if chunk.mode != "text_only"]
     text_only_chunks = [chunk for chunk in media_chunks if chunk.mode == "text_only"]
     media_requests = _build_media_inference_requests(ctx, doc, media_mode_chunks)
+    page_native_kwargs = _partial_native_kwargs(native_kwargs)
     rendered_prompt_preview = media_requests[0].prompt[:500] if (debug and media_requests) else None
     state = _DocumentState()
     batch_length = max(1, ctx.opts.batch_length)
@@ -4368,7 +4411,7 @@ def _run_fused_media_extraction[T](
     if media_requests:
         if max_workers <= 1:
             inferred = _infer_media_batch(
-                ctx, ctx.provider, media_requests, batch_length, **native_kwargs
+                ctx, ctx.provider, media_requests, batch_length, **page_native_kwargs
             )
         else:
             inferred = _infer_media_batch_parallel(
@@ -4377,7 +4420,7 @@ def _run_fused_media_extraction[T](
                 media_requests,
                 batch_length,
                 max_workers,
-                **native_kwargs,
+                **page_native_kwargs,
             )
         _accumulate_media_pass(
             pass_index=0,
@@ -4413,7 +4456,7 @@ def _run_fused_media_extraction[T](
             )
             for chunk in text_only_chunks
         ]
-        inferred = _infer_batch(ctx, ctx.provider, text_prompts, batch_length, **native_kwargs)
+        inferred = _infer_batch(ctx, ctx.provider, text_prompts, batch_length, **page_native_kwargs)
         _accumulate_pass(
             pass_index=0,
             state=state,
@@ -4464,6 +4507,7 @@ async def _arun_fused_media_extraction[T](
     media_mode_chunks = [chunk for chunk in media_chunks if chunk.mode != "text_only"]
     text_only_chunks = [chunk for chunk in media_chunks if chunk.mode == "text_only"]
     media_requests = _build_media_inference_requests(ctx, doc, media_mode_chunks)
+    page_native_kwargs = _partial_native_kwargs(native_kwargs)
     rendered_prompt_preview = media_requests[0].prompt[:500] if (debug and media_requests) else None
     state = _DocumentState()
     batch_length = max(1, ctx.opts.batch_length)
@@ -4471,7 +4515,7 @@ async def _arun_fused_media_extraction[T](
     if media_requests:
         if max_workers <= 1:
             inferred = await _ainfer_media_batch(
-                ctx, ctx.provider, media_requests, batch_length, **native_kwargs
+                ctx, ctx.provider, media_requests, batch_length, **page_native_kwargs
             )
         else:
             inferred = await _ainfer_media_batch_parallel(
@@ -4480,7 +4524,7 @@ async def _arun_fused_media_extraction[T](
                 media_requests,
                 batch_length,
                 max_workers,
-                **native_kwargs,
+                **page_native_kwargs,
             )
         _accumulate_media_pass(
             pass_index=0,
@@ -4517,7 +4561,7 @@ async def _arun_fused_media_extraction[T](
             for chunk in text_only_chunks
         ]
         inferred = await _ainfer_batch(
-            ctx, ctx.provider, text_prompts, batch_length, **native_kwargs
+            ctx, ctx.provider, text_prompts, batch_length, **page_native_kwargs
         )
         _accumulate_pass(
             pass_index=0,
@@ -4741,6 +4785,7 @@ def extract_stream[T](
         raise _streaming_mode_error("Set passes=1 when streaming.")
 
     doc = ctx.documents[0]
+    _ensure_multi_pdf_attachment_safe(doc)
     has_media = needs_media(doc.attachments)
 
     if has_media and ctx.resolved_strategy.plan != "hybrid":
@@ -4917,6 +4962,7 @@ async def aextract_stream[T](
         raise _streaming_mode_error("Set passes=1 when streaming.")
 
     doc = ctx.documents[0]
+    _ensure_multi_pdf_attachment_safe(doc)
     has_media = needs_media(doc.attachments)
 
     if has_media and ctx.resolved_strategy.plan != "hybrid":
@@ -5091,6 +5137,7 @@ def extract_iter[T](
     )
 
     for doc in ctx.documents:
+        _ensure_multi_pdf_attachment_safe(doc)
         preflights = _enforce_document_limits(ctx, doc)
         ctx.budget.document_deadline = (
             time.monotonic() + ctx.opts.per_document_timeout_s
@@ -5123,6 +5170,7 @@ def extract_iter[T](
         if ctx.use_native_schema and ctx.target_type is not None:
             _native_kwargs["target_type"] = ctx.target_type
             _native_kwargs["structured_output"] = ctx.opts.structured_output
+        _page_native_kwargs = _partial_native_kwargs(_native_kwargs)
 
         if has_media:
             _check_media_capability(ctx.provider, is_async=False)
@@ -5246,7 +5294,7 @@ def extract_iter[T](
                     )
                     if max_workers <= 1:
                         inferred = _infer_media_batch(
-                            ctx, ctx.provider, media_requests, batch_length, **_native_kwargs
+                            ctx, ctx.provider, media_requests, batch_length, **_page_native_kwargs
                         )
                     else:
                         inferred = _infer_media_batch_parallel(
@@ -5255,7 +5303,7 @@ def extract_iter[T](
                             media_requests,
                             batch_length,
                             max_workers,
-                            **_native_kwargs,
+                            **_page_native_kwargs,
                         )
                     _accumulate_media_pass(
                         pass_index=0,
@@ -5309,10 +5357,13 @@ def extract_iter[T](
                 state = _DocumentState()
                 batch_length = max(1, ctx.opts.batch_length)
                 max_workers = max(1, min(ctx.opts.max_workers, ctx.budget.network_workers))
+                chunk_native_kwargs = (
+                    _native_kwargs if len(chunk_prompts) == 1 else _page_native_kwargs
+                )
 
                 if max_workers <= 1:
                     inferred = _infer_batch(
-                        ctx, ctx.provider, chunk_prompts, batch_length, **_native_kwargs
+                        ctx, ctx.provider, chunk_prompts, batch_length, **chunk_native_kwargs
                     )
                 else:
                     inferred = _infer_batch_parallel(
@@ -5321,7 +5372,7 @@ def extract_iter[T](
                         chunk_prompts,
                         batch_length,
                         max_workers,
-                        **_native_kwargs,
+                        **chunk_native_kwargs,
                     )
                 _accumulate_pass(
                     pass_index=0,
@@ -5479,6 +5530,7 @@ async def extract_aiter[T](
     )
 
     for doc in ctx.documents:
+        _ensure_multi_pdf_attachment_safe(doc)
         preflights = _enforce_document_limits(ctx, doc)
         ctx.budget.document_deadline = (
             time.monotonic() + ctx.opts.per_document_timeout_s
@@ -5510,6 +5562,7 @@ async def extract_aiter[T](
         if ctx.use_native_schema and ctx.target_type is not None:
             _native_kwargs["target_type"] = ctx.target_type
             _native_kwargs["structured_output"] = ctx.opts.structured_output
+        _page_native_kwargs = _partial_native_kwargs(_native_kwargs)
 
         if has_media:
             _check_media_capability(ctx.provider, is_async=True)
@@ -5633,7 +5686,7 @@ async def extract_aiter[T](
                     )
                     if max_workers <= 1:
                         inferred = await _ainfer_media_batch(
-                            ctx, ctx.provider, media_requests, batch_length, **_native_kwargs
+                            ctx, ctx.provider, media_requests, batch_length, **_page_native_kwargs
                         )
                     else:
                         inferred = await _ainfer_media_batch_parallel(
@@ -5642,7 +5695,7 @@ async def extract_aiter[T](
                             media_requests,
                             batch_length,
                             max_workers,
-                            **_native_kwargs,
+                            **_page_native_kwargs,
                         )
                     _accumulate_media_pass(
                         pass_index=0,
@@ -5696,10 +5749,13 @@ async def extract_aiter[T](
                 state = _DocumentState()
                 batch_length = max(1, ctx.opts.batch_length)
                 max_workers = max(1, min(ctx.opts.max_workers, ctx.budget.network_workers))
+                chunk_native_kwargs = (
+                    _native_kwargs if len(chunk_prompts) == 1 else _page_native_kwargs
+                )
 
                 if max_workers <= 1:
                     inferred = await _ainfer_batch(
-                        ctx, ctx.provider, chunk_prompts, batch_length, **_native_kwargs
+                        ctx, ctx.provider, chunk_prompts, batch_length, **chunk_native_kwargs
                     )
                 else:
                     inferred = await _ainfer_batch_parallel(
@@ -5708,7 +5764,7 @@ async def extract_aiter[T](
                         chunk_prompts,
                         batch_length,
                         max_workers,
-                        **_native_kwargs,
+                        **chunk_native_kwargs,
                     )
                 _accumulate_pass(
                     pass_index=0,

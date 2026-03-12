@@ -1,0 +1,191 @@
+[
+  {
+    "name": "baseline_prompt",
+    "pdf_variant": "oncology_table.pdf",
+    "accuracy": 0.6666666666666666,
+    "provenance_accuracy": 0.6666666666666666,
+    "page_coverage": 0.8888888888888888,
+    "latency_s": 1.3434782089898363,
+    "wrong_present_rate": 0.3333333333333333,
+    "output": {
+      "patient_name": "Maya Hernandez",
+      "patient_identifier": "ONC-2026-0142",
+      "diagnosis": "Pathology and biomarker summary",
+      "stage": "active",
+      "oncologist": "Dr. Priya Shah",
+      "cancer_center": "null",
+      "hemoglobin_g_dl": 11.2,
+      "creatinine_mg_dl": 0.9,
+      "primary_medication": "Capecitabine"
+    },
+    "errors": []
+  },
+  {
+    "name": "medical_prompt",
+    "pdf_variant": "oncology_table.pdf",
+    "accuracy": 0.8888888888888888,
+    "provenance_accuracy": 0.6666666666666666,
+    "page_coverage": 0.6666666666666666,
+    "latency_s": 0.7482034169370309,
+    "wrong_present_rate": 0.1111111111111111,
+    "output": {
+      "patient_name": "Maya Hernandez",
+      "patient_identifier": "ONC-2026-0142",
+      "diagnosis": "Metastatic breast carcinoma",
+      "stage": "Stage IV",
+      "oncologist": "Dr. Priya Shah",
+      "cancer_center": "City General Hospital",
+      "hemoglobin_g_dl": 11.2,
+      "creatinine_mg_dl": 0.9,
+      "primary_medication": "Capecitabine"
+    },
+    "errors": []
+  },
+  {
+    "name": "grounded_prompt",
+    "pdf_variant": "oncology_table.pdf",
+    "accuracy": 0.6666666666666666,
+    "provenance_accuracy": 0.6666666666666666,
+    "page_coverage": 0.6666666666666666,
+    "latency_s": 0.6928669589105994,
+    "wrong_present_rate": 0.3333333333333333,
+    "output": {
+      "patient_name": "Maya Hernandez",
+      "patient_identifier": "ONC-2026-0142",
+      "diagnosis": "Not Specified",
+      "stage": "Not Specified",
+      "oncologist": "Dr. Priya Shah",
+      "cancer_center": "Not Specified",
+      "hemoglobin_g_dl": 11.2,
+      "creatinine_mg_dl": 0.9,
+      "primary_medication": "Capecitabine"
+    },
+    "errors": []
+  },
+  {
+    "name": "baseline_prompt",
+    "pdf_variant": "oncology_scanned.pdf",
+    "accuracy": 1.0,
+    "provenance_accuracy": 0.0,
+    "page_coverage": 0.0,
+    "latency_s": 7.547685833997093,
+    "wrong_present_rate": 0.0,
+    "output": {
+      "patient_name": "Maya Hernandez",
+      "patient_identifier": "ONC-2026-0142",
+      "diagnosis": "Metastatic breast carcinoma",
+      "stage": "Stage IV",
+      "oncologist": "Dr. Priya Shah",
+      "cancer_center": "North Valley Cancer Center",
+      "hemoglobin_g_dl": 11.2,
+      "creatinine_mg_dl": 0.9,
+      "primary_medication": "Capecitabine"
+    },
+    "errors": []
+  },
+  {
+    "name": "medical_prompt",
+    "pdf_variant": "oncology_scanned.pdf",
+    "accuracy": 1.0,
+    "provenance_accuracy": 0.0,
+    "page_coverage": 0.0,
+    "latency_s": 7.28876062494237,
+    "wrong_present_rate": 0.0,
+    "output": {
+      "patient_name": "Maya Hernandez",
+      "patient_identifier": "ONC-2026-0142",
+      "diagnosis": "Metastatic breast carcinoma",
+      "stage": "Stage IV",
+      "oncologist": "Dr. Priya Shah",
+      "cancer_center": "North Valley Cancer Center",
+      "hemoglobin_g_dl": 11.2,
+      "creatinine_mg_dl": 0.9,
+      "primary_medication": "Capecitabine"
+    },
+    "errors": []
+  },
+  {
+    "name": "grounded_prompt",
+    "pdf_variant": "oncology_scanned.pdf",
+    "accuracy": 1.0,
+    "provenance_accuracy": 0.0,
+    "page_coverage": 0.0,
+    "latency_s": 7.730164167005569,
+    "wrong_present_rate": 0.0,
+    "output": {
+      "patient_name": "Maya Hernandez",
+      "patient_identifier": "ONC-2026-0142",
+      "diagnosis": "Metastatic breast carcinoma",
+      "stage": "Stage IV",
+      "oncologist": "Dr. Priya Shah",
+      "cancer_center": "North Valley Cancer Center",
+      "hemoglobin_g_dl": 11.2,
+      "creatinine_mg_dl": 0.9,
+      "primary_medication": "Capecitabine"
+    },
+    "errors": []
+  },
+  {
+    "name": "baseline_prompt",
+    "pdf_variant": "oncology_clean.pdf",
+    "accuracy": 1.0,
+    "provenance_accuracy": 1.0,
+    "page_coverage": 1.0,
+    "latency_s": 0.9241250409977511,
+    "wrong_present_rate": 0.0,
+    "output": {
+      "patient_name": "Maya Hernandez",
+      "patient_identifier": "ONC-2026-0142",
+      "diagnosis": "Metastatic breast carcinoma",
+      "stage": "Stage IV",
+      "oncologist": "Dr. Priya Shah",
+      "cancer_center": "North Valley Cancer Center",
+      "hemoglobin_g_dl": 11.2,
+      "creatinine_mg_dl": 0.9,
+      "primary_medication": "Capecitabine"
+    },
+    "errors": []
+  },
+  {
+    "name": "medical_prompt",
+    "pdf_variant": "oncology_clean.pdf",
+    "accuracy": 1.0,
+    "provenance_accuracy": 0.7777777777777778,
+    "page_coverage": 0.7777777777777778,
+    "latency_s": 0.7110372079769149,
+    "wrong_present_rate": 0.0,
+    "output": {
+      "patient_name": "Maya Hernandez",
+      "patient_identifier": "ONC-2026-0142",
+      "diagnosis": "Metastatic breast carcinoma",
+      "stage": "Stage IV",
+      "oncologist": "Dr. Priya Shah",
+      "cancer_center": "North Valley Cancer Center",
+      "hemoglobin_g_dl": 11.2,
+      "creatinine_mg_dl": 0.9,
+      "primary_medication": "Capecitabine"
+    },
+    "errors": []
+  },
+  {
+    "name": "grounded_prompt",
+    "pdf_variant": "oncology_clean.pdf",
+    "accuracy": 1.0,
+    "provenance_accuracy": 1.0,
+    "page_coverage": 1.0,
+    "latency_s": 0.699369415990077,
+    "wrong_present_rate": 0.0,
+    "output": {
+      "patient_name": "Maya Hernandez",
+      "patient_identifier": "ONC-2026-0142",
+      "diagnosis": "Metastatic breast carcinoma",
+      "stage": "Stage IV",
+      "oncologist": "Dr. Priya Shah",
+      "cancer_center": "North Valley Cancer Center",
+      "hemoglobin_g_dl": 11.2,
+      "creatinine_mg_dl": 0.9,
+      "primary_medication": "Capecitabine"
+    },
+    "errors": []
+  }
+]

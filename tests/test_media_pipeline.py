@@ -122,6 +122,26 @@ class _ImageOnlyMediaProvider:
 
 
 @dataclass(slots=True)
+class _KwargCaptureNativeMediaProvider:
+    """Provider that records native structured output kwargs for assertions."""
+
+    model_id: str | None = "test:kwargs-native-media"
+    supported_attachment_kinds = frozenset({"image"})
+    infer_media_kwargs: list[dict[str, Any]] = field(default_factory=list)
+
+    def supports_native_structured_output(self) -> bool:
+        return True
+
+    def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
+        del kwargs
+        return ['{"total": 42.0, "vendor": "acme"}'] * len(batch_prompts)
+
+    def infer_media(self, batch: Sequence[InferenceRequest], **kwargs: Any) -> Sequence[str]:
+        self.infer_media_kwargs.append(dict(kwargs))
+        return ['{"total": 99.0}'] * len(batch)
+
+
+@dataclass(slots=True)
 class _AsyncMediaProvider:
     """Provider with both sync and async media support."""
 
@@ -439,6 +459,24 @@ def test_extract_pdf_document_with_page_indices():
     req = provider.infer_media_calls[0][0]
     assert req.page_index is None
     assert "Focus on pages: 1, 2, 3." in req.prompt
+
+
+def test_extract_rejects_multi_pdf_document_until_attachment_safe_provenance_lands():
+    provider = _MediaProvider()
+    doc = Document(
+        attachments=(
+            Attachment.pdf(b"%PDF-1"),
+            Attachment.pdf(b"%PDF-2"),
+        )
+    )
+
+    with pytest.raises(NotImplementedError, match="Multi-PDF extraction on a single Document"):
+        extract(
+            doc,
+            Invoice,
+            model=provider,
+            options=ExtractOptions(media=MediaOptions(pdf_mode="native")),
+        )
 
 
 def test_extract_pdf_document_auto_mode_uses_text_layer_extraction(tmp_path: Path):
@@ -1203,6 +1241,28 @@ def test_aextract_document_mode_native_pdf_rejects_provider_without_pdf_support(
     asyncio.run(_run())
 
 
+def test_aextract_rejects_multi_pdf_document_until_attachment_safe_provenance_lands():
+    from parsantic.extract import aextract
+
+    async def _run() -> None:
+        provider = _AsyncMediaProvider()
+        doc = Document(
+            attachments=(
+                Attachment.pdf(b"%PDF-1"),
+                Attachment.pdf(b"%PDF-2"),
+            )
+        )
+        with pytest.raises(NotImplementedError, match="Multi-PDF extraction on a single Document"):
+            await aextract(
+                doc,
+                Invoice,
+                model=provider,
+                options=ExtractOptions(media=MediaOptions(pdf_mode="native")),
+            )
+
+    asyncio.run(_run())
+
+
 def test_aextract_pdf_document_hybrid_mode_runs_whole_and_page_branches_concurrently(
     monkeypatch,
 ):
@@ -1446,3 +1506,53 @@ def test_extract_with_media_options_passed_through():
     opts = ExtractOptions(media=MediaOptions(max_image_dim=0))  # 0 = skip normalization
     result = extract(doc, Invoice, model=provider, options=opts)
     assert result.value.total == 99.0
+
+
+def test_auto_page_strategy_bundles_multi_image_documents():
+    provider = _ImageOnlyMediaProvider()
+    doc = Document(
+        attachments=(
+            Attachment.image(b"\x89PNG-page-1"),
+            Attachment.image(b"\x89PNG-page-2"),
+        )
+    )
+    result = extract(doc, Invoice, model=provider)
+    assert result.value.total == 99.0
+    assert len(provider.infer_media_calls) == 1
+    batch = provider.infer_media_calls[0]
+    assert len(batch) == 1
+    assert batch[0].page_index is None
+    assert len(batch[0].attachments) == 2
+
+
+def test_page_map_reduce_uses_partial_target_type_for_native_structured_output():
+    doc = Document(
+        attachments=(
+            Attachment.image(b"\x89PNG-page-1"),
+            Attachment.image(b"\x89PNG-page-2"),
+        )
+    )
+    provider = _KwargCaptureNativeMediaProvider()
+    result = extract(
+        doc,
+        Invoice,
+        model=provider,
+        options=ExtractOptions(media=MediaOptions(page_strategy="map_reduce")),
+    )
+    assert result.value.total == 99.0
+    assert provider.infer_media_kwargs
+    map_kwargs = provider.infer_media_kwargs[0]
+    assert map_kwargs["target_type"] is not Invoice
+    assert map_kwargs["target_type"].__name__ == "InvoicePartial"
+    assert "required" not in map_kwargs["target_type"].model_json_schema()
+
+    provider = _KwargCaptureNativeMediaProvider()
+    result = extract(
+        doc,
+        Invoice,
+        model=provider,
+        options=ExtractOptions(media=MediaOptions(page_strategy="single")),
+    )
+    assert result.value.total == 99.0
+    single_kwargs = provider.infer_media_kwargs[0]
+    assert single_kwargs["target_type"] is Invoice

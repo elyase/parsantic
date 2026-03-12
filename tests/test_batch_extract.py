@@ -8,7 +8,9 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
+from parsantic.extract import ExtractOptions
 from parsantic.extract.batch import BatchResult, BatchStatus, aextract_batch, extract_batch
+from parsantic.extract.media.attachments import Attachment
 from parsantic.extract.providers.base import InferenceRequest
 from parsantic.extract.types import Document
 
@@ -78,6 +80,23 @@ class _FakeProvider:
     def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
         self.infer_calls += 1
         return [self.output for _ in batch_prompts]
+
+
+@dataclass(slots=True)
+class _AsyncTrackingProvider:
+    model_id: str | None = "tracking"
+    active_calls: int = 0
+    max_active_calls: int = 0
+
+    def infer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
+        return ['{"name": "sync"}' for _ in batch_prompts]
+
+    async def ainfer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Sequence[str]:
+        self.active_calls += 1
+        self.max_active_calls = max(self.max_active_calls, self.active_calls)
+        await asyncio.sleep(0.05)
+        self.active_calls -= 1
+        return ['{"name": "async"}' for _ in batch_prompts]
 
 
 def test_extract_batch_uses_batch_api_when_supported():
@@ -163,6 +182,27 @@ def test_extract_batch_handles_empty_document_list():
     assert result.total_documents == 0
 
 
+def test_extract_batch_rejects_multi_pdf_document_until_attachment_safe_provenance_lands():
+    provider = _FakeBatchProvider(
+        outputs=['{"name": "Alice"}'],
+        statuses=[
+            BatchStatus(batch_id="batch-123", state="completed", completed_count=1, total_count=1)
+        ],
+    )
+    docs = [
+        Document(
+            attachments=(
+                Attachment.pdf(b"%PDF-1"),
+                Attachment.pdf(b"%PDF-2"),
+            ),
+            document_id="doc-multi-pdf",
+        )
+    ]
+
+    with pytest.raises(NotImplementedError, match="Multi-PDF extraction on a single Document"):
+        extract_batch(docs, Person, model=provider, poll_interval=0.001, timeout=1.0)
+
+
 def test_aextract_batch_uses_batch_api_when_supported():
     provider = _FakeBatchProvider(
         outputs=['{"name": "Async Alice"}'],
@@ -187,3 +227,26 @@ def test_aextract_batch_uses_batch_api_when_supported():
     assert result.total_documents == 1
     assert len(result.results) == 1
     assert result.results[0].value.name == "Async Alice"
+
+
+def test_aextract_batch_fallback_bounds_concurrent_provider_calls():
+    provider = _AsyncTrackingProvider()
+    docs = [
+        Document(text="Alpha.\nBeta.\nGamma.\nDelta.", document_id="doc-1"),
+        Document(text="Alpha.\nBeta.\nGamma.\nDelta.", document_id="doc-2"),
+    ]
+
+    async def _run() -> BatchResult[Person]:
+        return await aextract_batch(
+            docs,
+            Person,
+            model=provider,
+            options=ExtractOptions(mode="hybrid", max_char_buffer=8, batch_length=1, max_workers=2),
+        )
+
+    result = asyncio.run(_run())
+
+    assert result.used_batch_api is False
+    assert result.total_documents == 2
+    assert [item.value.name for item in result.results] == ["async", "async"]
+    assert provider.max_active_calls <= 2

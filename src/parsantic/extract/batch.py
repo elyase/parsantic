@@ -14,6 +14,7 @@ from .pipeline import (
     _align_evidence,
     _build_extraction_context,
     _default_merged_value,
+    _ensure_multi_pdf_attachment_safe,
     _parse_with_repair,
     _render_prompt,
 )
@@ -49,6 +50,56 @@ class BatchResult[T]:
     batch_id: str | None
     used_batch_api: bool
     total_documents: int
+
+
+@dataclass(slots=True)
+class _SharedAsyncProviderBudget:
+    max_inflight_requests: int
+    max_inflight_documents: int
+
+
+@dataclass(slots=True)
+class _AsyncBudgetedProvider:
+    provider: Any
+    request_budget: _SharedAsyncProviderBudget
+    request_semaphore: asyncio.Semaphore
+    model_id: str | None = None
+
+    def __post_init__(self) -> None:
+        self.model_id = getattr(self.provider, "model_id", None)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.provider, name)
+
+    async def ainfer(self, batch_prompts: Sequence[str], **kwargs: Any) -> Any:
+        async with self.request_semaphore:
+            if hasattr(self.provider, "ainfer"):
+                return await self.provider.ainfer(batch_prompts, **kwargs)
+            return await asyncio.to_thread(self.provider.infer, batch_prompts, **kwargs)
+
+    async def ainfer_media(self, batch: Sequence[InferenceRequest], **kwargs: Any) -> Any:
+        async with self.request_semaphore:
+            if hasattr(self.provider, "ainfer_media"):
+                return await self.provider.ainfer_media(batch, **kwargs)
+            return await asyncio.to_thread(self.provider.infer_media, batch, **kwargs)
+
+
+def _provider_request_limit(ctx: Any, provider: Any) -> int:
+    limits = [ctx.opts.concurrency.network_workers, ctx.opts.max_workers]
+    provider_cap = getattr(provider, "max_concurrency", None)
+    if isinstance(provider_cap, int) and provider_cap > 0:
+        limits.append(provider_cap)
+    return max(1, min(limits))
+
+
+def _fallback_async_budget(ctx: Any, provider: Any) -> _SharedAsyncProviderBudget:
+    max_inflight_requests = _provider_request_limit(ctx, provider)
+    has_media_documents = any(doc.attachments for doc in ctx.documents)
+    max_inflight_documents = 1 if has_media_documents else max_inflight_requests
+    return _SharedAsyncProviderBudget(
+        max_inflight_requests=max_inflight_requests,
+        max_inflight_documents=max_inflight_documents,
+    )
 
 
 def _normalize_batch_outputs(outputs: Any, *, expected_count: int) -> list[str]:
@@ -104,6 +155,7 @@ def _batch_kwargs(ctx: Any) -> dict[str, Any]:
 def _build_batch_requests(ctx: Any) -> list[InferenceRequest]:
     requests: list[InferenceRequest] = []
     for doc_idx, doc in enumerate(ctx.documents):
+        _ensure_multi_pdf_attachment_safe(doc)
         prompt_text = _render_prompt(
             ctx.prompt_obj,
             schema_text=ctx.schema_text,
@@ -319,18 +371,27 @@ async def aextract_batch[T](
 
     provider: BaseProvider | SupportsMediaInfer | SupportsBatchInfer = ctx.provider
     if not isinstance(provider, SupportsBatchInfer):
+        request_budget = _fallback_async_budget(ctx, provider)
+        budgeted_provider = _AsyncBudgetedProvider(
+            provider=provider,
+            request_budget=request_budget,
+            request_semaphore=asyncio.Semaphore(request_budget.max_inflight_requests),
+        )
         extractor = Extractor(
-            model=provider,
+            model=budgeted_provider,
             prompt=prompt,
             options=options,
             provider_kwargs=provider_kwargs,
         )
+        document_semaphore = asyncio.Semaphore(request_budget.max_inflight_documents)
 
         async def _extract_one(doc: Document) -> ExtractResult[T]:
-            result = await extractor.aextract(doc, target)
-            if isinstance(result, list):
-                raise TypeError("aextract() returned list for a single document")
-            return result
+            async with document_semaphore:
+                _ensure_multi_pdf_attachment_safe(doc)
+                result = await extractor.aextract(doc, target)
+                if isinstance(result, list):
+                    raise TypeError("aextract() returned list for a single document")
+                return result
 
         fallback_results = list(await asyncio.gather(*[_extract_one(d) for d in ctx.documents]))
         return BatchResult(

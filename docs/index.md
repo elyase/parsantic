@@ -225,6 +225,46 @@ result = extract(
 By default, PDFs with a text layer are extracted as text (no vision cost);
 otherwise pages are rasterized to images.
 
+!!! important
+    Multi-PDF extraction into a single `Document` is temporarily disabled while
+    attachment-aware provenance is being implemented. For case-level workflows,
+    create one `Document` per PDF and run them with `extract_batch()` or
+    `aextract_batch()`.
+
+For multi-document async extraction, prefer one `Document` per input PDF and
+keep concurrency at the batch layer instead of mixing app-level fanout with
+thread-wrapped sync calls:
+
+```python
+import asyncio
+from pathlib import Path
+from pydantic import BaseModel
+
+from parsantic.extract import Document, aextract_batch
+
+
+class Invoice(BaseModel):
+    invoice_number: str = ""
+    vendor: str = ""
+    total: float = 0.0
+
+
+async def main() -> None:
+    docs = [
+        Document.from_pdf(Path("invoice-1.pdf"), document_id="invoice-1"),
+        Document.from_pdf(Path("invoice-2.pdf"), document_id="invoice-2"),
+    ]
+    result = await aextract_batch(
+        docs,
+        Invoice,
+        model="gemini:gemini-3.1-flash-lite-preview",
+    )
+    print([item.value for item in result.results])
+
+
+asyncio.run(main())
+```
+
 For a richer end-to-end example, see:
 - `examples/demo_pdf.py` for a synthetic oncology summary extracted into a FHIR-shaped bundle with page provenance
 - `examples/demo_pdf_modes.py` for a side-by-side comparison of the PDF modes
@@ -293,10 +333,14 @@ result = extract(
         Invoice,
         model="openai:gpt-4o-mini",
         options=ExtractOptions(
-            media=MediaOptions(pdf_mode="raster", page_strategy="map_reduce"),
+            media=MediaOptions(pdf_mode="raster", page_strategy="single"),
         ),
     )
     ```
+
+    For rasterized PDFs/images, `page_strategy="single"` is usually the best default for
+    flat schemas. Use `page_strategy="map_reduce"` when you need per-page provenance or
+    the document is too long to bundle in one request.
 
     | `mode` | Behavior |
     | :--- | :--- |
