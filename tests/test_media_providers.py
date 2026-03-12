@@ -145,13 +145,15 @@ def test_build_message_parts_reads_path_bytes(tmp_path: Path):
 
 
 def test_sync_infer_runs_batch_prompts_concurrently(monkeypatch):
+    import asyncio
+
     provider = _provider_without_init()
 
-    def _slow_run(prompt, **kwargs):
-        time.sleep(0.2)
+    async def _slow_arun(self, prompt, **kwargs):
+        await asyncio.sleep(0.2)
         return prompt
 
-    monkeypatch.setattr(type(provider), "_run_with_native_fallback", staticmethod(_slow_run))
+    monkeypatch.setattr(type(provider), "_arun_with_native_fallback", _slow_arun)
 
     started = time.perf_counter()
     outputs = provider.infer(["a", "b", "c"], max_concurrency=3)
@@ -162,13 +164,15 @@ def test_sync_infer_runs_batch_prompts_concurrently(monkeypatch):
 
 
 def test_sync_infer_media_runs_requests_concurrently(monkeypatch):
+    import asyncio
+
     provider = _provider_without_init()
 
-    def _slow_run(prompt, **kwargs):
-        time.sleep(0.2)
-        return prompt[-1]
+    async def _slow_arun(self, prompt, **kwargs):
+        await asyncio.sleep(0.2)
+        return prompt[-1] if isinstance(prompt, list) else prompt
 
-    monkeypatch.setattr(type(provider), "_run_with_native_fallback", staticmethod(_slow_run))
+    monkeypatch.setattr(type(provider), "_arun_with_native_fallback", _slow_arun)
 
     requests = [
         InferenceRequest(prompt="p1"),

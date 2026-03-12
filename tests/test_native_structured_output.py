@@ -270,11 +270,21 @@ class TestResolveOutputType:
 
 
 class TestInferWithNativeOutput:
-    def test_infer_passes_kwargs_to_run_sync(self):
-        provider = _make_provider(supports_native=False)
+    def _make_async_mock_result(self, output):
+        """Create a coroutine-returning mock for agent.run."""
+
         mock_result = MagicMock()
-        mock_result.output = '{"name":"Alice","age":30}'
-        provider._agent.run_sync.return_value = mock_result
+        mock_result.output = output
+
+        async def _fake_run(*args, **kwargs):
+            return mock_result
+
+        return mock_result, _fake_run
+
+    def test_infer_passes_kwargs_to_run(self):
+        provider = _make_provider(supports_native=False)
+        mock_result, fake_run = self._make_async_mock_result('{"name":"Alice","age":30}')
+        provider._agent.run = MagicMock(side_effect=fake_run)
 
         results = provider.infer(
             ["extract name"],
@@ -282,13 +292,12 @@ class TestInferWithNativeOutput:
             structured_output="prompt",
         )
         assert results == ['{"name":"Alice","age":30}']
-        provider._agent.run_sync.assert_called_once()
+        provider._agent.run.assert_called_once()
 
     def test_infer_with_native_mode_uses_output_type_override(self):
         provider = _make_provider(supports_native=False)
-        mock_result = MagicMock()
-        mock_result.output = _SampleModel(name="Alice", age=30)
-        provider._agent.run_sync.return_value = mock_result
+        mock_result, fake_run = self._make_async_mock_result(_SampleModel(name="Alice", age=30))
+        provider._agent.run = MagicMock(side_effect=fake_run)
 
         results = provider.infer(
             ["extract name"],
@@ -300,14 +309,18 @@ class TestInferWithNativeOutput:
         parsed = json.loads(results[0])
         assert parsed == {"name": "Alice", "age": 30}
 
-        # run_sync should have been called with output_type override
-        call_kwargs = provider._agent.run_sync.call_args
+        # run should have been called with output_type override
+        call_kwargs = provider._agent.run.call_args
         assert call_kwargs.kwargs.get("output_type") is not None
 
     def test_infer_native_failure_reraises_when_no_raw_json(self):
         """When native fails with no message history, should re-raise."""
         provider = _make_provider(supports_native=False)
-        provider._agent.run_sync.side_effect = RuntimeError("native failed")
+
+        async def _fail(*args, **kwargs):
+            raise RuntimeError("native failed")
+
+        provider._agent.run = MagicMock(side_effect=_fail)
 
         with pytest.raises(RuntimeError, match="native failed"):
             provider.infer(
@@ -337,8 +350,11 @@ class TestInferWithNativeOutput:
             )
         ]
 
-        # run_sync raises on native call
-        provider._agent.run_sync.side_effect = RuntimeError("validation failed")
+        # agent.run raises on native call
+        async def _fail(*args, **kwargs):
+            raise RuntimeError("validation failed")
+
+        provider._agent.run = MagicMock(side_effect=_fail)
 
         with patch(
             "parsantic.extract.providers.pydantic_ai_provider.capture_run_messages"
