@@ -9,7 +9,6 @@ Supports model strings like ``openai:gpt-4o-mini``, ``anthropic:claude-sonnet``,
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 import json
 import logging
 from collections.abc import AsyncIterator, Iterator, Sequence
@@ -466,32 +465,26 @@ class PydanticAIProvider:
         structured_output: Literal["auto", "native", "prompt"] = "prompt",
         **kwargs: Any,
     ) -> Sequence[str]:
-        if len(batch_prompts) <= 1:
-            return [
-                self._run_with_native_fallback(
-                    prompt,
-                    target_type=target_type,
-                    structured_output=structured_output,
-                    **kwargs,
+        # Bridge to async implementation to avoid ThreadPoolExecutor deadlocks
+        # with providers that use shared async HTTP clients (e.g. Vertex AI).
+        try:
+            return list(
+                asyncio.run(
+                    self.ainfer(
+                        batch_prompts,
+                        target_type=target_type,
+                        structured_output=structured_output,
+                        **kwargs,
+                    )
                 )
-                for prompt in batch_prompts
-            ]
-
-        max_concurrency = max(1, int(kwargs.pop("max_concurrency", self.max_concurrency)))
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=min(max_concurrency, len(batch_prompts))
-        ) as pool:
-            futures = [
-                pool.submit(
-                    self._run_with_native_fallback,
-                    prompt,
-                    target_type=target_type,
-                    structured_output=structured_output,
-                    **kwargs,
-                )
-                for prompt in batch_prompts
-            ]
-            return [future.result() for future in futures]
+            )
+        except RuntimeError as exc:
+            if "cannot be called from a running event loop" in str(exc).lower():
+                raise RuntimeError(
+                    "Cannot call sync infer() from within an active async context. "
+                    "Use ainfer() instead."
+                ) from exc
+            raise
 
     def infer_stream(
         self,
@@ -543,36 +536,26 @@ class PydanticAIProvider:
         structured_output: Literal["auto", "native", "prompt"] = "prompt",
         **kwargs: Any,
     ) -> Sequence[str]:
-        if len(batch) <= 1:
-            results: list[str] = []
-            for request in batch:
-                parts = self._build_message_parts(request)
-                results.append(
-                    self._run_with_native_fallback(
-                        parts,
+        # Bridge to async implementation to avoid ThreadPoolExecutor deadlocks
+        # with providers that use shared async HTTP clients (e.g. Vertex AI).
+        try:
+            return list(
+                asyncio.run(
+                    self.ainfer_media(
+                        batch,
                         target_type=target_type,
                         structured_output=structured_output,
                         **kwargs,
                     )
                 )
-            return results
-
-        max_concurrency = max(1, int(kwargs.pop("max_concurrency", self.max_concurrency)))
-
-        def _run_request(request: InferenceRequest) -> str:
-            parts = self._build_message_parts(request)
-            return self._run_with_native_fallback(
-                parts,
-                target_type=target_type,
-                structured_output=structured_output,
-                **kwargs,
             )
-
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=min(max_concurrency, len(batch))
-        ) as pool:
-            futures = [pool.submit(_run_request, request) for request in batch]
-            return [future.result() for future in futures]
+        except RuntimeError as exc:
+            if "cannot be called from a running event loop" in str(exc).lower():
+                raise RuntimeError(
+                    "Cannot call sync infer_media() from within an active async context. "
+                    "Use ainfer_media() instead."
+                ) from exc
+            raise
 
     def _make_semaphore(self, kwargs: dict[str, Any]) -> asyncio.Semaphore:
         concurrency = kwargs.pop("max_concurrency", self.max_concurrency)
