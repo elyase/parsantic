@@ -23,6 +23,7 @@ class PreparedPdf:
     raster_cache: dict[
         tuple[int, tuple[int, ...] | None, str, int], tuple[tuple[int, bytes], ...]
     ] = field(default_factory=dict)
+    subset_cache: dict[tuple[int, ...], bytes] = field(default_factory=dict)
 
 
 _PREPARED_PDF_CACHE: dict[tuple[str, tuple[int, ...] | None], PreparedPdf] = {}
@@ -156,6 +157,73 @@ def has_text_layer(source: Path | str | bytes) -> bool:
     if not prepared.pages:
         return False
     return any(score_text_quality(page.text) > 0.1 for page in prepared.pages)
+
+
+def _read_source_bytes(source: Path | str | bytes) -> bytes:
+    if isinstance(source, bytes):
+        return source
+    if isinstance(source, str):
+        return Path(source).read_bytes()
+    return source.read_bytes()
+
+
+def normalize_page_indices(
+    page_indices: tuple[int, ...] | list[int],
+) -> tuple[int, ...]:
+    """Normalize page indices into unique ascending document order."""
+    return tuple(sorted(set(page_indices)))
+
+
+def subset_pdf(
+    source: Path | str | bytes,
+    *,
+    page_indices: tuple[int, ...],
+) -> bytes:
+    """Return a new PDF containing only the selected pages.
+
+    Page indices are 0-based and preserve caller order.
+    """
+    if not page_indices:
+        raise ValueError("page_indices must not be empty")
+
+    normalized_page_indices = normalize_page_indices(page_indices)
+    if not normalized_page_indices:
+        raise ValueError("page_indices must not be empty")
+
+    data = _read_source_bytes(source)
+    full_prepared = prepare_pdf(source)
+    if normalized_page_indices == tuple(page.page_index for page in full_prepared.pages):
+        return data
+
+    cache_key = normalized_page_indices
+    cached = full_prepared.subset_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    prepared = prepare_pdf(source)
+    cached = prepared.subset_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    _check_pymupdf()
+    import fitz
+
+    doc = fitz.open(stream=data, filetype="pdf")
+    subset_doc = fitz.open()
+    try:
+        for page_index in normalized_page_indices:
+            if page_index < 0 or page_index >= len(doc):
+                raise ValueError(
+                    f"Page index {page_index} out of range (document has {len(doc)} pages)"
+                )
+            subset_doc.insert_pdf(doc, from_page=page_index, to_page=page_index)
+        subset_bytes = subset_doc.tobytes()
+    finally:
+        subset_doc.close()
+        doc.close()
+
+    full_prepared.subset_cache[cache_key] = subset_bytes
+    return subset_bytes
 
 
 def rasterize_pdf(

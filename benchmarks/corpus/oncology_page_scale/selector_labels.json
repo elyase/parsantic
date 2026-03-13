@@ -1,0 +1,14 @@
+{
+  "oncology_scanned_05p.pdf": {
+    "labs_only": [2],
+    "medication_only": [3]
+  },
+  "oncology_scanned_10p.pdf": {
+    "labs_only": [2],
+    "medication_only": [3]
+  },
+  "oncology_scanned_15p.pdf": {
+    "labs_only": [2],
+    "medication_only": [3]
+  }
+}

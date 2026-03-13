@@ -1,0 +1,56 @@
+[
+  {
+    "case": "oncology_scanned_05p.pdf:labs_only",
+    "page_count": 5,
+    "selected_page_count": 5,
+    "fallback_reason": "low_text_quality",
+    "page_recall": 1.0,
+    "full_latency_s": 7.17,
+    "selected_latency_s": 6.311
+  },
+  {
+    "case": "oncology_scanned_05p.pdf:medication_only",
+    "page_count": 5,
+    "selected_page_count": 5,
+    "fallback_reason": "low_text_quality",
+    "page_recall": 1.0,
+    "full_latency_s": 6.3,
+    "selected_latency_s": 6.324
+  },
+  {
+    "case": "oncology_scanned_10p.pdf:labs_only",
+    "page_count": 10,
+    "selected_page_count": 10,
+    "fallback_reason": "low_text_quality",
+    "page_recall": 1.0,
+    "full_latency_s": 10.357,
+    "selected_latency_s": 10.577
+  },
+  {
+    "case": "oncology_scanned_10p.pdf:medication_only",
+    "page_count": 10,
+    "selected_page_count": 10,
+    "fallback_reason": "low_text_quality",
+    "page_recall": 1.0,
+    "full_latency_s": 10.572,
+    "selected_latency_s": 10.066
+  },
+  {
+    "case": "oncology_scanned_15p.pdf:labs_only",
+    "page_count": 15,
+    "selected_page_count": 15,
+    "fallback_reason": "low_text_quality",
+    "page_recall": 1.0,
+    "full_latency_s": 15.188,
+    "selected_latency_s": 15.587
+  },
+  {
+    "case": "oncology_scanned_15p.pdf:medication_only",
+    "page_count": 15,
+    "selected_page_count": 15,
+    "fallback_reason": "low_text_quality",
+    "page_recall": 1.0,
+    "full_latency_s": 15.365,
+    "selected_latency_s": 15.171
+  }
+]

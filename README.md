@@ -274,6 +274,7 @@ asyncio.run(main())
 For a richer end-to-end example, see:
 - `examples/demo_pdf.py` for a synthetic oncology summary extracted into a FHIR-shaped bundle with page provenance
 - `examples/demo_pdf_modes.py` for a side-by-side comparison of the PDF modes
+- `examples/demo_page_selection.py` for deterministic page pruning before extraction
 
 Use `mode` when you want to force a higher-level PDF strategy:
 
@@ -326,6 +327,53 @@ result = extract(
     ),
 )
 ```
+
+## Deterministic page selection
+
+For long PDFs with sparse relevant content, you can run a cheap page-analysis
+pass first, deterministically select a subset of pages, then extract only from
+that subset.
+
+```python
+from pathlib import Path
+from pydantic import BaseModel, Field
+
+from parsantic import extract
+from parsantic.extract import Document, analyze_pdf_source, select_pdf_pages
+
+
+class LabsOnly(BaseModel):
+    hemoglobin_g_dl: float = Field(description="Hemoglobin lab value in g/dL")
+    creatinine_mg_dl: float = Field(description="Creatinine lab value in mg/dL")
+
+
+pdf_path = Path("oncology-packet.pdf")
+analysis = analyze_pdf_source(pdf_path)
+selection = select_pdf_pages(analysis, LabsOnly, window=1, max_pages=4)
+
+result = extract(
+    Document.from_pdf(pdf_path, page_indices=selection.page_indices),
+    LabsOnly,
+    model="gemini:gemini-2.5-flash-lite",
+)
+
+print(selection.page_indices)
+print(selection.fallback_reason)
+print(result.value)
+```
+
+This v1 flow is intentionally narrow:
+- deterministic only
+- page-level only
+- opt-in
+- fail-open: when selection is too broad or uncertain, it falls back to the full document
+
+When `page_indices` are used with native PDF input, Parsantic now uploads a
+PDF containing only those selected pages. If local PDF rewriting support is
+unavailable, it falls back to sending the original PDF with page hints instead.
+
+This works best on long PDFs with a usable text layer. For scan-heavy PDFs, the
+selector will often fail open and keep the full document.
 
 <details>
 <summary>Lower-level PDF and image control</summary>

@@ -117,12 +117,34 @@ def _native_pdf_chunks(
     """Create a single chunk for a PDF sent natively (no rasterization)."""
     hint_text: str = text
     if attachment.page_indices is not None:
-        pages_display = ", ".join(str(p + 1) for p in attachment.page_indices)
-        hint_text = (
-            f"{text}\n\nFocus on pages: {pages_display}."
-            if text
-            else f"Focus on pages: {pages_display}."
-        )
+        try:
+            from .preprocessing import subset_pdf
+
+            subset_bytes = subset_pdf(attachment.source, page_indices=attachment.page_indices)
+            attachment = Attachment.pdf(subset_bytes, name=attachment.name)
+            hint_text = (
+                f"{text}\n\nThe uploaded PDF already contains only the selected pages."
+                if text
+                else "The uploaded PDF already contains only the selected pages."
+            )
+        except ImportError:
+            pages_display = ", ".join(str(p + 1) for p in attachment.page_indices)
+            hint_text = (
+                f"{text}\n\nFocus on pages: {pages_display}."
+                if text
+                else f"Focus on pages: {pages_display}."
+            )
+        except (OSError, ValueError, RuntimeError):
+            logger.warning(
+                "PDF subsetting failed for native PDF input; sending original PDF with page hints",
+                exc_info=True,
+            )
+            pages_display = ", ".join(str(p + 1) for p in attachment.page_indices)
+            hint_text = (
+                f"{text}\n\nFocus on pages: {pages_display}."
+                if text
+                else f"Focus on pages: {pages_display}."
+            )
     return [
         MediaChunk(
             attachment=attachment,

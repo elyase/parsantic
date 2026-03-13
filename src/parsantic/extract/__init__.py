@@ -34,6 +34,7 @@ from .pipeline import (
 )
 from .prompt import Example, Prompt, PromptValidationLevel
 from .providers.static import StaticProvider
+from .selection import PageSelection, select_pdf_pages
 from .types import (
     AlignmentStatus,
     ChunkDebug,
@@ -77,6 +78,7 @@ __all__ = [
     "MergeConflict",
     "Prompt",
     "PageQuality",
+    "PageSelection",
     "PreflightResult",
     "ProvenancePolicy",
     "PromptValidationLevel",
@@ -101,5 +103,6 @@ __all__ = [
     "extract_stream",
     "get_resolver",
     "resolve_runtime_strategy",
+    "select_pdf_pages",
     "visualize",
 ]

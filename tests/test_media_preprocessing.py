@@ -15,8 +15,10 @@ from parsantic.extract.media.preprocessing import (  # noqa: E402
     file_hash,
     has_text_layer,
     normalize_image,
+    normalize_page_indices,
     prepare_pdf,
     rasterize_pdf,
+    subset_pdf,
 )
 
 
@@ -94,6 +96,39 @@ def test_rasterize_pdf_raises_for_out_of_range_index():
 
     with pytest.raises(ValueError, match="out of range"):
         rasterize_pdf(pdf, page_indices=(2,))
+
+
+def test_subset_pdf_returns_only_selected_pages():
+    pdf = _make_multipage_text_pdf(pages=4)
+    subset = subset_pdf(pdf, page_indices=(1, 3))
+
+    with fitz.open(stream=subset, filetype="pdf") as doc:
+        assert len(doc) == 2
+        texts = [page.get_text().strip() for page in doc]
+
+    assert texts == ["Page 1", "Page 3"]
+
+
+def test_subset_pdf_normalizes_unsorted_duplicate_page_indices():
+    pdf = _make_multipage_text_pdf(pages=4)
+    subset = subset_pdf(pdf, page_indices=(3, 1, 1))
+
+    with fitz.open(stream=subset, filetype="pdf") as doc:
+        texts = [page.get_text().strip() for page in doc]
+
+    assert texts == ["Page 1", "Page 3"]
+
+
+def test_subset_pdf_returns_original_bytes_for_full_range_selection():
+    pdf = _make_multipage_text_pdf(pages=3)
+
+    subset = subset_pdf(pdf, page_indices=(0, 1, 2))
+
+    assert subset == pdf
+
+
+def test_normalize_page_indices_sorts_and_dedupes():
+    assert normalize_page_indices((2, 0, 2, 1)) == (0, 1, 2)
 
 
 def test_normalize_image_resizes_oversized_image():

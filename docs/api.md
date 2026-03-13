@@ -12,6 +12,8 @@
 
 ::: parsantic.extract
 
+::: parsantic.extract.select_pdf_pages
+
 ::: parsantic.extract_iter
 
 ::: parsantic.extract_aiter
@@ -63,6 +65,8 @@
 ::: parsantic.extract.options.ResolvedStrategy
 
 ::: parsantic.extract.SourceRef
+
+::: parsantic.extract.PageSelection
 
 ::: parsantic.extract.FieldStatus
 

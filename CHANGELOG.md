@@ -7,6 +7,29 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## Unreleased
 
+## 0.7.3 - 2026-03-12
+
+### Added
+
+- Added deterministic page selection via `select_pdf_pages(...)` for opt-in
+  page pruning before extraction.
+- Added selector benchmark coverage and a checked-in selector snapshot for the
+  oncology page-scale corpus.
+- Added docs and an example for page-selection-first extraction.
+
+### Changed
+
+- Native PDF extraction with `page_indices` now uploads a physically subsetted
+  PDF when local PDF rewriting support is available.
+- Nested schema selection now resolves `$defs` / `$ref` and accepts
+  `TypeAdapter` inputs directly.
+
+### Fixed
+
+- Fixed native PDF prompt / payload semantics so selected-page native requests
+  no longer mix full-document hints with subsetted uploads.
+- Added normalization / no-op handling for subsetted page ranges.
+
 ## 0.7.2 - 2026-03-12
 
 ### Added

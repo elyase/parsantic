@@ -140,6 +140,25 @@ Model: `gemini:gemini-2.5-flash-lite`
 | `document_auto` | 7.12s | 10.79s | 16.06s | 0.89 |
 | `document_grounded` | 6.47s | 10.57s | 15.04s | 0.86 |
 
+### Selector Snapshot
+
+Model: `gemini:gemini-2.5-flash-lite`
+
+The built-in deterministic selector is intentionally conservative. On the
+current scanned page-scale selector corpus it correctly fails open, keeping all
+pages when text quality is too low to prune safely.
+
+| Case | Selected pages | Fallback | Full latency | Selected latency |
+| --- | ---: | --- | ---: | ---: |
+| `oncology_scanned_05p:labs_only` | `5 / 5` | `low_text_quality` | `8.27s` | `7.28s` |
+| `oncology_scanned_10p:labs_only` | `10 / 10` | `low_text_quality` | `10.68s` | `10.70s` |
+| `oncology_scanned_15p:labs_only` | `15 / 15` | `low_text_quality` | `15.49s` | `15.44s` |
+
+Interpretation:
+- no meaningful win on scan-heavy PDFs without good text extraction
+- safety is preserved because the selector falls back to the full document
+- the clearest gains come from long text-layer packets with narrow schemas
+
 ## Useful Knobs
 
 Quality:
@@ -173,9 +192,11 @@ Full metrics stay in the JSON result files:
 - [oncology strategy comparison](corpus/oncology/results.default.json)
 - [nasal melanoma strategy comparison](corpus/nasal_melanoma/results.default.json)
 - [page-scale results](corpus/oncology_page_scale/results.page_scale.json)
+- [selector snapshot](corpus/oncology_page_scale/results.selector.json)
 
 ## Run
 
 - `uv run python runner.py --manifest corpus/oncology/manifest.default.json --config document_auto --config document_grounded --output corpus/oncology/results.default.json`
 - `uv run python runner.py --manifest corpus/nasal_melanoma/manifest.default.json --config document_auto --config document_grounded --output corpus/nasal_melanoma/results.default.json`
 - `uv run python run_oncology_page_scale.py --model gemini:gemini-2.5-flash-lite --strategy document_auto --strategy document_grounded --skip-generate --output corpus/oncology_page_scale/results.page_scale.json`
+- `uv run python run_selector_benchmark.py --model gemini:gemini-2.5-flash-lite --output corpus/oncology_page_scale/results.selector.json`

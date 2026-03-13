@@ -17,6 +17,7 @@ class PageQuality:
     has_images: bool
     is_scanned: bool
     recommended_mode: Literal["text_only", "image_only", "fused"]
+    text_preview: str = ""
 
 
 @dataclass(slots=True)
@@ -52,6 +53,7 @@ def analyze_pdf(
                 page_index=page.page_index,
                 text_char_count=len(page.text),
                 text_quality_score=text_quality,
+                text_preview=_page_preview(page.text),
                 has_tables=page.has_tables,
                 has_images=page.has_images,
                 is_scanned=is_scanned,
@@ -96,3 +98,10 @@ def analyze_pdf_source(
 
 def analyze_pdf_attachment(attachment: Attachment) -> PreflightResult:
     return analyze_pdf(attachment.source, page_indices=attachment.page_indices)
+
+
+def _page_preview(text: str, *, head_chars: int = 220, tail_chars: int = 120) -> str:
+    normalized = " ".join(text.split())
+    if len(normalized) <= head_chars + tail_chars + 5:
+        return normalized
+    return f"{normalized[:head_chars]} ... {normalized[-tail_chars:]}"

@@ -144,6 +144,62 @@ def test_build_message_parts_reads_path_bytes(tmp_path: Path):
     assert parts[1] == "from path"
 
 
+def test_build_message_parts_preserves_original_pdf_when_attachment_has_page_indices():
+    fitz = pytest.importorskip("fitz")
+    pytest.importorskip("pydantic_ai")
+    from pydantic_ai.messages import BinaryContent
+
+    doc = fitz.open()
+    for index in range(3):
+        page = doc.new_page()
+        page.insert_text((72, 72), f"Page {index}")
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    provider = _provider_without_init()
+    request = InferenceRequest(
+        prompt="subset pdf",
+        attachments=(Attachment.pdf(pdf_bytes, page_indices=[1]),),
+    )
+
+    parts = provider._build_message_parts(request)
+    assert len(parts) == 2
+    assert isinstance(parts[0], BinaryContent)
+    with fitz.open(stream=parts[0].data, filetype="pdf") as pdf_doc:
+        assert len(pdf_doc) == 3
+        assert pdf_doc[1].get_text().strip() == "Page 1"
+
+
+def test_build_message_parts_uses_original_pdf_bytes_when_chunking_subset_already_happened():
+    fitz = pytest.importorskip("fitz")
+    pytest.importorskip("pydantic_ai")
+    from pydantic_ai.messages import BinaryContent
+
+    doc = fitz.open()
+    for index in range(4):
+        page = doc.new_page()
+        page.insert_text((72, 72), f"Original page {index + 1}")
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    provider = _provider_without_init()
+    subset_attachment = Attachment.pdf(
+        pdf_bytes,
+        page_indices=[1, 3],
+    )
+    from parsantic.extract.media.chunking import chunk_attachments
+
+    chunk = chunk_attachments((subset_attachment,), text="context")[0]
+    request = InferenceRequest(prompt=chunk.text, attachments=(chunk.attachment,))
+
+    parts = provider._build_message_parts(request)
+    assert len(parts) == 2
+    assert isinstance(parts[0], BinaryContent)
+    with fitz.open(stream=parts[0].data, filetype="pdf") as subset_doc:
+        assert len(subset_doc) == 2
+    assert "selected pages" in parts[1]
+
+
 def test_sync_infer_runs_batch_prompts_concurrently(monkeypatch):
     import asyncio
 

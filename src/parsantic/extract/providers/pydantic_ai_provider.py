@@ -509,11 +509,6 @@ class PydanticAIProvider:
 
         parts: list[Any] = []
         for attachment in request.attachments:
-            if isinstance(attachment.source, bytes):
-                data = attachment.source
-            else:
-                data = attachment.source.read_bytes()
-
             media_type = attachment.mime_type
             if media_type is None:
                 if attachment.kind is AttachmentKind.PDF:
@@ -522,6 +517,11 @@ class PydanticAIProvider:
                     media_type = "image/png"
                 else:
                     media_type = "application/octet-stream"
+
+            if isinstance(attachment.source, bytes):
+                data = attachment.source
+            else:
+                data = attachment.source.read_bytes()
 
             parts.append(BinaryContent(data=data, media_type=media_type))
 
